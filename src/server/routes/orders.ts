@@ -1,7 +1,22 @@
 import { Router } from "express";
+import type { RequestHandler } from "express";
+import type { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
+import { resolveOrderInventory } from "../../shared/orderConversion";
 
 const router = Router();
+
+class DraftOrderError extends Error {}
+
+// Updating the order row locks it until the transaction completes. Every
+// draft mutation uses this gate so it cannot write after finalization.
+async function lockDraftOrder(tx: Prisma.TransactionClient, orderId: number) {
+  const result = await tx.order.updateMany({
+    where: {id: orderId, status: "DRAFT"},
+    data: {updatedAt: new Date()},
+  });
+  if (result.count !== 1) throw new DraftOrderError("Order not found or already finalized. Refresh the order.");
+}
 
 // ---------------------------------------------------------
 // MONEY HELPERS
@@ -97,7 +112,7 @@ router.post("/", async (req, res) => {
 // ADD LINE TO ORDER
 // ---------------------------------------------------------
 
-router.post("/:orderId/lines", async (req, res) => {
+const saveOrderLine: RequestHandler = async (req, res) => {
   try {
     const orderId = Number(req.params.orderId);
     if (!Number.isInteger(orderId)) {
@@ -108,23 +123,19 @@ router.post("/:orderId/lines", async (req, res) => {
 
     const {
       purchasedProductId,
-      sellableProductId,
       quantityPurchased,
-      productCost,
-      sellableQuantity,
+      priceEach,
     } = req.body;
 
     // Make sure all required information was provided.
     if (
-      !purchasedProductId ||
-      !sellableProductId ||
-      !quantityPurchased ||
-      productCost === undefined ||
-      !sellableQuantity
+      !Number.isSafeInteger(purchasedProductId) || purchasedProductId <= 0 ||
+      !Number.isSafeInteger(quantityPurchased) || quantityPurchased <= 0 ||
+      quantityPurchased > 2147483647
     ) {
       return res.status(400).json({
         error:
-          "purchasedProductId, sellableProductId, quantityPurchased, productCost, and sellableQuantity are required",
+          "Product ID and purchased quantity must be positive whole numbers",
       });
     }
 
@@ -148,32 +159,120 @@ router.post("/:orderId/lines", async (req, res) => {
       });
     }
 
-    const orderLine = await prisma.orderLine.create({
-      data: {
+    // New clients send price each; retain total-cost support for older clients.
+    // Neither client may override the catalog-derived inventory conversion.
+    const submittedCost = priceEach ?? req.body.productCost;
+    if ((typeof submittedCost !== "number" && typeof submittedCost !== "string") ||
+        String(submittedCost).trim() === "" || !Number.isFinite(Number(submittedCost)) ||
+        Number(submittedCost) <= 0) {
+      return res.status(400).json({ error: "Purchase price must be greater than zero" });
+    }
+    const costCents = toCents(submittedCost) * (priceEach !== undefined && priceEach !== null ? quantityPurchased : 1);
+    if (!Number.isSafeInteger(costCents) || costCents <= 0 || costCents > 9999999999) {
+      return res.status(400).json({ error: "Total product cost is outside the supported range" });
+    }
+    const catalog = await prisma.product.findMany();
+    let inventory;
+    try {
+      inventory = resolveOrderInventory(catalog, purchasedProductId, quantityPurchased);
+    } catch (error) {
+      return res.status(400).json({ error: error instanceof Error ? error.message : "Invalid product conversion" });
+    }
+
+    const lineId = req.params.lineId === undefined ? null : Number(req.params.lineId);
+    if (lineId !== null && (!Number.isSafeInteger(lineId) || lineId <= 0)) {
+      return res.status(400).json({error: "Invalid order line ID"});
+    }
+    const orderLine = await prisma.$transaction(async (tx) => {
+      await lockDraftOrder(tx, orderId);
+      const data = {
         orderId,
         purchasedProductId,
-        sellableProductId,
+        sellableProductId: inventory.product.id,
         quantityPurchased,
-        productCost,
-        sellableQuantity,
+        productCost: centsToMoney(costCents),
+        sellableQuantity: inventory.quantity,
 
         // These remain empty until the entire order is finalized.
         landedCost: null,
         landedUnitCost: null,
-      },
-      include: {
+      };
+      const include = {
         purchasedProduct: true,
         sellableProduct: true,
-      },
+      };
+      if (lineId === null) return tx.orderLine.create({data, include});
+      const existing = await tx.orderLine.findFirst({where: {id: lineId, orderId}});
+      if (!existing) throw new DraftOrderError("Order line not found in this order.");
+      return tx.orderLine.update({where: {id: lineId}, data, include});
     });
 
-    res.status(201).json(orderLine);
+    res.status(lineId === null ? 201 : 200).json(orderLine);
   } catch (error) {
     console.error("Error adding order line:", error);
 
-    res.status(500).json({
-      error: "Failed to add order line",
+    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+      error: error instanceof DraftOrderError ? error.message : "Failed to save order line",
       details: error instanceof Error ? error.message : String(error),
+    });
+  }
+};
+
+router.post("/:orderId/lines", saveOrderLine);
+router.patch("/:orderId/lines/:lineId", saveOrderLine);
+
+router.delete("/:orderId/lines/:lineId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const lineId = Number(req.params.lineId);
+  if (![orderId, lineId].every((id) => Number.isSafeInteger(id) && id > 0)) {
+    return res.status(400).json({error: "Invalid order or line ID"});
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      await lockDraftOrder(tx, orderId);
+      const removed = await tx.orderLine.deleteMany({where: {id: lineId, orderId}});
+      if (removed.count !== 1) throw new DraftOrderError("Order line not found in this order.");
+    });
+    res.status(204).send();
+  } catch (error) {
+    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+      error: error instanceof DraftOrderError ? error.message : "Failed to remove order line",
+    });
+  }
+});
+
+router.patch("/:orderId", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const {orderNumber, orderDate, notes} = req.body;
+  if (!Number.isSafeInteger(orderId) || orderId <= 0 ||
+      typeof orderNumber !== "string" || !orderNumber.trim() ||
+      typeof orderDate !== "string" || !orderDate.trim() || !Number.isFinite(new Date(orderDate).getTime()) ||
+      (notes != null && typeof notes !== "string")) {
+    return res.status(400).json({error: "Valid order number, date, and notes are required"});
+  }
+  const costs = {shippingCost: "0.00", tariffCost: "0.00", otherCost: "0.00", adjustment: "0.00"};
+  for (const key of Object.keys(costs) as (keyof typeof costs)[]) {
+    const raw = req.body[key];
+    const amount = Number(raw);
+    if ((typeof raw !== "number" && typeof raw !== "string") || String(raw).trim() === "" ||
+        !Number.isFinite(amount) || Math.abs(amount) > 99999999.99 || (key !== "adjustment" && amount < 0)) {
+      return res.status(400).json({error: `Invalid ${key}`});
+    }
+    costs[key] = centsToMoney(toCents(amount));
+  }
+  try {
+    const order = await prisma.$transaction(async (tx) => {
+      await lockDraftOrder(tx, orderId);
+      const duplicate = await tx.order.findFirst({where: {orderNumber: orderNumber.trim(), id: {not: orderId}}});
+      if (duplicate) throw new DraftOrderError("This order number is already in use.");
+      return tx.order.update({where: {id: orderId}, data: {
+        orderNumber: orderNumber.trim(), orderDate: new Date(orderDate), notes: notes?.trim() || null, ...costs,
+      }, include: {lines: true}});
+    });
+    res.json(order);
+  } catch (error) {
+    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+      error: error instanceof DraftOrderError ? error.message : "Failed to update order",
     });
   }
 });
@@ -317,6 +416,11 @@ router.post("/:orderId/finalize", async (req, res) => {
     // ---------------------------------------------------------
 
     const finalizedOrder = await prisma.$transaction(async (tx) => {
+      const locked = await tx.order.updateMany({
+        where: {id: orderId, status: "DRAFT", updatedAt: order.updatedAt},
+        data: {updatedAt: new Date()},
+      });
+      if (locked.count !== 1) throw new DraftOrderError("The order changed. Refresh and review it before finalizing.");
       for (const calculated of calculatedLines) {
         // Save the finalized landed costs onto the order line.
         await tx.orderLine.update({
@@ -366,8 +470,8 @@ router.post("/:orderId/finalize", async (req, res) => {
   } catch (error) {
     console.error("Error finalizing order:", error);
 
-    res.status(500).json({
-      error: "Failed to finalize order",
+    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+      error: error instanceof DraftOrderError ? error.message : "Failed to finalize order",
       details: error instanceof Error ? error.message : String(error),
     });
   }

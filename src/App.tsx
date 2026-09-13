@@ -10,6 +10,9 @@ import type {
 
 import "./App.css";
 import OrdersPage from "./client/pages/OrdersPage";
+import InventoryPage from "./client/pages/InventoryPage";
+import SalesPage from "./client/pages/SalesPage";
+import { matchingBoxName } from "./shared/caseProduct";
 
 // ---------------------------------------------------------
 // TYPES
@@ -23,11 +26,14 @@ type Page =
   | "sales"
   | "shows";
 
+type ProductUnitType = "CASE" | "BOX" | "ITEM";
+
 type Product = {
   id: number;
   itemId: string;
   name: string;
   type: "SEALED" | "SINGLE";
+  unitType: ProductUnitType;
   parentProductId: number | null;
   quantityPerParent: number | null;
   sellable: boolean;
@@ -98,6 +104,12 @@ type NewProductForm = {
   itemId: string;
   name: string;
   type: "SEALED" | "SINGLE";
+  unitType: ProductUnitType;
+  parentProductId: string;
+  quantityPerParent: string;
+  boxItemId: string;
+  boxesPerCase: string;
+  boxExpectedSalePrice: string;
   expectedSalePrice: string;
   sellable: boolean;
 };
@@ -404,8 +416,12 @@ function App() {
           {activePage === "orders" && (
           <OrdersPage />
           )}
+          {activePage === "inventory" && <InventoryPage />}
+          {activePage === "sales" && <SalesPage />}
 
           {activePage !== "dashboard" &&
+            activePage !== "inventory" &&
+            activePage !== "sales" &&
             activePage !== "products" &&
             activePage !== "orders" && (
               <PagePlaceholder
@@ -1123,6 +1139,14 @@ function ProductsPage() {
                   </ProductHeader>
 
                   <ProductHeader>
+                    Unit Type
+                  </ProductHeader>
+
+                  <ProductHeader>
+                    Conversion
+                  </ProductHeader>
+
+                  <ProductHeader>
                     Expected Price
                   </ProductHeader>
 
@@ -1180,6 +1204,22 @@ function ProductsPage() {
 
                       <ProductCell>
                         {product.type}
+                      </ProductCell>
+
+                      <ProductCell>
+                        {product.unitType}
+                      </ProductCell>
+
+                      <ProductCell>
+                        {product.parentProductId !== null
+                          ? `${product.quantityPerParent ?? "?"} per ${products.find(
+                              (parent) => parent.id === product.parentProductId
+                            )?.itemId ?? "unknown parent"}`
+                          : products.filter(
+                              (child) => child.parentProductId === product.id
+                            ).map(
+                              (child) => `${child.quantityPerParent ?? "?"} × ${child.itemId}`
+                            ).join(", ") || "—"}
                       </ProductCell>
 
                       <ProductCell>
@@ -1252,6 +1292,7 @@ function ProductsPage() {
       {showAddProduct && (
         <ProductModal
           mode="add"
+          products={products}
           onClose={() =>
             setShowAddProduct(false)
           }
@@ -1265,6 +1306,7 @@ function ProductsPage() {
       {editingProduct && (
         <ProductModal
           mode="edit"
+          products={products}
           product={editingProduct}
           onClose={() =>
             setEditingProduct(null)
@@ -1378,21 +1420,30 @@ function ProductActionsMenu({
 function ProductModal({
   mode,
   product,
+  products,
   onClose,
   onSaved,
 }: {
   mode: "add" | "edit";
   product?: Product;
+  products: Product[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const isEditing = mode === "edit";
+  const existingBox = products.find((child) => child.parentProductId === product?.id);
 
   const [form, setForm] =
     useState<NewProductForm>({
       itemId: product?.itemId ?? "",
       name: product?.name ?? "",
       type: product?.type ?? "SEALED",
+      unitType: product?.unitType ?? "BOX",
+      parentProductId: product?.parentProductId?.toString() ?? "",
+      quantityPerParent: product?.quantityPerParent?.toString() ?? "",
+      boxItemId: existingBox?.itemId ?? "",
+      boxesPerCase: existingBox?.quantityPerParent?.toString() ?? "",
+      boxExpectedSalePrice: existingBox?.expectedSalePrice?.toString() ?? "",
       expectedSalePrice:
         product?.expectedSalePrice ===
           null ||
@@ -1421,6 +1472,7 @@ function ProductModal({
     setForm((current) => ({
       ...current,
       [field]: value,
+      ...(field === "unitType" && value === "CASE" ? {type: "SEALED" as const} : {}),
     }));
   }
 
@@ -1431,6 +1483,21 @@ function ProductModal({
 
     const itemId = form.itemId.trim();
     const name = form.name.trim();
+
+    if (form.unitType === "CASE" && (
+      !form.boxItemId.trim() || !Number.isSafeInteger(Number(form.boxesPerCase)) ||
+      Number(form.boxesPerCase) <= 0
+    )) {
+      setError("Enter a Box Item ID and a positive whole-number boxes-per-case quantity.");
+      return;
+    }
+    if (form.unitType !== "CASE" && form.parentProductId && (
+      !Number.isInteger(Number(form.quantityPerParent)) ||
+      Number(form.quantityPerParent) <= 0
+    )) {
+      setError("Units per parent must be a positive whole number.");
+      return;
+    }
 
     if (!itemId) {
       setError(
@@ -1478,18 +1545,23 @@ function ProductModal({
             itemId,
             name,
             type: form.type,
+            unitType: form.unitType,
 
-            // Parent/container relationships will
-            // be added to the UI in a later step.
+            // The contained product stores its parent and conversion quantity.
+            parentProductId: form.unitType !== "CASE" && form.parentProductId ? Number(form.parentProductId) : null,
+            quantityPerParent: form.unitType !== "CASE" && form.parentProductId ? Number(form.quantityPerParent) : null,
+            ...(form.unitType === "CASE" ? {
+              boxItemId: form.boxItemId,
+              boxesPerCase: Number(form.boxesPerCase),
+              boxExpectedSalePrice: form.boxExpectedSalePrice,
+            } : {}),
             ...(!isEditing
               ? {
-                  parentProductId: null,
-                  quantityPerParent: null,
                   active: true,
                 }
               : {}),
 
-            sellable: form.sellable,
+            sellable: form.unitType === "CASE" ? false : form.sellable,
 
             expectedSalePrice:
               form.expectedSalePrice ===
@@ -1672,6 +1744,7 @@ function ProductModal({
           >
             <select
               value={form.type}
+              disabled={form.unitType === "CASE"}
               onChange={(event) =>
                 updateForm(
                   "type",
@@ -1692,6 +1765,91 @@ function ProductModal({
               </option>
             </select>
           </FormField>
+
+          <FormField label="Unit Type">
+            <select
+              value={form.unitType}
+              onChange={(event) =>
+                updateForm(
+                  "unitType",
+                  event.target.value as ProductUnitType
+                )
+              }
+              style={inputStyle}
+            >
+              <option value="CASE">
+                Case
+              </option>
+
+              <option value="BOX">
+                Box
+              </option>
+
+              <option value="ITEM">
+                Item
+              </option>
+            </select>
+          </FormField>
+
+          {form.unitType === "CASE" && (
+            <>
+              <FormField label="Matching Box Name" hint="The Case and its matching Box are saved together. Cases are never sellable.">
+                <input readOnly value={matchingBoxName(form.name)} style={inputStyle} />
+              </FormField>
+              <FormField label="Box Item ID" hint="Use a unique ID, or the ID of an existing unlinked Box with this matching name.">
+                <input required value={form.boxItemId}
+                  onChange={(event) => updateForm("boxItemId", event.target.value)} style={inputStyle} />
+              </FormField>
+              <FormField label="Boxes per Case">
+                <input type="number" min="1" step="1" required value={form.boxesPerCase}
+                  onChange={(event) => updateForm("boxesPerCase", event.target.value)} style={inputStyle} />
+              </FormField>
+              <FormField label="Expected Sale Price per Box">
+                <input type="number" min="0" step="0.01" value={form.boxExpectedSalePrice}
+                  onChange={(event) => updateForm("boxExpectedSalePrice", event.target.value)} style={inputStyle} />
+              </FormField>
+            </>
+          )}
+
+          {form.unitType !== "CASE" && <>
+          <FormField
+            label="Parent / Container Product"
+            hint="For a Box sold from a Case, select its Case here. Leave blank for products without a container."
+          >
+            <select
+              value={form.parentProductId}
+              onChange={(event) => updateForm("parentProductId", event.target.value)}
+              style={inputStyle}
+            >
+              <option value="">No parent</option>
+              {products.filter((parent) =>
+                parent.id !== product?.id &&
+                (parent.unitType !== "CASE" || parent.id === product?.parentProductId) &&
+                (parent.active || parent.id === product?.parentProductId)
+              ).map((parent) => (
+                <option key={parent.id} value={parent.id}>
+                  {parent.itemId} — {parent.name} ({parent.unitType})
+                </option>
+              ))}
+            </select>
+          </FormField>
+
+          {form.parentProductId && (
+            <FormField
+              label="Units per Parent"
+              hint="Example: enter 20 on the Box product when one Case contains 20 Boxes. This sets catalog metadata; it does not change inventory."
+            >
+              <input
+                type="number"
+                min="1"
+                step="1"
+                required
+                value={form.quantityPerParent}
+                onChange={(event) => updateForm("quantityPerParent", event.target.value)}
+                style={inputStyle}
+              />
+            </FormField>
+          )}
 
           <FormField
             label="Expected Sale Price"
@@ -1778,6 +1936,7 @@ function ProductModal({
             product that is not sold
             directly.
           </p>
+          </>}
 
           {error && (
             <div

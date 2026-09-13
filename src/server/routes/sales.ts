@@ -240,7 +240,7 @@ router.post("/", async (req, res) => {
 
       if (
         !product.active ||
-        !product.sellable
+        !product.sellable || product.unitType === "CASE"
       ) {
         return res.status(400).json({
           error:

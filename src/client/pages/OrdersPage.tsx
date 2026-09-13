@@ -1,3 +1,4 @@
+import { resolveOrderInventory } from "../../shared/orderConversion";
 import {
   useEffect,
   useState,
@@ -17,6 +18,7 @@ type Product = {
   itemId: string;
   name: string;
   type: "SEALED" | "SINGLE";
+  unitType: "CASE" | "BOX" | "ITEM";
   parentProductId: number | null;
   quantityPerParent: number | null;
   sellable: boolean;
@@ -76,10 +78,8 @@ type NewOrderForm = {
 
 type NewLineForm = {
   purchasedProductId: string;
-  sellableProductId: string;
   quantityPurchased: string;
-  sellableQuantity: string;
-  productCost: string;
+  priceEach: string;
 };
 
 type StatusFilter =
@@ -584,9 +584,11 @@ export default function OrdersPage() {
 // ---------------------------------------------------------
 
 function NewOrderModal({
+  order,
   onClose,
   onCreated,
 }: {
+  order?: Order;
   onClose: () => void;
   onCreated: (
     order: Order
@@ -594,16 +596,16 @@ function NewOrderModal({
 }) {
   const [form, setForm] =
     useState<NewOrderForm>({
-      orderNumber: "",
+      orderNumber: order?.orderNumber ?? "",
       orderDate:
-        new Date()
+        order?.orderDate.slice(0, 10) ?? new Date()
           .toISOString()
           .slice(0, 10),
-      shippingCost: "",
-      tariffCost: "",
-      otherCost: "",
-      adjustment: "",
-      notes: "",
+      shippingCost: order?.shippingCost.toString() ?? "",
+      tariffCost: order?.tariffCost.toString() ?? "",
+      otherCost: order?.otherCost.toString() ?? "",
+      adjustment: order?.adjustment.toString() ?? "",
+      notes: order?.notes ?? "",
     });
 
   const [saving, setSaving] =
@@ -650,9 +652,9 @@ function NewOrderModal({
       setError(null);
 
       const response = await fetch(
-        "/api/orders",
+        order ? `/api/orders/${order.id}` : "/api/orders",
         {
-          method: "POST",
+          method: order ? "PATCH" : "POST",
 
           headers: {
             "Content-Type":
@@ -701,7 +703,7 @@ function NewOrderModal({
       if (!response.ok) {
         throw new Error(
           body?.error ??
-            "Order could not be created."
+            "Order could not be saved."
         );
       }
 
@@ -715,7 +717,7 @@ function NewOrderModal({
       setError(
         error instanceof Error
           ? error.message
-          : "Order could not be created."
+          : "Order could not be saved."
       );
     } finally {
       setSaving(false);
@@ -725,7 +727,7 @@ function NewOrderModal({
   return (
     <ModalShell
       onClose={onClose}
-      title="New Order"
+      title={order ? "Edit Draft Order" : "New Order"}
       subtitle="Create a draft purchase order. Inventory is not added until the order is finalized."
     >
       <form onSubmit={handleSubmit}>
@@ -844,7 +846,7 @@ function NewOrderModal({
         <ModalActions
           onCancel={onClose}
           saving={saving}
-          submitLabel="Create Order"
+          submitLabel={order ? "Save Changes" : "Create Order"}
         />
       </form>
     </ModalShell>
@@ -871,6 +873,9 @@ function OrderDetailModal({
   const [showAddLine, setShowAddLine] =
     useState(false);
 
+  const [editingLine, setEditingLine] = useState<OrderLine | null>(null);
+  const [editingOrder, setEditingOrder] = useState(false);
+
   const [working, setWorking] =
     useState(false);
 
@@ -888,6 +893,24 @@ function OrderDetailModal({
 
   const isDraft =
     order.status === "DRAFT";
+
+  async function removeLine(line: OrderLine) {
+    if (!isDraft || !window.confirm("Remove this product line from the draft order?")) return;
+    try {
+      setWorking(true);
+      setError(null);
+      const response = await fetch(`/api/orders/${order.id}/lines/${line.id}`, {method: "DELETE"});
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Could not remove the product line.");
+      }
+      await onChanged(order.id);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not remove the product line.");
+    } finally {
+      setWorking(false);
+    }
+  }
 
   async function finalizeOrder() {
     if (!isDraft) {
@@ -965,6 +988,7 @@ function OrderDetailModal({
       }`}
       wide
     >
+      {isDraft && <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingOrder(true)}>Edit Order Information & Costs</button>}
       <div style={orderSummaryGridStyle}>
         <SummaryBox
           label="Product Cost"
@@ -1060,19 +1084,15 @@ function OrderDetailModal({
               <thead>
                 <tr>
                   <TableHeader>
-                    Purchased
+                    Product Purchased
                   </TableHeader>
 
                   <TableHeader>
-                    Sellable
+                    Quantity Purchased
                   </TableHeader>
 
                   <TableHeader>
-                    Purchased Qty
-                  </TableHeader>
-
-                  <TableHeader>
-                    Sellable Qty
+                    Purchase Price Each
                   </TableHeader>
 
                   <TableHeader>
@@ -1080,12 +1100,17 @@ function OrderDetailModal({
                   </TableHeader>
 
                   <TableHeader>
+                    Inventory Created
+                  </TableHeader>
+
+                  <TableHeader>
                     Landed Cost
                   </TableHeader>
 
                   <TableHeader>
-                    Unit Cost
+                    Landed Cost per Sellable Unit
                   </TableHeader>
+                  {isDraft && <TableHeader>Actions</TableHeader>}
                 </tr>
               </thead>
 
@@ -1105,28 +1130,26 @@ function OrderDetailModal({
                       </TableCell>
 
                       <TableCell>
+                        {line.quantityPurchased}
+                      </TableCell>
+
+                      <TableCell>
+                        {/* Use the saved line total, not today's catalog price. */}
+                        {line.quantityPurchased > 0
+                          ? money(Number(line.productCost) / line.quantityPurchased)
+                          : "\u2014"}
+                      </TableCell>
+
+                      <TableCell>
+                        {money(line.productCost)}
+                      </TableCell>
+
+                      <TableCell>
+                        {line.sellableQuantity}{" \u00d7 "}
                         {getProductLabel(
                           line.sellableProduct,
                           line.sellableProductId,
                           products
-                        )}
-                      </TableCell>
-
-                      <TableCell>
-                        {
-                          line.quantityPurchased
-                        }
-                      </TableCell>
-
-                      <TableCell>
-                        {
-                          line.sellableQuantity
-                        }
-                      </TableCell>
-
-                      <TableCell>
-                        {money(
-                          line.productCost
                         )}
                       </TableCell>
 
@@ -1147,6 +1170,10 @@ function OrderDetailModal({
                               line.landedUnitCost
                             )}
                       </TableCell>
+                      {isDraft && <TableCell>
+                        <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingLine(line)}>Edit</button>{" "}
+                        <button type="button" style={smallButtonStyle} disabled={working} onClick={() => removeLine(line)}>Remove</button>
+                      </TableCell>}
                     </tr>
                   )
                 )}
@@ -1263,7 +1290,20 @@ function OrderDetailModal({
         )}
       </div>
 
-      {showAddLine && (
+      {editingOrder && isDraft && (
+        <NewOrderModal order={order} onClose={() => setEditingOrder(false)} onCreated={async () => {
+          setEditingOrder(false);
+          await onChanged(order.id);
+        }} />
+      )}
+      {editingLine && isDraft && (
+        <AddOrderLineModal order={order} products={products} line={editingLine}
+          onClose={() => setEditingLine(null)} onAdded={async () => {
+            setEditingLine(null);
+            await onChanged(order.id);
+          }} />
+      )}
+      {showAddLine && isDraft && (
         <AddOrderLineModal
           order={order}
           products={products}
@@ -1289,48 +1329,44 @@ function OrderDetailModal({
 
 function AddOrderLineModal({
   order,
+  line,
   products,
   onClose,
   onAdded,
 }: {
   order: Order;
+  line?: OrderLine;
   products: Product[];
   onClose: () => void;
   onAdded: () => Promise<void>;
 }) {
   const activeProducts =
     products.filter(
-      (product) => product.active
+      (product) => product.active && product.type === "SEALED"
     );
 
-  const sellableProducts =
-    activeProducts.filter(
-      (product) =>
-        product.sellable
+  const [form, setForm] = useState<NewLineForm>({
+    purchasedProductId: (line?.purchasedProductId ?? activeProducts[0]?.id)?.toString() ?? "",
+    quantityPurchased: line?.quantityPurchased.toString() ?? "1",
+    priceEach: line ? (Number(line.productCost) / line.quantityPurchased).toFixed(2) : "",
+  });
+
+  let inventoryPreview = null;
+  let conversionError: string | null = null;
+  try {
+    inventoryPreview = resolveOrderInventory(
+      products, Number(form.purchasedProductId), Number(form.quantityPurchased)
     );
-
-  const firstPurchased =
-    activeProducts[0];
-
-  const firstSellable =
-    sellableProducts[0];
-
-  const [form, setForm] =
-    useState<NewLineForm>({
-      purchasedProductId:
-        firstPurchased
-          ? String(firstPurchased.id)
-          : "",
-
-      sellableProductId:
-        firstSellable
-          ? String(firstSellable.id)
-          : "",
-
-      quantityPurchased: "1",
-      sellableQuantity: "1",
-      productCost: "",
-    });
+  } catch (error) {
+    conversionError = error instanceof Error ? error.message : "Invalid conversion.";
+  }
+  // Older lines may have totals that do not divide into an exact cent price.
+  // Preserve that total unless the user changes quantity or price.
+  const preserveLineTotal = line !== undefined &&
+    form.quantityPurchased === line.quantityPurchased.toString() &&
+    form.priceEach === (Number(line.productCost) / line.quantityPurchased).toFixed(2);
+  const productCost = preserveLineTotal ? Number(line.productCost)
+    : Math.round(Number(form.priceEach) * 100) * Number(form.quantityPurchased) / 100;
 
   const [saving, setSaving] =
     useState(false);
@@ -1350,31 +1386,6 @@ function AddOrderLineModal({
     }));
   }
 
-  function handlePurchasedProductChange(
-    productIdText: string
-  ) {
-    const productId =
-      Number(productIdText);
-
-    const selectedProduct =
-      activeProducts.find(
-        (product) =>
-          product.id === productId
-      );
-
-    setForm((current) => ({
-      ...current,
-
-      purchasedProductId:
-        productIdText,
-
-      sellableProductId:
-        selectedProduct?.sellable
-          ? productIdText
-          : current.sellableProductId,
-    }));
-  }
-
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
@@ -1385,86 +1396,14 @@ function AddOrderLineModal({
         form.purchasedProductId
       );
 
-    const sellableProductId =
-      Number(
-        form.sellableProductId
-      );
-
-    const quantityPurchased =
-      Number(
-        form.quantityPurchased
-      );
-
-    const sellableQuantity =
-      Number(
-        form.sellableQuantity
-      );
-
-    const productCost =
-      Number(form.productCost);
-
-    if (
-      !Number.isInteger(
-        purchasedProductId
-      ) ||
-      purchasedProductId <= 0
-    ) {
-      setError(
-        "Select a purchased product."
-      );
-
+    const quantityPurchased = Number(form.quantityPurchased);
+    const priceEach = Number(form.priceEach);
+    if (conversionError) {
+      setError(conversionError);
       return;
     }
-
-    if (
-      !Number.isInteger(
-        sellableProductId
-      ) ||
-      sellableProductId <= 0
-    ) {
-      setError(
-        "Select a sellable product."
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isInteger(
-        quantityPurchased
-      ) ||
-      quantityPurchased <= 0
-    ) {
-      setError(
-        "Purchased quantity must be a positive whole number."
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isInteger(
-        sellableQuantity
-      ) ||
-      sellableQuantity <= 0
-    ) {
-      setError(
-        "Sellable quantity must be a positive whole number."
-      );
-
-      return;
-    }
-
-    if (
-      !Number.isFinite(
-        productCost
-      ) ||
-      productCost <= 0
-    ) {
-      setError(
-        "Product cost must be greater than zero."
-      );
-
+    if (!Number.isFinite(priceEach) || priceEach <= 0) {
+      setError("Purchase price each must be greater than zero.");
       return;
     }
 
@@ -1473,9 +1412,9 @@ function AddOrderLineModal({
       setError(null);
 
       const response = await fetch(
-        `/api/orders/${order.id}/lines`,
+        line ? `/api/orders/${order.id}/lines/${line.id}` : `/api/orders/${order.id}/lines`,
         {
-          method: "POST",
+          method: line ? "PATCH" : "POST",
 
           headers: {
             "Content-Type":
@@ -1484,10 +1423,8 @@ function AddOrderLineModal({
 
           body: JSON.stringify({
             purchasedProductId,
-            sellableProductId,
             quantityPurchased,
-            productCost,
-            sellableQuantity,
+            ...(preserveLineTotal ? {productCost: line.productCost} : {priceEach}),
           }),
         }
       );
@@ -1524,8 +1461,8 @@ function AddOrderLineModal({
   return (
     <ModalShell
       onClose={onClose}
-      title="Add Product"
-      subtitle={`Add a product line to ${order.orderNumber}.`}
+      title={line ? "Edit Product Line" : "Add Product"}
+      subtitle={`${line ? "Update" : "Add"} a product line in ${order.orderNumber}. Inventory conversion uses the current catalog.`}
     >
       <form onSubmit={handleSubmit}>
         <FormField
@@ -1537,8 +1474,8 @@ function AddOrderLineModal({
               form.purchasedProductId
             }
             onChange={(event) =>
-              handlePurchasedProductChange(
-                event.target.value
+              updateForm(
+                "purchasedProductId", event.target.value
               )
             }
             style={inputStyle}
@@ -1579,67 +1516,27 @@ function AddOrderLineModal({
           </FormField>
 
           <MoneyField
-            label="Total Product Cost"
-            value={form.productCost}
+            label="Purchase Price Each"
+            value={form.priceEach}
             onChange={(value) =>
               updateForm(
-                "productCost",
+                "priceEach",
                 value
               )
             }
           />
         </div>
 
-        <FormField
-          label="Sellable Product"
-          hint="The lowest-level unit inventory should track."
-        >
-          <select
-            value={
-              form.sellableProductId
-            }
-            onChange={(event) =>
-              updateForm(
-                "sellableProductId",
-                event.target.value
-              )
-            }
-            style={inputStyle}
-          >
-            {sellableProducts.map(
-              (product) => (
-                <option
-                  key={product.id}
-                  value={product.id}
-                >
-                  {product.itemId} —{" "}
-                  {product.name}
-                </option>
-              )
-            )}
-          </select>
-        </FormField>
-
-        <FormField
-          label="Sellable Quantity Generated"
-          hint="Example: 1 case containing 20 boxes creates 20 sellable units."
-        >
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={
-              form.sellableQuantity
-            }
-            onChange={(event) =>
-              updateForm(
-                "sellableQuantity",
-                event.target.value
-              )
-            }
-            style={inputStyle}
+        <div style={twoColumnStyle}>
+          <SummaryBox label="Total Product Cost" value={money(Number.isFinite(productCost) ? productCost : 0)} />
+          <SummaryBox
+            label="Inventory Created on Finalization"
+            value={inventoryPreview
+              ? `${inventoryPreview.quantity} \u00d7 ${inventoryPreview.product.name}`
+              : "Conversion unavailable"}
           />
-        </FormField>
+        </div>
+        {conversionError && <ErrorMessage message={conversionError} />}
 
         {error && (
           <ErrorMessage
@@ -1650,7 +1547,7 @@ function AddOrderLineModal({
         <ModalActions
           onCancel={onClose}
           saving={saving}
-          submitLabel="Add Product"
+          submitLabel={line ? "Save Changes" : "Add Product"}
         />
       </form>
     </ModalShell>

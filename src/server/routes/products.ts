@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { CaseProductError, saveCaseProduct } from "../caseProduct";
 
 const router = Router();
 
@@ -61,6 +62,47 @@ function isValidUnitType(
 // ---------------------------------------------------------
 // GET ALL PRODUCTS
 // ---------------------------------------------------------
+
+async function validateProductHierarchy(
+  productId: number | undefined,
+  parentProductId: unknown,
+  quantityPerParent: number | null
+): Promise<string | null> {
+  if (parentProductId === null || parentProductId === undefined) {
+    return quantityPerParent === null
+      ? null
+      : "A quantity per parent requires a parent product";
+  }
+
+  if (typeof parentProductId !== "number" ||
+      !Number.isSafeInteger(parentProductId) || parentProductId <= 0) {
+    return "Parent product ID must be a positive whole number";
+  }
+  if (quantityPerParent === null) {
+    return "A parent product requires a quantity per parent";
+  }
+
+  // Follow explicit relationships so a product cannot contain itself,
+  // either directly or through another container.
+  const visited = new Set<number>();
+  let ancestorId: number | null = parentProductId;
+  while (ancestorId !== null) {
+    if (ancestorId === productId || visited.has(ancestorId)) {
+      return "Product relationships cannot form a cycle";
+    }
+    visited.add(ancestorId);
+    const ancestor: { parentProductId: number | null } | null =
+      await prisma.product.findUnique({
+        where: { id: ancestorId },
+        select: { parentProductId: true },
+      });
+    if (!ancestor) {
+      return "Parent product not found";
+    }
+    ancestorId = ancestor.parentProductId;
+  }
+  return null;
+}
 
 router.get("/", async (_req, res) => {
   try {
@@ -287,6 +329,29 @@ router.post("/", async (req, res) => {
     // CREATE
     // -----------------------------------------------------
 
+    if (cleanUnitType === "CASE") {
+      const product = await saveCaseProduct({
+        itemId: normalizedItemId, name: name.trim(), type,
+        active: active ?? true,
+        boxItemId: req.body.boxItemId,
+        boxesPerCase: req.body.boxesPerCase,
+        boxExpectedSalePrice: req.body.boxExpectedSalePrice,
+      });
+      return res.status(201).json(product);
+    }
+    if (parentProductId != null) {
+      const parent = await prisma.product.findUnique({where: {id: Number(parentProductId)}});
+      if (parent?.unitType === "CASE") {
+        return res.status(400).json({error: "Configure the matching Box from the Case product form."});
+      }
+    }
+    const hierarchyError = await validateProductHierarchy(
+      undefined, parentProductId, cleanQuantityPerParent
+    );
+    if (hierarchyError) {
+      return res.status(400).json({ error: hierarchyError });
+    }
+
     const product =
       await prisma.product.create({
         data: {
@@ -319,8 +384,8 @@ router.post("/", async (req, res) => {
       error
     );
 
-    res.status(500).json({
-      error: "Failed to create product",
+    res.status(error instanceof CaseProductError ? 400 : 500).json({
+      error: error instanceof CaseProductError ? error.message : "Failed to create product",
       details:
         error instanceof Error
           ? error.message
@@ -569,6 +634,51 @@ router.patch(
       // UPDATE
       // ---------------------------------------------------
 
+      if ((updateData.unitType ?? existingProduct.unitType) === "CASE") {
+        const product = await saveCaseProduct({
+          id: productId, itemId: updateData.itemId ?? existingProduct.itemId,
+          name: updateData.name ?? existingProduct.name,
+          type: updateData.type ?? existingProduct.type, active: existingProduct.active,
+          boxItemId: req.body.boxItemId, boxesPerCase: req.body.boxesPerCase,
+          boxExpectedSalePrice: req.body.boxExpectedSalePrice,
+        });
+        return res.json(product);
+      }
+      if (existingProduct.unitType === "CASE") {
+        return res.status(400).json({error: "A Case cannot be changed into a sellable unit. Edit its Box instead."});
+      }
+      if (updateData.parentProductId != null && updateData.parentProductId !== existingProduct.parentProductId) {
+        const newParent = await prisma.product.findUnique({where: {id: updateData.parentProductId}});
+        if (newParent?.unitType === "CASE") {
+          return res.status(400).json({error: "Configure the matching Box from the Case product form."});
+        }
+      }
+      const linkedParentId = existingProduct.parentProductId ?? updateData.parentProductId;
+      if (linkedParentId != null) {
+        const parent = await prisma.product.findUnique({where: {id: linkedParentId}});
+        if (parent?.unitType === "CASE") {
+          const changesConversion =
+            (updateData.parentProductId !== undefined && updateData.parentProductId !== existingProduct.parentProductId) ||
+            (updateData.quantityPerParent !== undefined && updateData.quantityPerParent !== existingProduct.quantityPerParent) ||
+            (updateData.name !== undefined && updateData.name !== existingProduct.name) ||
+            (updateData.unitType !== undefined && updateData.unitType !== "BOX") ||
+            (updateData.type !== undefined && updateData.type !== "SEALED") || updateData.sellable === false;
+          if (changesConversion) return res.status(400).json({error: "Edit the Case to change its matching Box or conversion."});
+        }
+      }
+      if (parentProductId !== undefined || quantityPerParent !== undefined) {
+        const hierarchyError = await validateProductHierarchy(
+          productId,
+          updateData.parentProductId !== undefined
+            ? updateData.parentProductId : existingProduct.parentProductId,
+          updateData.quantityPerParent !== undefined
+            ? updateData.quantityPerParent : existingProduct.quantityPerParent
+        );
+        if (hierarchyError) {
+          return res.status(400).json({ error: hierarchyError });
+        }
+      }
+
       const product =
         await prisma.product.update({
           where: {
@@ -584,8 +694,8 @@ router.patch(
         error
       );
 
-      res.status(500).json({
-        error: "Failed to update product",
+      res.status(error instanceof CaseProductError ? 400 : 500).json({
+        error: error instanceof CaseProductError ? error.message : "Failed to update product",
         details:
           error instanceof Error
             ? error.message
