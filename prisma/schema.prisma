@@ -1,0 +1,205 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------
+// PRODUCTS
+// ---------------------------------------------------------
+
+model Product {
+  id                Int             @id @default(autoincrement())
+  itemId            String          @unique
+  name              String
+  type              ProductType
+  unitType          ProductUnitType @default(BOX)
+  parentProductId   Int?
+  quantityPerParent Int?
+  sellable          Boolean         @default(true)
+  active            Boolean         @default(true)
+  expectedSalePrice Decimal?        @db.Decimal(10, 2)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  parentProduct Product?  @relation("ProductHierarchy", fields: [parentProductId], references: [id])
+  childProducts Product[] @relation("ProductHierarchy")
+
+  purchasedOrderLines OrderLine[] @relation("PurchasedProduct")
+  sellableOrderLines  OrderLine[] @relation("SellableProduct")
+
+  inventoryBatches InventoryBatch[]
+  saleLines        SaleLine[]
+}
+
+enum ProductType {
+  SEALED
+  SINGLE
+}
+
+enum ProductUnitType {
+  CASE
+  BOX
+  ITEM
+}
+
+// ---------------------------------------------------------
+// ORDERS
+// ---------------------------------------------------------
+
+model Order {
+  id           Int         @id @default(autoincrement())
+  orderNumber  String      @unique
+  orderDate    DateTime
+  shippingCost Decimal     @default(0) @db.Decimal(10, 2)
+  tariffCost   Decimal     @default(0) @db.Decimal(10, 2)
+  otherCost    Decimal     @default(0) @db.Decimal(10, 2)
+  adjustment   Decimal     @default(0) @db.Decimal(10, 2)
+  notes        String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  status       OrderStatus @default(DRAFT)
+  finalizedAt  DateTime?
+
+  lines OrderLine[]
+}
+
+enum OrderStatus {
+  DRAFT
+  FINALIZED
+}
+
+model OrderLine {
+  id                 Int      @id @default(autoincrement())
+  orderId            Int
+  purchasedProductId Int
+  sellableProductId  Int
+  quantityPurchased  Int
+  productCost        Decimal  @db.Decimal(10, 2)
+  sellableQuantity   Int
+  landedCost         Decimal? @db.Decimal(10, 2)
+  landedUnitCost     Decimal? @db.Decimal(14, 6)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  order            Order   @relation(fields: [orderId], references: [id])
+  purchasedProduct Product @relation("PurchasedProduct", fields: [purchasedProductId], references: [id])
+  sellableProduct  Product @relation("SellableProduct", fields: [sellableProductId], references: [id])
+
+  inventoryBatches InventoryBatch[]
+}
+
+// ---------------------------------------------------------
+// INVENTORY BATCHES
+// ---------------------------------------------------------
+
+model InventoryBatch {
+  id                Int      @id @default(autoincrement())
+  orderLineId       Int      @unique
+  sellableProductId Int
+  quantityReceived  Int
+  landedCost        Decimal  @db.Decimal(10, 2)
+  landedUnitCost    Decimal  @db.Decimal(14, 6)
+  quantitySold      Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  orderLine       OrderLine @relation(fields: [orderLineId], references: [id])
+  sellableProduct Product   @relation(fields: [sellableProductId], references: [id])
+
+  saleAllocations SaleAllocation[]
+}
+
+// ---------------------------------------------------------
+// SALES
+// ---------------------------------------------------------
+
+model Sale {
+  id            Int           @id @default(autoincrement())
+  saleNumber    String        @unique
+  saleDate      DateTime
+  paymentMethod PaymentMethod
+  showVisitId   Int?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  finalizedAt   DateTime?
+
+  showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
+
+  lines SaleLine[]
+}
+
+model SaleLine {
+  id            Int      @id @default(autoincrement())
+  saleId        Int
+  productId     Int
+  quantity      Int
+  unitSalePrice Decimal  @db.Decimal(10, 2)
+  revenue       Decimal  @db.Decimal(10, 2)
+  cogs          Decimal  @db.Decimal(10, 2)
+  grossProfit   Decimal  @db.Decimal(10, 2)
+  grossMargin   Decimal  @db.Decimal(10, 6)
+  createdAt     DateTime @default(now())
+
+  sale    Sale    @relation(fields: [saleId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  allocations SaleAllocation[]
+}
+
+model SaleAllocation {
+  id               Int      @id @default(autoincrement())
+  saleLineId       Int
+  inventoryBatchId Int
+  quantity         Int
+  unitCost         Decimal  @db.Decimal(14, 6)
+  totalCost        Decimal  @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+
+  saleLine       SaleLine       @relation(fields: [saleLineId], references: [id])
+  inventoryBatch InventoryBatch @relation(fields: [inventoryBatchId], references: [id])
+}
+
+enum PaymentMethod {
+  CASH
+  DIGITAL
+}
+
+// ---------------------------------------------------------
+// SHOWS
+// ---------------------------------------------------------
+
+model Show {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  active    Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  visits ShowVisit[]
+}
+
+model ShowVisit {
+  id                   Int       @id @default(autoincrement())
+  showId               Int
+  visitDate            DateTime
+  startingSinglesValue Decimal   @default(0) @db.Decimal(10, 2)
+  endingSinglesValue   Decimal?  @db.Decimal(10, 2)
+  startingCash         Decimal   @default(0) @db.Decimal(10, 2)
+  endingCash           Decimal?  @db.Decimal(10, 2)
+  startingDigital      Decimal   @default(0) @db.Decimal(10, 2)
+  endingDigital        Decimal?  @db.Decimal(10, 2)
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  finalizedAt          DateTime?
+
+  show  Show   @relation(fields: [showId], references: [id])
+  sales Sale[]
+
+  @@unique([showId, visitDate])
+}
