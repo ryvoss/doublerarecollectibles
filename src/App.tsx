@@ -9,11 +9,13 @@ import type {
 } from "react";
 
 import "./App.css";
+import FundsPanel from "./client/components/FundsPanel";
 import OrdersPage from "./client/pages/OrdersPage";
 import InventoryPage from "./client/pages/InventoryPage";
 import SalesPage from "./client/pages/SalesPage";
 import ShowsPage from "./client/pages/ShowsPage";
 import { matchingBoxName } from "./shared/caseProduct";
+import ActiveShowPanel from "./client/components/ActiveShowPanel";
 
 // ---------------------------------------------------------
 // TYPES
@@ -518,18 +520,22 @@ function Dashboard({
 
   return (
     <>
-      <div className="page-heading">
-        <div>
-          <h2>Business Overview</h2>
+            <div className="page-heading">
+          <div>
+            <h2>Business Overview</h2>
 
-          <p>
-            Live sealed inventory and
-            sales performance.
-          </p>
+            <p>
+              Live funds, sealed inventory,
+              and sales performance.
+            </p>
+          </div>
+          <ActiveShowPanel />
+          
         </div>
-      </div>
 
-      <div className="metric-grid">
+        <FundsPanel />
+
+        <div className="metric-grid">
         <MetricCard
           label="Inventory Value"
           value={money(

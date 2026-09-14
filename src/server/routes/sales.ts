@@ -495,17 +495,44 @@ router.post("/", async (req, res) => {
     // quantity updates are saved together in one transaction.
     // ---------------------------------------------------------
 
+    // Total sale revenue is the amount of cash/digital funds
+    // received by the Sealed side of the business. This is
+    // intentionally revenue, not gross profit.
+    const totalSaleRevenueCents =
+      preparedLines.reduce(
+        (total, preparedLine) =>
+          total +
+          toCents(
+            preparedLine.revenue
+          ),
+        0
+      );
+
     const sale =
       await prisma.$transaction(
         async (tx) => {
-          // Serialize against visit finalization, and recheck before writing.
+          // A sale linked to a Show Visit may only be recorded
+          // while that visit is actively in progress.
           if (parsedShowVisitId !== null) {
-            const openVisit = await tx.showVisit.updateMany({
-              where: {id: parsedShowVisitId, finalizedAt: null},
-              data: {updatedAt: new Date()},
-            });
-            if (openVisit.count !== 1) throw new FinalizedVisitError("Cannot add a sale to a finalized show visit");
+            const activeVisit =
+              await tx.showVisit.updateMany({
+                where: {
+                  id: parsedShowVisitId,
+                  status: "ACTIVE",
+                  finalizedAt: null,
+                },
+                data: {
+                  updatedAt: new Date(),
+                },
+              });
+
+            if (activeVisit.count !== 1) {
+              throw new FinalizedVisitError(
+                "Cannot add a sale unless the show visit is active"
+              );
+            }
           }
+
           const createdSale =
             await tx.sale.create({
               data: {
@@ -602,6 +629,25 @@ router.post("/", async (req, res) => {
               });
             }
           }
+
+          // Every finalized sealed sale increases the SEALED
+          // funds pool by the full sale revenue. Keeping this
+          // inside the same transaction means the sale, FIFO
+          // inventory updates, and funds posting either all save
+          // together or all roll back together.
+          await tx.fundEntry.create({
+            data: {
+              source: "SEALED",
+              type: "SEALED_SALE",
+              amount: centsToMoney(
+                totalSaleRevenueCents
+              ),
+              transactionDate:
+                parsedSaleDate,
+              saleId: createdSale.id,
+              note: `Sealed sale ${cleanSaleNumber}`,
+            },
+          });
 
           return tx.sale.findUnique({
             where: {

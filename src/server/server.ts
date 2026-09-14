@@ -5,6 +5,7 @@ import ordersRouter from "./routes/orders";
 import inventoryRouter from "./routes/inventory";
 import salesRouter from "./routes/sales";
 import showsRouter from "./routes/shows";
+import fundsRouter from "./routes/funds";
 
 const app = express();
 const PORT = 3002;
@@ -35,6 +36,7 @@ app.use("/api/orders", ordersRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/sales", salesRouter);
 app.use("/api/shows", showsRouter);
+app.use("/api/funds", fundsRouter);
 
 // ---------------------------------------------------------
 // SERVER

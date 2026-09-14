@@ -445,7 +445,34 @@ router.post("/:orderId/finalize", async (req, res) => {
           },
         });
       }
+        // ---------------------------------------------------------
+        // SUBTRACT ORDER COST FROM SEALED FUNDS
+        //
+        // A finalized order represents money spent by the Sealed
+        // side of the business.
+        //
+        // We subtract the complete order cost:
+        // product cost + shipping + tariffs + other + adjustment.
+        //
+        // This happens inside the same database transaction as the
+        // inventory batches and order finalization. If any part fails,
+        // the entire operation is rolled back.
+        // ---------------------------------------------------------
 
+        const totalOrderCostCents =
+          totalProductCostCents +
+          totalAdditionalCostCents;
+
+        await tx.fundEntry.create({
+          data: {
+            source: "SEALED",
+            type: "ORDER_PURCHASE",
+            amount: centsToMoney(-totalOrderCostCents),
+            transactionDate: order.orderDate,
+            orderId: order.id,
+            note: `Inventory order ${order.orderNumber}`,
+          },
+        });
       // Once all lines and inventory batches are successfully created,
       // lock the order by marking it finalized.
       return tx.order.update({

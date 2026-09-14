@@ -186,18 +186,20 @@ model Show {
 }
 
 model ShowVisit {
-  id                   Int      @id @default(autoincrement())
+  id                   Int             @id @default(autoincrement())
   showId               Int
   visitDate            DateTime
-  startingSinglesValue Decimal  @default(0) @db.Decimal(10, 2)
-  endingSinglesValue   Decimal? @db.Decimal(10, 2)
-  startingCash         Decimal  @default(0) @db.Decimal(10, 2)
-  endingCash           Decimal? @db.Decimal(10, 2)
-  startingDigital      Decimal  @default(0) @db.Decimal(10, 2)
-  endingDigital        Decimal? @db.Decimal(10, 2)
+  status               ShowVisitStatus @default(PLANNED)
+  startedAt            DateTime?
+  startingSinglesValue Decimal         @default(0) @db.Decimal(10, 2)
+  endingSinglesValue   Decimal?        @db.Decimal(10, 2)
+  startingCash         Decimal         @default(0) @db.Decimal(10, 2)
+  endingCash           Decimal?        @db.Decimal(10, 2)
+  startingDigital      Decimal         @default(0) @db.Decimal(10, 2)
+  endingDigital        Decimal?        @db.Decimal(10, 2)
   notes                String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
   finalizedAt          DateTime?
 
   show Show @relation(fields: [showId], references: [id])
@@ -206,6 +208,13 @@ model ShowVisit {
   fundEntries FundEntry[]
 
   @@unique([showId, visitDate])
+  @@index([status])
+}
+
+enum ShowVisitStatus {
+  PLANNED
+  ACTIVE
+  FINALIZED
 }
 
 // ---------------------------------------------------------
@@ -213,16 +222,16 @@ model ShowVisit {
 // ---------------------------------------------------------
 
 model FundEntry {
-  id              Int               @id @default(autoincrement())
+  id              Int           @id @default(autoincrement())
   source          FundSource
   type            FundEntryType
-  amount          Decimal           @db.Decimal(14, 2)
+  amount          Decimal       @db.Decimal(14, 2)
   transactionDate DateTime
-  saleId          Int?              @unique
-  orderId         Int?              @unique
+  saleId          Int?          @unique
+  orderId         Int?          @unique
   showVisitId     Int?
   note            String?
-  createdAt       DateTime          @default(now())
+  createdAt       DateTime      @default(now())
 
   sale      Sale?      @relation(fields: [saleId], references: [id])
   order     Order?     @relation(fields: [orderId], references: [id])

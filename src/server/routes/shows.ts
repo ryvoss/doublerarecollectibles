@@ -77,6 +77,48 @@ router.get("/", async (_req, res) => {
 });
 
 // ---------------------------------------------------------
+// GET ACTIVE SHOW VISIT
+// ---------------------------------------------------------
+
+router.get("/active-visit", async (_req, res) => {
+  try {
+    const activeVisit =
+      await prisma.showVisit.findFirst({
+        where: {
+          status: "ACTIVE",
+        },
+
+        include: {
+          show: true,
+        },
+
+        orderBy: {
+          startedAt: "asc",
+        },
+      });
+
+    res.json({
+      activeVisit,
+    });
+  } catch (error) {
+    console.error(
+      "Error retrieving active show visit:",
+      error
+    );
+
+    res.status(500).json({
+      error:
+        "Failed to retrieve active show visit",
+
+      details:
+        error instanceof Error
+          ? error.message
+          : String(error),
+    });
+  }
+});
+
+// ---------------------------------------------------------
 // CREATE SHOW
 // ---------------------------------------------------------
 
@@ -106,25 +148,100 @@ router.patch("/:showId", async (req, res) => {
 
 router.patch("/visits/:visitId", async (req, res) => {
   const visitId = Number(req.params.visitId);
-  const {visitDate, notes} = req.body;
-  if (!Number.isSafeInteger(visitId) || visitId <= 0 ||
-      typeof visitDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate) ||
-      !Number.isFinite(new Date(visitDate).getTime()) || new Date(visitDate).toISOString().slice(0, 10) !== visitDate ||
-      (notes != null && typeof notes !== "string")) {
-    return res.status(400).json({error: "Enter a valid visit date and notes"});
-  }
-  try {
-    const existing = await prisma.showVisit.findUnique({where: {id: visitId}});
-    if (!existing) return res.status(404).json({error: "Show visit not found"});
-    const updated = await prisma.showVisit.updateMany({
-      where: {id: visitId, finalizedAt: null},
-      data: {visitDate: new Date(visitDate), ...(notes !== undefined ? {notes: notes?.trim() || null} : {})},
+  const { visitDate, notes } = req.body;
+
+  if (
+    !Number.isSafeInteger(visitId) ||
+    visitId <= 0 ||
+    typeof visitDate !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(visitDate) ||
+    !Number.isFinite(
+      new Date(visitDate).getTime()
+    ) ||
+    new Date(visitDate)
+      .toISOString()
+      .slice(0, 10) !== visitDate ||
+    (notes != null &&
+      typeof notes !== "string")
+  ) {
+    return res.status(400).json({
+      error:
+        "Enter a valid visit date and notes",
     });
-    if (updated.count !== 1) return res.status(409).json({error: "Finalized visits cannot be edited"});
-    res.json(await prisma.showVisit.findUnique({where: {id: visitId}, include: {show: true}}));
+  }
+
+  try {
+    const existing =
+      await prisma.showVisit.findUnique({
+        where: {
+          id: visitId,
+        },
+      });
+
+    if (!existing) {
+      return res.status(404).json({
+        error: "Show visit not found",
+      });
+    }
+
+    if (existing.status !== "PLANNED") {
+      return res.status(409).json({
+        error:
+          "Only planned visits can be edited",
+      });
+    }
+
+    const updated =
+      await prisma.showVisit.updateMany({
+        where: {
+          id: visitId,
+          status: "PLANNED",
+        },
+
+        data: {
+          visitDate: new Date(visitDate),
+
+          ...(notes !== undefined
+            ? {
+                notes:
+                  notes?.trim() || null,
+              }
+            : {}),
+        },
+      });
+
+    if (updated.count !== 1) {
+      return res.status(409).json({
+        error:
+          "Only planned visits can be edited",
+      });
+    }
+
+    res.json(
+      await prisma.showVisit.findUnique({
+        where: {
+          id: visitId,
+        },
+
+        include: {
+          show: true,
+        },
+      })
+    );
   } catch (error) {
-    const duplicate = typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
-    res.status(duplicate ? 409 : 500).json({error: duplicate ? "A visit already exists for this show and date" : "Failed to update visit"});
+    const duplicate =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === "P2002";
+
+    res
+      .status(duplicate ? 409 : 500)
+      .json({
+        error: duplicate
+          ? "A visit already exists for this show and date"
+          : "Failed to update visit",
+      });
   }
 });
 
@@ -453,13 +570,20 @@ router.get(
           visitDate:
             visit.visitDate,
 
+          status:
+            visit.status,
+
+          startedAt:
+            visit.startedAt,
+
           finalized:
-            visit.finalizedAt !== null,
+            visit.status === "FINALIZED",
 
           finalizedAt:
             visit.finalizedAt,
 
-          provisional: visit.finalizedAt === null,
+          provisional:
+            visit.status !== "FINALIZED",
         },
 
         singles: {
@@ -703,6 +827,213 @@ router.get(
 );
 
 // ---------------------------------------------------------
+// BEGIN SHOW VISIT
+// ---------------------------------------------------------
+
+router.patch(
+  "/visits/:visitId/begin",
+  async (req, res) => {
+    try {
+      const visitId =
+        Number(req.params.visitId);
+
+      const {
+        startingSinglesValue,
+        startingCash,
+        startingDigital,
+      } = req.body;
+
+      if (
+        !Number.isInteger(visitId) ||
+        visitId <= 0
+      ) {
+        return res.status(400).json({
+          error:
+            "Invalid show visit ID",
+        });
+      }
+
+      if (
+        !isValidMoney(
+          startingSinglesValue
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Starting singles inventory value must be a valid non-negative number",
+        });
+      }
+
+      if (
+        !isValidMoney(startingCash)
+      ) {
+        return res.status(400).json({
+          error:
+            "Starting singles cash must be a valid non-negative number",
+        });
+      }
+
+      if (
+        !isValidMoney(startingDigital)
+      ) {
+        return res.status(400).json({
+          error:
+            "Starting singles digital funds must be a valid non-negative number",
+        });
+      }
+
+      const visit =
+        await prisma.showVisit.findUnique({
+          where: {
+            id: visitId,
+          },
+
+          include: {
+            show: true,
+          },
+        });
+
+      if (!visit) {
+        return res.status(404).json({
+          error:
+            "Show visit not found",
+        });
+      }
+
+      if (!visit.show.active) {
+        return res.status(409).json({
+          error:
+            "Reactivate the show before beginning this visit",
+        });
+      }
+
+      if (visit.status !== "PLANNED") {
+        return res.status(409).json({
+          error:
+            visit.status === "ACTIVE"
+              ? "Show visit is already active"
+              : "Finalized visits cannot be started",
+        });
+      }
+
+      const result =
+        await prisma.$transaction(
+          async (tx) => {
+            // Only one Show Visit may be ACTIVE at a time.
+            const currentActiveVisit =
+              await tx.showVisit.findFirst({
+                where: {
+                  status: "ACTIVE",
+                },
+
+                include: {
+                  show: true,
+                },
+              });
+
+            if (currentActiveVisit) {
+              return {
+                conflict: currentActiveVisit,
+                visit: null,
+              };
+            }
+
+            const startedAt = new Date();
+
+            const updated =
+              await tx.showVisit.updateMany({
+                where: {
+                  id: visitId,
+                  status: "PLANNED",
+                },
+
+                data: {
+                  status: "ACTIVE",
+                  startedAt,
+                  startingSinglesValue:
+                    toMoney(
+                      startingSinglesValue
+                    ),
+                  startingCash:
+                    toMoney(startingCash),
+                  startingDigital:
+                    toMoney(
+                      startingDigital
+                    ),
+                  endingSinglesValue: null,
+                  endingCash: null,
+                  endingDigital: null,
+                  finalizedAt: null,
+                },
+              });
+
+            if (updated.count !== 1) {
+              return {
+                conflict: null,
+                visit: null,
+              };
+            }
+
+            const activeVisit =
+              await tx.showVisit.findUnique({
+                where: {
+                  id: visitId,
+                },
+
+                include: {
+                  show: true,
+                },
+              });
+
+            return {
+              conflict: null,
+              visit: activeVisit,
+            };
+          }
+        );
+
+      if (result.conflict) {
+        return res.status(409).json({
+          error:
+            "Another show visit is already active",
+          activeVisit: {
+            id: result.conflict.id,
+            showName:
+              result.conflict.show.name,
+            visitDate:
+              result.conflict.visitDate,
+          },
+        });
+      }
+
+      if (!result.visit) {
+        return res.status(409).json({
+          error:
+            "Show visit could not be started because its status changed",
+        });
+      }
+
+      res.json(result.visit);
+    } catch (error) {
+      console.error(
+        "Error beginning show visit:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          "Failed to begin show visit",
+
+        details:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      });
+    }
+  }
+);
+
+// ---------------------------------------------------------
 // FINALIZE SHOW VISIT
 // ---------------------------------------------------------
 
@@ -729,10 +1060,52 @@ router.patch(
         });
       }
 
+      if (
+        !isValidMoney(
+          endingSinglesValue
+        )
+      ) {
+        return res.status(400).json({
+          error:
+            "Ending singles inventory value must be a valid non-negative number",
+        });
+      }
+
+      if (!isValidMoney(endingCash)) {
+        return res.status(400).json({
+          error:
+            "Ending singles cash must be a valid non-negative number",
+        });
+      }
+
+      if (
+        !isValidMoney(endingDigital)
+      ) {
+        return res.status(400).json({
+          error:
+            "Ending singles digital funds must be a valid non-negative number",
+        });
+      }
+
       const visit =
         await prisma.showVisit.findUnique({
           where: {
             id: visitId,
+          },
+
+          include: {
+            show: true,
+
+            fundEntries: {
+              where: {
+                source: "SINGLES",
+                type: "SINGLES_SHOW_GAIN",
+              },
+
+              orderBy: {
+                id: "asc",
+              },
+            },
           },
         });
 
@@ -743,32 +1116,120 @@ router.patch(
         });
       }
 
-      if (visit.finalizedAt) {
+      if (
+        visit.status === "FINALIZED" ||
+        visit.finalizedAt
+      ) {
         return res.status(409).json({
           error:
             "Show visit is already finalized",
         });
       }
 
-      // Closing a visit no longer requires balances from other systems.
-      // Legacy callers may still supply balances; omitted fields stay unchanged.
-      const balances: {endingSinglesValue?: string; endingCash?: string; endingDigital?: string} = {};
-      for (const [key, value] of Object.entries({endingSinglesValue, endingCash, endingDigital})) {
-        if (value === undefined) continue;
-        if (value === null || !isValidMoney(value)) {
-          return res.status(400).json({error: `${key} must be a valid non-negative number`});
-        }
-        balances[key as keyof typeof balances] = toMoney(value);
-      }
-      const finalizedVisit = await prisma.$transaction(async (tx) => {
-        const result = await tx.showVisit.updateMany({
-          where: {id: visitId, finalizedAt: null},
-          data: {...balances, finalizedAt: new Date()},
+      if (visit.status !== "ACTIVE") {
+        return res.status(409).json({
+          error:
+            "Show visit must be active before it can be finalized",
         });
-        if (result.count !== 1) return null;
-        return tx.showVisit.findUnique({where: {id: visitId}, include: {show: true}});
-      });
-      if (!finalizedVisit) return res.status(409).json({error: "Show visit is already finalized"});
+      }
+
+      // Cash and Digital on a Show Visit represent the SINGLES
+      // money pool only. Sealed sales post independently to the
+      // SEALED funds ledger, so they are not subtracted here.
+      const startingSinglesFundsCents =
+        toCents(visit.startingCash) +
+        toCents(visit.startingDigital);
+
+      const endingSinglesFundsCents =
+        toCents(endingCash) +
+        toCents(endingDigital);
+
+      const singlesFundsChangeCents =
+        endingSinglesFundsCents -
+        startingSinglesFundsCents;
+
+      const existingShowGain =
+        visit.fundEntries[0] ?? null;
+
+      if (
+        existingShowGain &&
+        toCents(existingShowGain.amount) !==
+          singlesFundsChangeCents
+      ) {
+        return res.status(409).json({
+          error:
+            "This visit already has a Singles funds entry that does not match the ending snapshot",
+        });
+      }
+
+      const finalizedVisit =
+        await prisma.$transaction(
+          async (tx) => {
+            const finalizedAt =
+              new Date();
+
+            const result =
+              await tx.showVisit.updateMany({
+                where: {
+                  id: visitId,
+                  status: "ACTIVE",
+                  finalizedAt: null,
+                },
+
+                data: {
+                  status: "FINALIZED",
+                  endingSinglesValue:
+                    toMoney(
+                      endingSinglesValue
+                    ),
+                  endingCash:
+                    toMoney(endingCash),
+                  endingDigital:
+                    toMoney(endingDigital),
+                  finalizedAt,
+                },
+              });
+
+            if (result.count !== 1) {
+              return null;
+            }
+
+            if (!existingShowGain) {
+              await tx.fundEntry.create({
+                data: {
+                  source: "SINGLES",
+                  type: "SINGLES_SHOW_GAIN",
+                  amount:
+                    centsToMoney(
+                      singlesFundsChangeCents
+                    ),
+                  transactionDate:
+                    visit.visitDate,
+                  showVisitId: visit.id,
+                  note:
+                    `Singles funds change - ${visit.show.name}`,
+                },
+              });
+            }
+
+            return tx.showVisit.findUnique({
+              where: {
+                id: visitId,
+              },
+
+              include: {
+                show: true,
+              },
+            });
+          }
+        );
+
+      if (!finalizedVisit) {
+        return res.status(409).json({
+          error:
+            "Show visit is no longer active",
+        });
+      }
 
       res.json(finalizedVisit);
     } catch (error) {
@@ -878,7 +1339,8 @@ router.get(
       // -----------------------------------------------------
 
       for (const visit of show.visits) {
-        const finalized = visit.finalizedAt !== null;
+        const finalized =
+          visit.status === "FINALIZED";
         if (finalized) finalizedVisitCount += 1;
         let visitRevenueCents = 0;
         let visitCogsCents = 0;
@@ -1061,6 +1523,9 @@ router.get(
 
           visitDate:
             visit.visitDate,
+
+          status:
+            visit.status,
 
           finalized,
           provisional: !finalized,
@@ -1513,12 +1978,6 @@ router.post(
 
       const {
         visitDate,
-        startingSinglesValue = 0,
-        endingSinglesValue,
-        startingCash = 0,
-        endingCash,
-        startingDigital = 0,
-        endingDigital,
         notes,
       } = req.body;
 
@@ -1547,8 +2006,12 @@ router.post(
       }
 
       if (!show.active) {
-        return res.status(409).json({error: "Reactivate the show before adding a visit"});
+        return res.status(409).json({
+          error:
+            "Reactivate the show before adding a visit",
+        });
       }
+
       if (!visitDate) {
         return res.status(400).json({
           error:
@@ -1571,75 +2034,12 @@ router.post(
       }
 
       if (
-        !isValidMoney(
-          startingSinglesValue
-        )
+        notes != null &&
+        typeof notes !== "string"
       ) {
         return res.status(400).json({
           error:
-            "Starting singles value must be a valid non-negative number",
-        });
-      }
-
-      if (
-        !isValidMoney(
-          startingCash
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Starting cash must be a valid non-negative number",
-        });
-      }
-
-      if (
-        !isValidMoney(
-          startingDigital
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Starting digital must be a valid non-negative number",
-        });
-      }
-
-      if (
-        endingSinglesValue !==
-          undefined &&
-        endingSinglesValue !== null &&
-        !isValidMoney(
-          endingSinglesValue
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending singles value must be a valid non-negative number",
-        });
-      }
-
-      if (
-        endingCash !== undefined &&
-        endingCash !== null &&
-        !isValidMoney(
-          endingCash
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending cash must be a valid non-negative number",
-        });
-      }
-
-      if (
-        endingDigital !== undefined &&
-        endingDigital !== null &&
-        !isValidMoney(
-          endingDigital
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending digital must be a valid non-negative number",
+            "Notes must be text",
         });
       }
 
@@ -1662,6 +2062,8 @@ router.post(
         });
       }
 
+      // A scheduled visit starts as PLANNED. Starting Singles
+      // values are captured later when the visit is actually begun.
       const visit =
         await prisma.showVisit.create({
           data: {
@@ -1670,47 +2072,7 @@ router.post(
             visitDate:
               parsedVisitDate,
 
-            startingSinglesValue:
-              toMoney(
-                startingSinglesValue
-              ),
-
-            endingSinglesValue:
-              endingSinglesValue !==
-                undefined &&
-              endingSinglesValue !== null
-                ? toMoney(
-                    endingSinglesValue
-                  )
-                : null,
-
-            startingCash:
-              toMoney(
-                startingCash
-              ),
-
-            endingCash:
-              endingCash !==
-                undefined &&
-              endingCash !== null
-                ? toMoney(
-                    endingCash
-                  )
-                : null,
-
-            startingDigital:
-              toMoney(
-                startingDigital
-              ),
-
-            endingDigital:
-              endingDigital !==
-                undefined &&
-              endingDigital !== null
-                ? toMoney(
-                    endingDigital
-                  )
-                : null,
+            status: "PLANNED",
 
             notes:
               typeof notes ===
