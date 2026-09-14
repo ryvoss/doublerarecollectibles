@@ -12,6 +12,7 @@ import "./App.css";
 import OrdersPage from "./client/pages/OrdersPage";
 import InventoryPage from "./client/pages/InventoryPage";
 import SalesPage from "./client/pages/SalesPage";
+import ShowsPage from "./client/pages/ShowsPage";
 import { matchingBoxName } from "./shared/caseProduct";
 
 // ---------------------------------------------------------
@@ -418,10 +419,12 @@ function App() {
           )}
           {activePage === "inventory" && <InventoryPage />}
           {activePage === "sales" && <SalesPage />}
+          {activePage === "shows" && <ShowsPage />}
 
           {activePage !== "dashboard" &&
             activePage !== "inventory" &&
             activePage !== "sales" &&
+            activePage !== "shows" &&
             activePage !== "products" &&
             activePage !== "orders" && (
               <PagePlaceholder
@@ -1698,6 +1701,7 @@ function ProductModal({
         </div>
 
         <form
+          className="product-form-grid"
           onSubmit={handleSubmit}
           style={{
             padding: "24px",
@@ -2047,6 +2051,7 @@ function FormField({
 }) {
   return (
     <div
+      className="form-field"
       style={{
         marginBottom: "19px",
       }}

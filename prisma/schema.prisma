@@ -64,7 +64,8 @@ model Order {
   status       OrderStatus @default(DRAFT)
   finalizedAt  DateTime?
 
-  lines OrderLine[]
+  lines     OrderLine[]
+  fundEntry FundEntry?
 }
 
 enum OrderStatus {
@@ -129,7 +130,8 @@ model Sale {
 
   showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
 
-  lines SaleLine[]
+  lines     SaleLine[]
+  fundEntry FundEntry?
 }
 
 model SaleLine {
@@ -184,22 +186,62 @@ model Show {
 }
 
 model ShowVisit {
-  id                   Int       @id @default(autoincrement())
+  id                   Int      @id @default(autoincrement())
   showId               Int
   visitDate            DateTime
-  startingSinglesValue Decimal   @default(0) @db.Decimal(10, 2)
-  endingSinglesValue   Decimal?  @db.Decimal(10, 2)
-  startingCash         Decimal   @default(0) @db.Decimal(10, 2)
-  endingCash           Decimal?  @db.Decimal(10, 2)
-  startingDigital      Decimal   @default(0) @db.Decimal(10, 2)
-  endingDigital        Decimal?  @db.Decimal(10, 2)
+  startingSinglesValue Decimal  @default(0) @db.Decimal(10, 2)
+  endingSinglesValue   Decimal? @db.Decimal(10, 2)
+  startingCash         Decimal  @default(0) @db.Decimal(10, 2)
+  endingCash           Decimal? @db.Decimal(10, 2)
+  startingDigital      Decimal  @default(0) @db.Decimal(10, 2)
+  endingDigital        Decimal? @db.Decimal(10, 2)
   notes                String?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
   finalizedAt          DateTime?
 
-  show  Show   @relation(fields: [showId], references: [id])
-  sales Sale[]
+  show Show @relation(fields: [showId], references: [id])
+
+  sales       Sale[]
+  fundEntries FundEntry[]
 
   @@unique([showId, visitDate])
+}
+
+// ---------------------------------------------------------
+// FUNDS
+// ---------------------------------------------------------
+
+model FundEntry {
+  id              Int               @id @default(autoincrement())
+  source          FundSource
+  type            FundEntryType
+  amount          Decimal           @db.Decimal(14, 2)
+  transactionDate DateTime
+  saleId          Int?              @unique
+  orderId         Int?              @unique
+  showVisitId     Int?
+  note            String?
+  createdAt       DateTime          @default(now())
+
+  sale      Sale?      @relation(fields: [saleId], references: [id])
+  order     Order?     @relation(fields: [orderId], references: [id])
+  showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
+
+  @@index([source, transactionDate])
+  @@index([showVisitId])
+}
+
+enum FundSource {
+  SEALED
+  SINGLES
+}
+
+enum FundEntryType {
+  OPENING_BALANCE
+  SEALED_SALE
+  ORDER_PURCHASE
+  SINGLES_SHOW_GAIN
+  PERSONAL_CONTRIBUTION
+  MANUAL_ADJUSTMENT
 }

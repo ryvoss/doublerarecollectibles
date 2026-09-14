@@ -1772,7 +1772,7 @@ function FormField({
   return (
     <div
       style={{
-        marginBottom: "19px",
+        marginBottom: "12px",
       }}
     >
       <label style={fieldLabelStyle}>
@@ -2106,7 +2106,7 @@ const pageDescriptionStyle = {
 const metricGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(150px, 1fr))",
   gap: "14px",
   marginBottom: "18px",
 };
@@ -2116,7 +2116,7 @@ const panelHeaderStyle = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: "20px",
-  padding: "18px 20px",
+  padding: "12px 16px",
   borderBottom:
     "1px solid #24252a",
 };
@@ -2205,7 +2205,7 @@ const fieldLabelStyle = {
 const twoColumnStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(2, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(200px, 1fr))",
   gap: "14px",
 };
 
@@ -2297,7 +2297,7 @@ const errorStyle = {
 const orderSummaryGridStyle = {
   display: "grid",
   gridTemplateColumns:
-    "repeat(4, minmax(0, 1fr))",
+    "repeat(auto-fit, minmax(150px, 1fr))",
   gap: "10px",
 };
 

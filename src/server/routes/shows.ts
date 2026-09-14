@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { createShowProductPerformanceHandler } from "../reporting/showProductPerformance";
 
 const router = Router();
+
+router.get("/visits/:visitId/product-performance", createShowProductPerformanceHandler(prisma, "visit"));
+router.get("/:showId/product-performance", createShowProductPerformanceHandler(prisma, "show"));
 
 // ---------------------------------------------------------
 // HELPERS
@@ -75,6 +79,54 @@ router.get("/", async (_req, res) => {
 // ---------------------------------------------------------
 // CREATE SHOW
 // ---------------------------------------------------------
+
+router.patch("/:showId", async (req, res) => {
+  const showId = Number(req.params.showId);
+  const {name, notes, active} = req.body;
+  if (!Number.isSafeInteger(showId) || showId <= 0 ||
+      (name !== undefined && (typeof name !== "string" || !name.trim())) ||
+      (notes != null && typeof notes !== "string") ||
+      (active !== undefined && typeof active !== "boolean")) {
+    return res.status(400).json({error: "Invalid show information"});
+  }
+  try {
+    const existing = await prisma.show.findUnique({where: {id: showId}});
+    if (!existing) return res.status(404).json({error: "Show not found"});
+    const updated = await prisma.show.update({where: {id: showId}, data: {
+      ...(name !== undefined ? {name: name.trim()} : {}),
+      ...(notes !== undefined ? {notes: notes?.trim() || null} : {}),
+      ...(active !== undefined ? {active} : {}),
+    }});
+    res.json(updated);
+  } catch (error) {
+    const duplicate = typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+    res.status(duplicate ? 409 : 500).json({error: duplicate ? "A show with this name already exists" : "Failed to update show"});
+  }
+});
+
+router.patch("/visits/:visitId", async (req, res) => {
+  const visitId = Number(req.params.visitId);
+  const {visitDate, notes} = req.body;
+  if (!Number.isSafeInteger(visitId) || visitId <= 0 ||
+      typeof visitDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(visitDate) ||
+      !Number.isFinite(new Date(visitDate).getTime()) || new Date(visitDate).toISOString().slice(0, 10) !== visitDate ||
+      (notes != null && typeof notes !== "string")) {
+    return res.status(400).json({error: "Enter a valid visit date and notes"});
+  }
+  try {
+    const existing = await prisma.showVisit.findUnique({where: {id: visitId}});
+    if (!existing) return res.status(404).json({error: "Show visit not found"});
+    const updated = await prisma.showVisit.updateMany({
+      where: {id: visitId, finalizedAt: null},
+      data: {visitDate: new Date(visitDate), ...(notes !== undefined ? {notes: notes?.trim() || null} : {})},
+    });
+    if (updated.count !== 1) return res.status(409).json({error: "Finalized visits cannot be edited"});
+    res.json(await prisma.showVisit.findUnique({where: {id: visitId}, include: {show: true}}));
+  } catch (error) {
+    const duplicate = typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+    res.status(duplicate ? 409 : 500).json({error: duplicate ? "A visit already exists for this show and date" : "Failed to update visit"});
+  }
+});
 
 router.post("/", async (req, res) => {
   try {
@@ -406,6 +458,8 @@ router.get(
 
           finalizedAt:
             visit.finalizedAt,
+
+          provisional: visit.finalizedAt === null,
         },
 
         singles: {
@@ -696,100 +750,25 @@ router.patch(
         });
       }
 
-      if (
-        endingSinglesValue ===
-          undefined ||
-        endingSinglesValue === null
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending singles value is required",
-        });
+      // Closing a visit no longer requires balances from other systems.
+      // Legacy callers may still supply balances; omitted fields stay unchanged.
+      const balances: {endingSinglesValue?: string; endingCash?: string; endingDigital?: string} = {};
+      for (const [key, value] of Object.entries({endingSinglesValue, endingCash, endingDigital})) {
+        if (value === undefined) continue;
+        if (value === null || !isValidMoney(value)) {
+          return res.status(400).json({error: `${key} must be a valid non-negative number`});
+        }
+        balances[key as keyof typeof balances] = toMoney(value);
       }
-
-      if (
-        endingCash === undefined ||
-        endingCash === null
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending cash is required",
+      const finalizedVisit = await prisma.$transaction(async (tx) => {
+        const result = await tx.showVisit.updateMany({
+          where: {id: visitId, finalizedAt: null},
+          data: {...balances, finalizedAt: new Date()},
         });
-      }
-
-      if (
-        endingDigital === undefined ||
-        endingDigital === null
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending digital is required",
-        });
-      }
-
-      if (
-        !isValidMoney(
-          endingSinglesValue
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending singles value must be a valid non-negative number",
-        });
-      }
-
-      if (
-        !isValidMoney(
-          endingCash
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending cash must be a valid non-negative number",
-        });
-      }
-
-      if (
-        !isValidMoney(
-          endingDigital
-        )
-      ) {
-        return res.status(400).json({
-          error:
-            "Ending digital must be a valid non-negative number",
-        });
-      }
-
-      const finalizedVisit =
-        await prisma.showVisit.update({
-          where: {
-            id: visitId,
-          },
-
-          data: {
-            endingSinglesValue:
-              toMoney(
-                endingSinglesValue
-              ),
-
-            endingCash:
-              toMoney(
-                endingCash
-              ),
-
-            endingDigital:
-              toMoney(
-                endingDigital
-              ),
-
-            finalizedAt:
-              new Date(),
-          },
-
-          include: {
-            show: true,
-          },
-        });
+        if (result.count !== 1) return null;
+        return tx.showVisit.findUnique({where: {id: visitId}, include: {show: true}});
+      });
+      if (!finalizedVisit) return res.status(409).json({error: "Show visit is already finalized"});
 
       res.json(finalizedVisit);
     } catch (error) {
@@ -814,7 +793,7 @@ router.patch(
 // ---------------------------------------------------------
 // RECURRING SHOW PERFORMANCE
 //
-// Combines all visits for one recurring Show.
+// Reports finalized visits for one recurring Show; history includes open visits.
 //
 // Sealed performance comes from actual linked sales.
 // Position growth only uses finalized visits.
@@ -889,6 +868,8 @@ router.get(
       let totalLiquidFundsChangeCents = 0;
 
       let finalizedVisitCount = 0;
+      // Preserve the legacy position-average denominator independently of status.
+      let visitsWithPositionCount = 0;
 
       const visitPerformance = [];
 
@@ -897,6 +878,8 @@ router.get(
       // -----------------------------------------------------
 
       for (const visit of show.visits) {
+        const finalized = visit.finalizedAt !== null;
+        if (finalized) finalizedVisitCount += 1;
         let visitRevenueCents = 0;
         let visitCogsCents = 0;
 
@@ -991,13 +974,13 @@ router.get(
           | null = null;
 
         if (
-          visit.finalizedAt &&
+          finalized &&
           visit.endingSinglesValue !==
             null &&
           visit.endingCash !== null &&
           visit.endingDigital !== null
         ) {
-          finalizedVisitCount += 1;
+          visitsWithPositionCount += 1;
 
           const startingSinglesCents =
             toCents(
@@ -1051,23 +1034,26 @@ router.get(
         // ADD TO RECURRING TOTALS
         // ---------------------------------------------------
 
-        totalSealedRevenueCents +=
-          visitRevenueCents;
+        // Open visits remain in history, but never enter finalized comparisons.
+        if (finalized) {
+          totalSealedRevenueCents +=
+            visitRevenueCents;
 
-        totalSealedCogsCents +=
-          visitCogsCents;
+          totalSealedCogsCents +=
+            visitCogsCents;
 
-        totalSealedCashRevenueCents +=
-          visitCashRevenueCents;
+          totalSealedCashRevenueCents +=
+            visitCashRevenueCents;
 
-        totalSealedDigitalRevenueCents +=
-          visitDigitalRevenueCents;
+          totalSealedDigitalRevenueCents +=
+            visitDigitalRevenueCents;
 
-        totalSealedUnitsSold +=
-          visitUnitsSold;
+          totalSealedUnitsSold +=
+            visitUnitsSold;
 
-        totalSealedTransactions +=
-          visitTransactions;
+          totalSealedTransactions +=
+            visitTransactions;
+        }
 
         visitPerformance.push({
           visitId:
@@ -1076,8 +1062,8 @@ router.get(
           visitDate:
             visit.visitDate,
 
-          finalized:
-            visit.finalizedAt !== null,
+          finalized,
+          provisional: !finalized,
 
           sealed: {
             transactions:
@@ -1193,32 +1179,32 @@ router.get(
           : 0;
 
       const averageRevenuePerVisitCents =
-        totalVisits > 0
+        finalizedVisitCount > 0
           ? Math.round(
               totalSealedRevenueCents /
-                totalVisits
+                finalizedVisitCount
             )
           : 0;
 
       const averageGrossProfitPerVisitCents =
-        totalVisits > 0
+        finalizedVisitCount > 0
           ? Math.round(
               totalSealedGrossProfitCents /
-                totalVisits
+                finalizedVisitCount
             )
           : 0;
 
       const averageUnitsSoldPerVisit =
-        totalVisits > 0
+        finalizedVisitCount > 0
           ? totalSealedUnitsSold /
-            totalVisits
+            finalizedVisitCount
           : 0;
 
       const averagePositionGrowthCents =
-        finalizedVisitCount > 0
+        visitsWithPositionCount > 0
           ? Math.round(
               totalPositionGrowthCents /
-                finalizedVisitCount
+                visitsWithPositionCount
             )
           : 0;
 
@@ -1229,10 +1215,10 @@ router.get(
       const visitsWithRevenue =
         visitPerformance.filter(
           (visit) =>
-            visit.sealed.revenue > 0
+            visit.finalized && visit.sealed.revenue > 0
         );
 
-      const finalizedVisits =
+      const visitsWithPosition =
         visitPerformance.filter(
           (visit) =>
             visit.finalized &&
@@ -1266,8 +1252,8 @@ router.get(
           : null;
 
       const bestPositionGrowthVisit =
-        finalizedVisits.length > 0
-          ? finalizedVisits.reduce(
+        visitsWithPosition.length > 0
+          ? visitsWithPosition.reduce(
               (best, current) =>
                 (
                   current.position
@@ -1289,6 +1275,7 @@ router.get(
       // -----------------------------------------------------
 
       res.json({
+        performanceScope: "FINALIZED",
         show: {
           showId:
             show.id,
@@ -1559,6 +1546,9 @@ router.post(
         });
       }
 
+      if (!show.active) {
+        return res.status(409).json({error: "Reactivate the show before adding a visit"});
+      }
       if (!visitDate) {
         return res.status(400).json({
           error:

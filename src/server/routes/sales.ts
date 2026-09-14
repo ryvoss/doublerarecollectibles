@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 
 const router = Router();
+class FinalizedVisitError extends Error {}
 
 // ---------------------------------------------------------
 // TYPES
@@ -497,6 +498,14 @@ router.post("/", async (req, res) => {
     const sale =
       await prisma.$transaction(
         async (tx) => {
+          // Serialize against visit finalization, and recheck before writing.
+          if (parsedShowVisitId !== null) {
+            const openVisit = await tx.showVisit.updateMany({
+              where: {id: parsedShowVisitId, finalizedAt: null},
+              data: {updatedAt: new Date()},
+            });
+            if (openVisit.count !== 1) throw new FinalizedVisitError("Cannot add a sale to a finalized show visit");
+          }
           const createdSale =
             await tx.sale.create({
               data: {
@@ -628,9 +637,8 @@ router.post("/", async (req, res) => {
       error
     );
 
-    res.status(500).json({
-      error:
-        "Failed to create sale",
+    res.status(error instanceof FinalizedVisitError ? 409 : 500).json({
+      error: error instanceof FinalizedVisitError ? error.message : "Failed to create sale",
 
       details:
         error instanceof Error
