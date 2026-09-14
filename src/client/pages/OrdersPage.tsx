@@ -115,10 +115,31 @@ function formatDate(value: string) {
 }
 
 // ---------------------------------------------------------
+// COMPONENT PROPS
+// ---------------------------------------------------------
+
+type OrdersPageProps = {
+  // Opens the existing New Order workflow immediately.
+  // The Command Center uses this instead of duplicating the order form.
+  initialOpenNewOrder?: boolean;
+
+  // When true, render only the order workflow modals.
+  // The normal Orders page remains unchanged when this is false.
+  quickActionOnly?: boolean;
+
+  // Called when the Command Center order workflow is closed.
+  onQuickActionClose?: () => void;
+};
+
+// ---------------------------------------------------------
 // ORDERS PAGE
 // ---------------------------------------------------------
 
-export default function OrdersPage() {
+export default function OrdersPage({
+  initialOpenNewOrder = false,
+  quickActionOnly = false,
+  onQuickActionClose,
+}: OrdersPageProps = {}) {
   const [orders, setOrders] =
     useState<Order[]>([]);
 
@@ -137,7 +158,7 @@ export default function OrdersPage() {
   const [
     showNewOrderModal,
     setShowNewOrderModal,
-  ] = useState(false);
+  ] = useState(initialOpenNewOrder);
 
   const [
     selectedOrderId,
@@ -197,6 +218,15 @@ export default function OrdersPage() {
     loadPageData();
   }, []);
 
+  // This makes the component reusable from the Command Center.
+  // If the parent asks to open the workflow, reuse the exact same
+  // New Order modal that the Orders page already uses.
+  useEffect(() => {
+    if (initialOpenNewOrder) {
+      setShowNewOrderModal(true);
+    }
+  }, [initialOpenNewOrder]);
+
   const filteredOrders =
     orders.filter((order) => {
       if (statusFilter === "ALL") {
@@ -238,6 +268,10 @@ export default function OrdersPage() {
     ) ?? null;
 
   if (loading) {
+    if (quickActionOnly) {
+      return null;
+    }
+
     return (
       <PageMessage
         icon="▤"
@@ -248,12 +282,120 @@ export default function OrdersPage() {
   }
 
   if (error) {
+    if (quickActionOnly) {
+      return (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1200,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px",
+            background: "rgba(0, 0, 0, 0.72)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: "460px",
+              padding: "24px",
+              border: "1px solid #303137",
+              borderRadius: "12px",
+              background: "#17181c",
+              boxShadow:
+                "0 24px 70px rgba(0, 0, 0, 0.45)",
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                fontSize: "18px",
+              }}
+            >
+              Orders Unavailable
+            </h2>
+
+            <p
+              style={{
+                margin: "10px 0 20px",
+                color: "#8b8c93",
+                fontSize: "12px",
+                lineHeight: 1.6,
+              }}
+            >
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={onQuickActionClose}
+              style={secondaryButtonStyle}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <PageMessage
         icon="!"
         title="Orders Unavailable"
         message={error}
       />
+    );
+  }
+
+  // The Command Center mounts OrdersPage in action-only mode.
+  // In that mode, keep the normal Orders dashboard hidden and render
+  // only the existing New Order -> Order Detail workflow.
+  if (quickActionOnly) {
+    return (
+      <>
+        {showNewOrderModal && (
+          <NewOrderModal
+            onClose={() => {
+              setShowNewOrderModal(false);
+              onQuickActionClose?.();
+            }}
+            onCreated={async (
+              createdOrder
+            ) => {
+              setShowNewOrderModal(false);
+
+              await loadPageData();
+
+              setSelectedOrderId(
+                createdOrder.id
+              );
+            }}
+          />
+        )}
+
+        {selectedOrder && (
+          <OrderDetailModal
+            order={selectedOrder}
+            products={products}
+            onClose={() => {
+              setSelectedOrderId(null);
+              onQuickActionClose?.();
+            }}
+            onChanged={async (
+              keepOpenOrderId
+            ) => {
+              await loadPageData();
+
+              setSelectedOrderId(
+                keepOpenOrderId
+              );
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -927,6 +1069,13 @@ function OrderDetailModal({
       }
 
       await onChanged(order.id);
+
+      // Finalizing an order changes both sealed inventory and sealed funds.
+      // Let the Command Center and other listening components refresh
+      // immediately without requiring a full-page reload.
+      window.dispatchEvent(
+        new Event("business-data-changed")
+      );
     } catch (error) {
       console.error(
         "Order finalization error:",

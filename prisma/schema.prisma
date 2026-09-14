@@ -64,7 +64,8 @@ model Order {
   status       OrderStatus @default(DRAFT)
   finalizedAt  DateTime?
 
-  lines     OrderLine[]
+  lines OrderLine[]
+
   fundEntry FundEntry?
 }
 
@@ -130,7 +131,8 @@ model Sale {
 
   showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
 
-  lines     SaleLine[]
+  lines SaleLine[]
+
   fundEntry FundEntry?
 }
 
@@ -224,6 +226,7 @@ enum ShowVisitStatus {
 model FundEntry {
   id              Int           @id @default(autoincrement())
   source          FundSource
+  location        FundLocation?
   type            FundEntryType
   amount          Decimal       @db.Decimal(14, 2)
   transactionDate DateTime
@@ -238,12 +241,18 @@ model FundEntry {
   showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
 
   @@index([source, transactionDate])
+  @@index([source, location])
   @@index([showVisitId])
 }
 
 enum FundSource {
   SEALED
   SINGLES
+}
+
+enum FundLocation {
+  CASH
+  DIGITAL
 }
 
 enum FundEntryType {

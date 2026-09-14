@@ -1,729 +1,864 @@
-# Double Rare Collectibles - Codex Project Instructions
+Double Rare Collectibles — Agent Instructions
 
-## Project Purpose
+Purpose
 
-This application manages the operations of Double Rare Collectibles, a Pokemon collectibles business.
+This file is the current working context for Codex when modifying the Double Rare Collectibles local business application.
 
-The MVP focuses primarily on sealed Pokemon inventory, purchasing, sales, FIFO cost accounting, profitability, and show tracking.
+The application is already functionally usable. Core business workflows have been smoke tested successfully and real business data is staged. The current development focus is UI/UX overhaul and refinement without changing established business behavior.
 
-The user is still learning software development, so code should remain readable, practical, and well-commented.
+Codex should treat existing working business logic as valuable and avoid unnecessary rewrites.
 
-Avoid unnecessary abstraction or overengineering.
+1. Product Overview
 
----
+Double Rare Collectibles is a local Pokémon collectibles business application used to manage:
 
-## Tech Stack
+Sealed product purchasing
+
+Sealed inventory
+
+Sealed sales
+
+Business funds
+
+Pokémon card singles inventory valuation
+
+Repeating vendor Shows and individual Show visits
+
+Show-level sales and Singles reconciliation
+
+The application is intended primarily for the business owner, not for public customers.
+
+The UI should therefore prioritize:
+
+Speed
+
+Clarity
+
+Operational awareness
+
+Low-friction data entry
+
+Dense but readable business information
+
+Strong visual hierarchy
+
+Fast Show-day workflows
+
+2. Current Stack
 
 Frontend:
-- React
-- TypeScript
-- Vite
+
+React
+
+TypeScript
+
+Vite
 
 Backend:
-- Node.js
-- TypeScript
-- Express
+
+Node.js
+
+Express
+
+TypeScript
 
 Database:
-- PostgreSQL
-- Prisma ORM
 
-Environment:
-- Windows
-- VS Code
+PostgreSQL
 
-API:
-- Express runs on port 3002
+Prisma 7
 
-Frontend development server:
-- Vite runs on port 5173
-- Vite proxies /api requests to Express
+Development environment:
 
----
+Windows
 
-## Important Development Rules
+VS Code
 
-1. Preserve existing working functionality unless the task explicitly requires changing it.
+Important project structure:
 
-2. Prefer small, incremental changes.
+src/
+  client/
+    components/
+    pages/
+  server/
+    routes/
+  shared/
 
-3. Do not redesign unrelated parts of the application while implementing a requested feature.
+prisma/
+  schema.prisma
 
-4. Before modifying a file, inspect the current implementation and related dependencies.
+scripts/
 
-5. When changing the Prisma schema, inspect all affected API routes and frontend types before making assumptions.
+Primary application shell:
 
-6. Do not infer database relationships from product names.
+src/App.tsx
 
-7. Business calculations should be performed or validated by the backend when possible.
+3. Important Development Rules
 
-8. Historical financial values must never change because a product's current price changes.
+Preserve working business logic
 
-9. Finalized financial transactions should be treated as immutable unless a future explicit correction workflow is added.
+The current workflows have already been smoke tested.
 
-10. Favor correctness and auditability over clever code.
+When performing UI work:
 
-11. Add helpful comments to TypeScript code so a newer developer can understand the reasoning.
+Do not rewrite backend calculations simply to make UI changes.
 
-12. Prisma schema comments should be minimal. Section headers are fine.
+Do not change database schema unless the requested UI absolutely requires it.
 
-13. Do not build future features unless they are required for the current MVP task.
+Do not change API response structures unnecessarily.
 
-14. Do not implement Singles accounting unless explicitly requested.
+Do not duplicate working workflow logic.
 
-15. Do not implement the Funds ledger yet unless explicitly requested.
+Reuse existing components and endpoints where possible.
 
----
+Preserve finalized transaction immutability.
 
-# Business Rules
+Preserve FIFO inventory/COGS behavior.
 
-## Products
+Preserve current Funds behavior.
 
-Products are the source of truth for inventory items that can be purchased.
+Preserve Show reconciliation behavior.
 
-Every Product has:
+Before changing business logic, identify why it is necessary.
 
-- Item ID
-- Name
-- Product Type
-- Unit Type
-- Sellable status
-- Active status
-- Expected sale price
+TypeScript conventions
 
-Product Type currently supports:
+The project uses verbatimModuleSyntax.
 
-- SEALED
-- SINGLE
+Type-only imports must use:
 
-Product Unit Type currently supports:
+import type { ReactNode } from "react";
 
-- CASE
-- BOX
-- ITEM
+rather than importing types as runtime values.
 
-Do not infer Unit Type from a product name.
+Useful comments are encouraged in TypeScript when they explain business behavior or non-obvious implementation decisions.
 
-For example:
+Do not over-comment obvious JSX.
 
-"CN Prism Case"
+Backend development
 
-must not automatically be treated as CASE merely because the name contains "Case".
-
-Use Product.unitType.
-
----
-
-## Product Hierarchy
-
-The current Product model contains:
-
-- parentProductId
-- quantityPerParent
-
-This relationship is intended to support container conversion.
-
-Example:
-
-CN Prism Box
-- parentProduct = CN Prism Case
-- quantityPerParent = 20
-
-This represents:
-
-1 CN Prism Case = 20 CN Prism Boxes
-
-The frontend may present this relationship from the more intuitive Case perspective, but do not reverse or redesign the database relationship without first reviewing the existing schema and application behavior.
-
-For the MVP, Pokemon cases generally contain repeated units of one sellable product.
-
----
-
-## Inventory Tracking
-
-Sealed inventory is tracked at the lowest sellable unit.
-
-Example:
-
-If a case contains 20 boxes and 1 case is purchased:
-
-Inventory created = 20 boxes.
-
-The case itself should not become 1 sellable inventory unit if the business sells the individual boxes.
-
-Inventory quantity is:
-
-Units Received - Units Sold
-
-Inventory value is based on remaining historical landed cost.
-
----
-
-## Orders
-
-Orders represent purchases from vendors.
-
-An Order can contain multiple product lines.
-
-The primary purpose of creating an order is adding inventory.
-
-The intended future Order UI is:
-
-Order Information
-
-Products
-- Product Purchased
-- Quantity Purchased
-- Purchase Price Each
-- Product Cost
-- Inventory Created
-- Landed Cost Per Sellable Unit
-
-Then:
-
-Additional Order Costs
-- Shipping
-- Tariffs
-- Other Costs
-- Adjustment
-
-Then totals and Finalize Order.
-
-Product Cost stored in the database represents the TOTAL product cost for that order line.
-
-Example:
-
-Quantity = 2
-Price Each = $700
-
-Product Cost = $1,400
-
-The UI may ask for Price Each, but the backend/database should store:
-
-productCost = quantity * priceEach
-
----
-
-## Case Conversion
-
-Eventually, Order creation should require only:
-
-- Purchased Product
-- Quantity Purchased
-- Purchase Price
-
-The backend should derive:
-
-- Sellable Product
-- Sellable Quantity
-
-Do not trust manually entered sellable quantities once automatic conversion is implemented.
-
-Example:
-
-Purchased:
-2 CN Prism Cases
-
-Catalog conversion:
-1 Case = 20 CN Prism Boxes
-
-Inventory created:
-
-40 CN Prism Boxes
-
-This conversion should come from Product metadata.
-
----
-
-## Additional Order Costs
-
-Orders may include:
-
-- Shipping
-- Tariffs
-- Other Cost
-- Adjustment
-
-Adjustment may be positive or negative.
-
-Additional order costs are allocated across order lines proportionally according to Product Cost.
-
-Example:
-
-Product A cost = $1,000
-Product B cost = $500
-
-Total product cost = $1,500
-
-Product A receives 2/3 of additional costs.
-
-Product B receives 1/3.
-
----
-
-## Landed Cost
-
-Landed Cost equals:
-
-Product Cost
-+ allocated Shipping
-+ allocated Tariffs
-+ allocated Other Cost
-+ allocated Adjustment
-
-Landed Unit Cost equals:
-
-Line Landed Cost / Sellable Quantity
-
-Example:
-
-20 boxes are created.
-
-Final allocated landed cost = $1,400.
-
-Landed Unit Cost = $70 per box.
-
-Historical landed costs must remain unchanged after the order is finalized.
-
----
-
-## Inventory Batches
-
-Every finalized Order Line creates a separate InventoryBatch.
-
-Batches for the same Product remain separate.
-
-Example:
-
-Order 1:
-20 Prism Boxes @ $60 landed cost
-
-Order 2:
-20 Prism Boxes @ $75 landed cost
-
-These are separate inventory batches.
-
-Do not average them into one batch.
-
----
-
-## Sales
-
-Sales track detailed sealed-product transactions.
-
-A sale includes:
-
-- Sale Number
-- Sale Date
-- Payment Method
-- Optional Show Visit
-- Product
-- Quantity
-- Unit Sale Price
-
-Revenue:
-
-quantity * unit sale price
-
-COGS uses FIFO inventory costing.
-
-Gross Profit:
-
-Revenue - COGS
-
-Gross Margin:
-
-Gross Profit / Revenue
-
-If Revenue is zero, Gross Margin should be zero.
-
----
-
-## FIFO COGS
-
-Inventory must be consumed from the oldest available InventoryBatch first.
-
-FIFO ordering currently uses:
-
-1. Order Date
-2. Inventory Batch ID as tie-breaker
-
-Sales create SaleAllocation records that identify exactly which inventory batches were consumed.
-
-Do not replace FIFO with average cost.
-
----
-
-## Exact-Cent Accounting
-
-Financial calculations must reconcile exactly to cents.
-
-Do not allow rounding errors to create or destroy money.
-
-Order landed-cost allocation should ensure the final allocated cents exactly equal the total additional cost.
-
-FIFO batch depletion should also preserve exact historical batch value.
-
----
-
-## Product Profitability
-
-Product metrics may include:
-
-- Revenue
-- COGS
-- Gross Profit
-- Gross Margin
-- ROI
-
-Product ROI:
-
-Gross Profit / COGS
-
-Products with zero sales or zero COGS must not incorrectly rank as the highest ROI product.
-
----
-
-## Expected Sale Price
-
-Product.expectedSalePrice is used only for current retail/potential inventory calculations.
-
-Changing expectedSalePrice must NEVER change:
-
-- Historical landed cost
-- Historical COGS
-- Historical gross profit
-- Historical ROI
-
----
-
-# Shows
-
-A Show represents a recurring event.
-
-Example:
-
-"St. Louis Card Show"
-
-A ShowVisit represents one specific date for that show.
-
-Example:
-
-St. Louis Card Show
-September 12, 2026
-
-Sealed sales may reference a ShowVisit.
-
-Show-level sealed revenue must come from actual Sale records.
-
-Do not infer sealed revenue from beginning versus ending inventory.
-
----
-
-# Singles
-
-Singles accounting is intentionally deferred for the MVP.
-
-The database currently contains some ShowVisit singles fields, but do not expand or build Singles workflows unless explicitly requested.
-
-The architecture should remain capable of supporting Singles later.
-
-Potential future Singles tracking will likely occur at Show level rather than individual card transaction level.
-
----
-
-# Payment Methods
-
-Current payment methods:
-
-- CASH
-- DIGITAL
-
-Payment Method describes how money was received.
-
-It is separate from revenue source.
-
-Examples of revenue source:
-
-- Sealed
-- Singles
-
-Do not treat Cash/Digital as business categories.
-
----
-
-# Future Funds System
-
-Do not build this unless explicitly requested.
-
-Eventually the application should track actual money available across accounts such as:
-
-- Cash
-- Bank
-- Digital/Venmo/etc.
-
-The preferred architecture is a ledger:
-
-FundingAccount
-
-FundTransaction
-
-Do NOT implement one global mutable "moneyOnHand" number.
-
-Future order finalization should eventually:
-
-1. Finalize inventory/accounting
-2. Create inventory batches
-3. Withdraw the complete order total from the selected funding account
-
-These actions should happen atomically in one database transaction.
-
-If inventory creation fails, funds should not be deducted.
-
-If funds deduction fails, the order should not finalize.
-
-Transfers between funding accounts are not revenue or profit.
-
----
-
-# Current Prisma Product Model Behavior
-
-Product currently includes:
-
-- id
-- itemId
-- name
-- type
-- unitType
-- parentProductId
-- quantityPerParent
-- sellable
-- active
-- expectedSalePrice
-
-unitType supports:
-
-CASE
-BOX
-ITEM
-
-Existing products were migrated with BOX as the default.
-
-Some existing products may need to be manually corrected to CASE.
-
----
-
-# Product API Rules
-
-The Products API already has important behavior that must be preserved:
-
-- Item IDs are normalized to uppercase.
-- Item ID duplicate checking is case-insensitive.
-- GET all Products returns active and inactive products.
-- Product creation validates Product Type.
-- Product creation validates Unit Type.
-- Product editing validates Product Type and Unit Type.
-- Products may be deactivated.
-- Products may be reactivated.
-
-Do not remove or weaken the existing duplicate Item ID protections.
-
----
-
-# Order Status
-
-Orders support:
-
-DRAFT
-FINALIZED
-
-Draft orders may be modified.
-
-Finalized orders should be treated as historical accounting records.
-
-Order finalization currently:
-
-- validates the order
-- calculates landed cost allocation
-- updates order lines
-- creates InventoryBatch records
-- marks the Order FINALIZED
-
-These operations occur inside a Prisma database transaction.
-
-Preserve transactional finalization.
-
----
-
-# Sales Immutability
-
-Sales currently finalize immediately.
-
-There is currently no update/delete sales workflow.
-
-Do not add casual editing of finalized sales.
-
-Any future correction mechanism should preserve an audit trail.
-
----
-
-# Concurrency
-
-The MVP is currently primarily intended for one user.
-
-Existing FIFO sales behavior is not yet designed for heavy concurrent multi-user transactions.
-
-Do not claim the application is concurrency-safe without reviewing and improving the transaction/locking strategy.
-
-This can remain technical debt for the MVP.
-
----
-
-# Frontend Guidelines
-
-The frontend uses a custom dark charcoal/red design.
-
-Preserve the existing visual design unless asked to redesign it.
-
-The Products page currently supports:
-
-- Product list
-- Filtering
-- Add Product
-- Edit Product
-- Deactivate
-- Reactivate
-- Row action menu
-
-Row actions use a three-dot menu.
-
-Do not replace these with large inline action buttons unless requested.
-
----
-
-# Current MVP Priority
-
-Work in this general dependency order:
-
-1. Products
-2. Product case/box conversion metadata
-3. Orders
-4. Automatic order inventory conversion
-5. Inventory Batches
-6. Inventory
-7. Sales
-8. FIFO COGS
-9. Profitability
-10. Shows
-11. Reporting
-12. Dashboard
-
-Funds and Singles accounting come later.
-
----
-
-# Current Work In Progress
-
-The Product schema and Product API now support:
-
-CASE
-BOX
-ITEM
-
-The next planned task is updating the Products UI so users can:
-
-- Choose Unit Type when creating a Product
-- Change Unit Type when editing a Product
-- See Unit Type in the Products table
-
-After that, implement Product conversion metadata so a Case can resolve into its sellable Box quantity.
-
-Do not modify the Orders workflow until the Product conversion foundation is complete.
-
----
-
-# Coding Style
-
-Use TypeScript.
-
-Prefer explicit readable code over compact clever code.
-
-Add comments where business logic may not be obvious.
-
-Use descriptive variable names.
-
-Keep route handlers understandable to a newer developer.
-
-Avoid `any` unless unavoidable.
-
-Use `import type` for TypeScript-only frontend imports because the project uses `verbatimModuleSyntax`.
-
-Do not introduce a new framework or state-management library without a clear need.
-
-Do not add dependencies just to solve something that can be done cleanly with the existing stack.
-
----
-
-# Prisma
-
-This project uses Prisma 7.
-
-Prisma client output:
-
-src/generated/prisma
-
-Prisma configuration is stored separately from schema.prisma.
-
-Do not add a datasource URL to schema.prisma unless the existing Prisma 7 configuration is intentionally being changed.
-
-After Prisma schema changes, normally run:
-
-npx prisma format
-
-npx prisma validate
-
-npx prisma migrate dev --name <migration-name>
-
-npx prisma generate
-
-Do not reset or wipe the database unless explicitly authorized.
-
----
-
-# Local Development
-
-Database:
-
-npx prisma dev
-
-API:
+The API is normally started with:
 
 npx tsx src/server/server.ts
 
-Frontend:
+This is not watch mode.
 
-npm run dev
+After backend route changes, the API must be restarted.
 
-Expected ports:
+Shared refresh event
 
-Frontend:
-http://localhost:5173
+Cross-component business refreshes use:
 
-API:
-http://localhost:3002
+window.dispatchEvent(
+  new Event("business-data-changed")
+);
 
----
+Components that display business summaries may listen for:
 
-# Validation Before Finishing Changes
+business-data-changed
 
-For meaningful code changes:
+Do not replace this with full-page reloads.
 
-1. Inspect all related files first.
-2. Make the smallest coherent change.
-3. Check TypeScript errors.
-4. Run relevant application/database validation.
-5. Explain what changed.
-6. Explain any remaining technical debt.
-7. Do not silently change business rules.
+Avoid:
 
-When a requirement is ambiguous, ask before changing accounting or inventory behavior.
+window.location.reload();
+
+Major workflows that change inventory, funds, or business position should dispatch the shared event after success.
+
+4. Business Model
+
+Sealed Products
+
+Sealed inventory is tracked at the lowest sellable level.
+
+Examples:
+
+Case -> Box
+Box -> Box
+Item -> Item
+
+A case can be purchased but inventory may be created as boxes.
+
+Product catalog concepts such as CASE / BOX / ITEM are separate from whether the item is sellable.
+
+Orders
+
+Orders represent sealed inventory purchases.
+
+Orders can contain multiple product lines.
+
+For each order line:
+
+Price Each × Quantity Purchased = Product Cost
+
+The database stores productCost as the total line cost.
+
+Additional order-level costs include:
+
+Shipping
+
+Tariffs
+
+Other Costs
+
+Adjustment
+
+Business rule:
+
+Shipping >= 0
+Tariffs >= 0
+Other Costs >= 0
+Adjustment may be positive OR negative
+
+Negative Adjustment commonly represents:
+
+Supplier discount
+
+Credit
+
+Promotional reduction
+
+Manual dollar reduction
+
+Example:
+
+Products       $1,000
+Shipping           75
+Adjustment        -50
+---------------------
+Order Total     $1,025
+
+Landed additional costs are allocated proportionally across product lines.
+
+Every finalized order line creates its own Inventory Batch.
+
+Finalizing an Order:
+
+Calculates landed costs
+
+Creates inventory batches
+
+Deducts total order cost from SEALED funds
+
+Locks the Order as finalized
+
+Should trigger business-data-changed
+
+Order Numbers
+
+Order numbers are generated by the backend.
+
+Format:
+
+ORD-0001
+ORD-0002
+...
+
+Users do not create or edit Order numbers.
+
+Editing a Draft Order must not accept or modify orderNumber.
+
+5. Inventory
+
+Sealed inventory uses batches.
+
+Important behavior:
+
+Each finalized Order line creates a separate batch.
+
+Historical landed cost is immutable.
+
+Sales consume batches using FIFO.
+
+Expected Sale Price is a current planning/retail value only.
+
+Changing Expected Sale Price must not rewrite historical landed cost.
+
+Inventory summary concepts include:
+
+Units Received
+
+Units Sold
+
+Units On Hand
+
+Inventory Cost Value
+
+Expected Retail Value
+
+Potential Gross Profit
+
+Potential Gross Margin
+
+The Inventory page is currently working correctly.
+
+6. Sales
+
+Sales currently apply to sealed products.
+
+Individual Singles card sales are intentionally NOT tracked.
+
+A Sale:
+
+Uses server-generated Sale numbers
+
+Reduces sealed inventory
+
+Uses FIFO COGS
+
+Calculates Revenue
+
+Calculates Gross Profit
+
+Calculates Gross Margin
+
+Posts sale proceeds to Funds
+
+Records Cash or Digital payment method
+
+May optionally belong to a Show Visit
+
+Sale numbers are generated by the backend.
+
+Format:
+
+SALE-0001
+SALE-0002
+...
+
+Users do not manually create Sale numbers.
+
+7. Singles
+
+Singles are intentionally valuation-based for the MVP.
+
+Do NOT implement individual card-level purchase/sale tracking unless explicitly requested later.
+
+Singles are tracked primarily through:
+
+Singles Inventory Value
+
+Singles Cash
+
+Singles Digital
+
+Show starting snapshot
+
+Show ending snapshot
+
+Show reconciliation
+
+Singles Inventory Change:
+
+Ending Singles Inventory Value
+- Starting Singles Inventory Value
+
+This is an inventory value change, not automatically "profit."
+
+Singles Business Value:
+
+Singles Inventory Value
++ Singles Cash
++ Singles Digital
+
+8. Funds
+
+Funds are separated by business purpose:
+
+SEALED
+SINGLES
+
+Singles funds also track physical/payment location:
+
+CASH
+DIGITAL
+
+Conceptually:
+
+Singles Funds
+  Cash
+  Digital
+  Total
+
+The application may contain legacy nullable Singles locations, but clean real data should use explicit Cash/Digital location.
+
+Normal UI should not create unallocated Singles funds.
+
+Order → Funds
+
+Finalizing an Order creates a negative SEALED FundEntry equal to:
+
+Product Cost
++ Shipping
++ Tariffs
++ Other Costs
++ Adjustment
+
+Because Adjustment may be negative, it can reduce the withdrawal.
+
+Sale → Funds
+
+Saving a sealed Sale posts revenue into SEALED funds.
+
+Payment method remains useful reporting information.
+
+Manual Funds
+
+Funds UI supports contributions/adjustments.
+
+Singles contributions can be split atomically across Cash and Digital.
+
+Do not duplicate the Add Funds workflow elsewhere on Command Center.
+
+The Funds component is the single source of truth for its own Add Funds action.
+
+9. Shows
+
+There are two concepts:
+
+Show
+Show Visit
+
+A Show is a recurring event/location.
+
+A Show Visit is one dated occurrence.
+
+Show Visit lifecycle:
+
+PLANNED
+  ->
+ACTIVE
+  ->
+FINALIZED
+
+Application-level rule:
+
+Only one Show Visit may be ACTIVE at a time.
+
+Starting a Show
+
+Starting a Show captures:
+
+Show
+
+Visit Date
+
+Starting Singles Inventory Value
+
+Starting Singles Cash
+
+Starting Singles Digital
+
+Starting Cash/Digital must reconcile with the persistent Singles Funds ledger.
+
+The starting snapshot becomes locked once the Show begins.
+
+Active Show
+
+The Active Show experience should be treated as a primary operational workflow.
+
+Typical actions:
+
+View starting position
+
+Record Sealed Sale
+
+View linked sales
+
+End Show
+
+A Sale started from the Active Show:
+
+Automatically belongs to the active Show Visit
+
+Uses the Show Visit date
+
+Must not allow the Show association to be changed
+
+A general Sale started from Command Center:
+
+Defaults to no Show
+
+May optionally attach to an open Show
+
+Must not automatically attach just because a Show is active
+
+Ending a Show
+
+User enters:
+
+Ending Singles Inventory Value
+
+Ending Singles Cash
+
+Ending Singles Digital
+
+Then reviews and finalizes.
+
+Finalization reconciles current persistent Singles Cash/Digital against ending Cash/Digital and creates Show reconciliation FundEntries.
+
+The reconciliation accounts for other legitimate fund changes that may have happened while the Show was active.
+
+Finalization should trigger business-data-changed.
+
+10. Command Center
+
+The Command Center is the operational home page.
+
+It is not intended to become the full reporting dashboard.
+
+Current hierarchy:
+
+Command Center
+
+Quick Actions
+  New Order
+  Record Sale
+
+Show Operations
+  Active Show / Start Show
+
+Business Position
+  Funds
+  Sealed Inventory
+
+This hierarchy is intentional.
+
+Shows sit near the top because Show operations are expected to be the primary recurring business workflow.
+
+Quick Actions
+
+Current Quick Actions:
+
+New Order
+Record Sale
+
+Do NOT add:
+
+Add Inventory
+
+Inventory enters through Orders.
+
+Do NOT add a duplicate:
+
+Add Funds
+
+FundsPanel owns Add Funds.
+
+Do NOT add a separate Show command if ActiveShowPanel already provides the Show workflow.
+
+Quick Action forms should use true fixed modal overlays rather than navigating away.
+
+Command Center inventory summary
+
+The Sealed Inventory summary should include:
+
+Inventory Cost Value
+
+Retail Value
+
+Potential Gross Profit
+
+Units On Hand
+
+Products In Stock
+
+It reads from /api/inventory.
+
+It should update when business-data-changed fires.
+
+11. Dedicated Pages
+
+Current main navigation includes:
+
+Command Center
+
+Products
+
+Orders
+
+Inventory
+
+Sales
+
+Shows
+
+The long-term information architecture is:
+
+Command Center = operate the business
+Reports = understand the business
+
+A future Reports area is planned but should not be mixed into routine operational screens unnecessarily.
+
+Potential Reports sections later:
+
+Overview
+Sales
+Inventory
+Shows
+
+12. Current UI Direction
+
+The application is ready for a substantial visual overhaul.
+
+The desired UI should feel like a polished modern operations dashboard rather than a collection of raw admin forms.
+
+Visual goals:
+
+Dark professional interface
+
+High information clarity
+
+Strong hierarchy
+
+Compact but comfortable spacing
+
+Better use of horizontal space
+
+Consistent panel/card system
+
+Consistent typography
+
+Consistent form controls
+
+Consistent buttons
+
+Consistent tables
+
+Strong empty states
+
+Strong loading/error states
+
+Better responsive behavior
+
+Clear distinction between positive, neutral, and destructive actions
+
+Avoid oversized buttons stretching across entire desktop widths.
+
+Primary positive actions should generally use a restrained green treatment.
+
+Destructive actions should remain visually distinct.
+
+Neutral navigation/actions should remain neutral.
+
+Do not use red as the standard primary-action color.
+
+13. UI Refactor Goals
+
+Codex may perform meaningful UI refactoring if it improves maintainability.
+
+Preferred direction:
+
+Extract reusable UI primitives where repetition is obvious.
+
+Move repeated inline styles into shared CSS/classes or lightweight components.
+
+Reduce giant page/component files where practical.
+
+Do not perform a massive architectural rewrite solely for aesthetics.
+
+Preserve component behavior while improving structure.
+
+Useful primitives may include:
+
+PageHeader
+SectionHeader
+Panel
+MetricCard
+StatusBadge
+PrimaryButton
+SecondaryButton
+DangerButton
+ModalShell
+FormField
+MoneyField
+EmptyState
+DataTable
+ActionMenu
+
+Do not create abstractions that are used only once unless they clearly improve readability.
+
+14. Tables
+
+Tables are important operational surfaces.
+
+Improve:
+
+Column alignment
+
+Numeric alignment
+
+Row height
+
+Hover clarity
+
+Header contrast
+
+Status badges
+
+Action menus
+
+Mobile/overflow behavior
+
+Dense information readability
+
+Preferred row action pattern:
+
+⋯
+
+Use a compact three-dot action menu rather than several large text buttons when multiple row actions exist.
+
+Action menu items should be aligned and consistent.
+
+15. Modals
+
+Important workflows already use modal overlays.
+
+Preserve this behavior.
+
+Modals should:
+
+Be fixed overlays
+
+Clearly separate header/content/footer
+
+Have obvious primary and cancel actions
+
+Handle long content with internal scrolling
+
+Avoid excessive width
+
+Avoid awkward full-screen forms on desktop
+
+Remain usable on smaller screens
+
+16. Responsive Design
+
+Desktop is the primary usage environment, but the UI should gracefully shrink.
+
+Focus on:
+
+Flexible grids
+
+minmax(...)
+
+wrapping quick actions
+
+horizontal table scrolling when appropriate
+
+stacked forms on narrow layouts
+
+avoiding fixed widths that cause overflow
+
+Do not sacrifice desktop information density merely to optimize for mobile.
+
+17. Current Stability Status
+
+Core workflow smoke testing has passed.
+
+Real business data has been staged.
+
+The application is now being used with real data.
+
+Current priority:
+
+UI/UX overhaul
+
+rather than major new business functionality.
+
+When a UI change reveals an actual workflow bug, fix the bug carefully and preserve business rules.
+
+18. Areas Suitable for UI Overhaul
+
+Good candidates:
+
+Global design system / App.css
+
+Sidebar and top bar
+
+Command Center
+
+Products page
+
+Orders page
+
+Inventory page
+
+Sales page
+
+Shows page
+
+Funds panel
+
+Active Show panel
+
+Forms and modals
+
+Tables and row actions
+
+Empty/loading/error states
+
+Prefer iterative implementation over rewriting all pages simultaneously.
+
+19. UI Overhaul Safety Rules
+
+Before each substantial UI change:
+
+Inspect the current implementation.
+
+Identify existing business logic and API calls.
+
+Preserve those behaviors.
+
+Prefer styling/component extraction over logic changes.
+
+Run TypeScript validation.
+
+Run:
+
+npx tsc --noEmit
+
+After meaningful changes.
+
+If backend code is touched, restart the API and test the relevant workflow.
+
+20. Codex Working Style
+
+When given an implementation task:
+
+Inspect the relevant files first.
+
+Make the implementation rather than returning a design essay.
+
+Keep changes scoped to the requested area.
+
+Preserve working business rules.
+
+Explain the files changed and why.
+
+Run available checks.
+
+Report any assumptions or behavior changes.
+
+Avoid speculative backend/schema changes during UI work.
+
+The owner prefers decisive implementation over long planning reports.
+
+For large UI work, working page-by-page is preferable to an uncontrolled repo-wide rewrite.
+
+21. Current Near-Term Objective
+
+Create a cohesive, professional, modern UI suitable for daily business operation.
+
+The visual overhaul should make the application feel like one product rather than several individually built screens.
+
+Do not sacrifice correctness for appearance.
+
+The ideal result is:
+
+fast
+clear
+professional
+dense enough for business use
+easy to operate during Shows
+visually consistent

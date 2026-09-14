@@ -102,12 +102,23 @@ type SalesPageProps = {
   // and automatically attaches the sale to this Show Visit.
   initialShowVisitId?: number | null;
 
+  // Opens the existing Record Sale workflow immediately.
+  // Command Center uses this without attaching the sale to a Show.
+  initialOpenRecordSale?: boolean;
+
+  // When true, render only the sale-entry workflow instead of
+  // the full Sales dashboard.
+  quickActionOnly?: boolean;
+
   // Optional callback used when another screen, such as the
   // Active Show workflow, wants to know a sale was completed.
   onSaleRecorded?: (sale: Sale) => void;
 
   // Optional callback for leaving the embedded/show workflow.
   onCancelShowSale?: () => void;
+
+  // Called when the Command Center sale workflow should close.
+  onQuickActionClose?: () => void;
 };
 
 // ---------------------------------------------------------
@@ -155,8 +166,11 @@ function total(
 
 export default function SalesPage({
   initialShowVisitId = null,
+  initialOpenRecordSale = false,
+  quickActionOnly = false,
   onSaleRecorded,
   onCancelShowSale,
+  onQuickActionClose,
 }: SalesPageProps = {}) {
   const [sales, setSales] = useState<
     Sale[]
@@ -188,7 +202,8 @@ export default function SalesPage({
   // starts with the form closed.
   const [adding, setAdding] =
     useState(
-      initialShowVisitId !== null
+      initialShowVisitId !== null ||
+        initialOpenRecordSale
     );
 
   const [expandedId, setExpandedId] =
@@ -209,6 +224,17 @@ export default function SalesPage({
   // sale-entry experience instead of rendering the full Sales dashboard.
   const embeddedShowSale =
     initialShowVisitId !== null;
+
+  // Both Active Show and Command Center reuse the compact sale-entry
+  // experience. The normal Sales page still renders all analytics/history.
+  const compactSaleWorkflow =
+    embeddedShowSale || quickActionOnly;
+
+  useEffect(() => {
+    if (initialOpenRecordSale) {
+      setAdding(true);
+    }
+  }, [initialOpenRecordSale]);
 
   // -------------------------------------------------------
   // LOAD SALES DATA
@@ -348,6 +374,13 @@ export default function SalesPage({
       initialShowVisitId !== null
     ) {
       onCancelShowSale?.();
+      return;
+    }
+
+    // Command Center closes only its modal wrapper and stays
+    // on the Command Center page.
+    if (quickActionOnly) {
+      onQuickActionClose?.();
     }
   }
 
@@ -367,9 +400,22 @@ export default function SalesPage({
       (value) => value + 1
     );
 
+    // Let other business panels refresh immediately after a sale.
+    window.dispatchEvent(
+      new CustomEvent(
+        "business-data-changed"
+      )
+    );
+
     // The Active Show workflow can use this to refresh its
     // own performance immediately after the sale is recorded.
     onSaleRecorded?.(sale);
+
+    // A Command Center sale is complete after Save & Finalize,
+    // so return directly to Command Center.
+    if (quickActionOnly) {
+      onQuickActionClose?.();
+    }
   }
 
   // -------------------------------------------------------
@@ -378,7 +424,7 @@ export default function SalesPage({
 
   return (
     <>
-      {!embeddedShowSale && (
+      {!compactSaleWorkflow && (
         <div className="panel-header">
           <div>
             <h3>Sealed Sales</h3>
@@ -431,7 +477,7 @@ export default function SalesPage({
         </div>
       )}
 
-      {success && !embeddedShowSale && (
+      {success && !compactSaleWorkflow && (
         <p role="status">
           {success}
         </p>
@@ -450,7 +496,7 @@ export default function SalesPage({
       ) : (
         !error && (
           <>
-            {!embeddedShowSale && (
+            {!compactSaleWorkflow && (
               <div className="metric-grid">
                 <Metric
                   label="Revenue"
@@ -488,26 +534,82 @@ export default function SalesPage({
               </div>
             )}
 
-            {adding && (
-              <NewSaleForm
-                products={
-                  products
-                }
-                stock={stock}
-                shows={shows}
-                lockedShowVisitId={
-                  initialShowVisitId
-                }
-                onCancel={
-                  handleCancelSale
-                }
-                onSaved={
-                  handleSaleSaved
-                }
-              />
-            )}
+            {adding &&
+              (quickActionOnly ? (
+                <div
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    zIndex: 1200,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "24px",
+                    background:
+                      "rgba(0, 0, 0, 0.72)",
+                    backdropFilter:
+                      "blur(4px)",
+                    overflowY: "auto",
+                  }}
+                  onMouseDown={(event) => {
+                    if (
+                      event.target ===
+                      event.currentTarget
+                    ) {
+                      handleCancelSale();
+                    }
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "100%",
+                      maxWidth: "980px",
+                      maxHeight:
+                        "calc(100vh - 48px)",
+                      overflowY: "auto",
+                      border:
+                        "1px solid #303137",
+                      borderRadius: "14px",
+                      background: "#17181c",
+                      boxShadow:
+                        "0 24px 70px rgba(0, 0, 0, 0.5)",
+                    }}
+                  >
+                    <NewSaleForm
+                      products={products}
+                      stock={stock}
+                      shows={shows}
+                      lockedShowVisitId={
+                        initialShowVisitId
+                      }
+                      onCancel={
+                        handleCancelSale
+                      }
+                      onSaved={
+                        handleSaleSaved
+                      }
+                      modalMode
+                    />
+                  </div>
+                </div>
+              ) : (
+                <NewSaleForm
+                  products={products}
+                  stock={stock}
+                  shows={shows}
+                  lockedShowVisitId={
+                    initialShowVisitId
+                  }
+                  onCancel={
+                    handleCancelSale
+                  }
+                  onSaved={
+                    handleSaleSaved
+                  }
+                />
+              ))}
 
-            {!embeddedShowSale && (
+            {!compactSaleWorkflow && (
               <>
                 <section className="panel">
                   <div className="panel-header">
@@ -866,6 +968,7 @@ function NewSaleForm({
   lockedShowVisitId,
   onCancel,
   onSaved,
+  modalMode = false,
 }: {
   products: Product[];
   stock: Stock[];
@@ -875,6 +978,7 @@ function NewSaleForm({
     | null;
   onCancel: () => void;
   onSaved: (sale: Sale) => void;
+  modalMode?: boolean;
 }) {
   const available =
     products.filter(
@@ -1220,11 +1324,20 @@ function NewSaleForm({
 
   return (
     <section
-      className="panel"
+      className={modalMode ? undefined : "panel"}
       style={{
-        padding: "20px",
-        marginBottom:
-          "20px",
+        padding: modalMode
+          ? "24px"
+          : "20px",
+        marginBottom: modalMode
+          ? 0
+          : "20px",
+        border: modalMode
+          ? "none"
+          : undefined,
+        background: modalMode
+          ? "transparent"
+          : undefined,
       }}
     >
       <h3

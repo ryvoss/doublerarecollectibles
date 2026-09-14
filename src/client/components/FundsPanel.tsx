@@ -16,6 +16,14 @@ type FundSource =
   | "SEALED"
   | "SINGLES";
 
+type FundLocation =
+  | "CASH"
+  | "DIGITAL";
+
+type SinglesLocationChoice =
+  | FundLocation
+  | "SPLIT";
+
 type FundEntryType =
   | "OPENING_BALANCE"
   | "SEALED_SALE"
@@ -27,12 +35,16 @@ type FundEntryType =
 type FundsSummary = {
   sealedBalance: string | number;
   singlesBalance: string | number;
+  singlesCashBalance: string | number;
+  singlesDigitalBalance: string | number;
+  singlesUnallocatedBalance: string | number;
   totalBusinessFunds: string | number;
 };
 
 type FundEntry = {
   id: number;
   source: FundSource;
+  location: FundLocation | null;
   type: FundEntryType;
   amount: string | number;
   transactionDate: string;
@@ -67,7 +79,15 @@ type ManualEntryMode =
 type AddFundsForm = {
   mode: ManualEntryMode;
   source: FundSource;
+
+  // A single-location entry uses amount.
   amount: string;
+
+  // Singles can also be entered as a Cash + Digital split.
+  location: SinglesLocationChoice;
+  cashAmount: string;
+  digitalAmount: string;
+
   transactionDate: string;
   note: string;
 };
@@ -173,7 +193,19 @@ function getEntryLabel(
 // FUNDS PANEL
 // ---------------------------------------------------------
 
-function FundsPanel() {
+type FundsPanelProps = {
+  // The Command Center increments this value whenever its quick action
+  // should open the existing Add Funds modal in this panel.
+  openAddFundsSignal?: number;
+
+  // Lets the parent clear its quick-action state when the modal closes.
+  onAddFundsClosed?: () => void;
+};
+
+function FundsPanel({
+  openAddFundsSignal = 0,
+  onAddFundsClosed,
+}: FundsPanelProps) {
   const [
     summary,
     setSummary,
@@ -219,6 +251,19 @@ function FundsPanel() {
   ] = useState<string | null>(
     null
   );
+
+  // Open the same Add Funds modal from the Command Center quick action.
+  // Using a numeric signal means the action can be triggered repeatedly.
+  useEffect(() => {
+    if (openAddFundsSignal > 0) {
+      setShowAddFunds(true);
+    }
+  }, [openAddFundsSignal]);
+
+  function closeAddFunds() {
+    setShowAddFunds(false);
+    onAddFundsClosed?.();
+  }
 
   // -------------------------------------------------------
   // LOAD CURRENT BALANCES
@@ -446,6 +491,26 @@ function FundsPanel() {
       summary?.singlesBalance ?? 0
     );
 
+  const singlesCashBalance =
+    Number(
+      summary?.singlesCashBalance ?? 0
+    );
+
+  const singlesDigitalBalance =
+    Number(
+      summary?.singlesDigitalBalance ?? 0
+    );
+
+  const singlesUnallocatedBalance =
+    Number(
+      summary?.singlesUnallocatedBalance ?? 0
+    );
+
+  const singlesDetail =
+    singlesUnallocatedBalance !== 0
+      ? `Cash ${money(singlesCashBalance)} · Digital ${money(singlesDigitalBalance)} · Unallocated ${money(singlesUnallocatedBalance)}`
+      : `Cash ${money(singlesCashBalance)} · Digital ${money(singlesDigitalBalance)}`;
+
   return (
     <>
       <section style={panelStyle}>
@@ -562,7 +627,7 @@ function FundsPanel() {
             <FundBalanceCard
               label="Singles Funds"
               value={singlesBalance}
-              detail="Show gains and contributions"
+              detail={singlesDetail}
             />
           </div>
         </div>
@@ -586,9 +651,7 @@ function FundsPanel() {
 
       {showAddFunds && (
         <AddFundsModal
-          onClose={() =>
-            setShowAddFunds(false)
-          }
+          onClose={closeAddFunds}
           onSaved={
             handleFundsChanged
           }
@@ -941,6 +1004,12 @@ function FundActivityRow({
           <FundSourceBadge
             source={entry.source}
           />
+
+          {entry.location && (
+            <FundLocationBadge
+              location={entry.location}
+            />
+          )}
         </div>
 
         <div
@@ -1024,6 +1093,40 @@ function FundSourceBadge({
 }
 
 // ---------------------------------------------------------
+// FUND LOCATION BADGE
+// ---------------------------------------------------------
+
+function FundLocationBadge({
+  location,
+}: {
+  location: FundLocation;
+}) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "3px 6px",
+        borderRadius: "999px",
+        background:
+          location === "CASH"
+            ? "rgba(88, 169, 111, 0.12)"
+            : "rgba(91, 140, 214, 0.12)",
+        color:
+          location === "CASH"
+            ? "#82d591"
+            : "#8fb5ec",
+        fontSize: "9px",
+        fontWeight: 750,
+        letterSpacing: "0.05em",
+      }}
+    >
+      {location}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------
 // MODAL BALANCE
 // ---------------------------------------------------------
 
@@ -1094,6 +1197,9 @@ function AddFundsModal({
     mode: "CONTRIBUTION",
     source: "SEALED",
     amount: "",
+    location: "CASH",
+    cashAmount: "",
+    digitalAmount: "",
     transactionDate:
       todayForInput(),
     note: "",
@@ -1128,32 +1234,6 @@ function AddFundsModal({
   ) {
     event.preventDefault();
 
-    const amount =
-      Number(form.amount);
-
-    if (
-      !Number.isFinite(amount) ||
-      amount === 0
-    ) {
-      setError(
-        "Enter a valid non-zero amount."
-      );
-
-      return;
-    }
-
-    if (
-      form.mode ===
-        "CONTRIBUTION" &&
-      amount <= 0
-    ) {
-      setError(
-        "A personal contribution must be greater than zero."
-      );
-
-      return;
-    }
-
     if (
       form.mode ===
         "ADJUSTMENT" &&
@@ -1166,16 +1246,188 @@ function AddFundsModal({
       return;
     }
 
+    const endpoint =
+      form.mode ===
+      "CONTRIBUTION"
+        ? "/api/funds/contributions"
+        : "/api/funds/adjustments";
+
+    // Build one or two ledger entries.
+    //
+    // A normal Cash or Digital selection creates one entry.
+    // "Split" creates separate Cash and Digital entries so both
+    // balances remain independently traceable in the ledger.
+    const entriesToCreate: Array<{
+      amount: number;
+      location?: FundLocation;
+    }> = [];
+
+    if (form.source === "SEALED") {
+      const amount =
+        Number(form.amount);
+
+      if (
+        !Number.isFinite(amount) ||
+        amount === 0
+      ) {
+        setError(
+          "Enter a valid non-zero amount."
+        );
+
+        return;
+      }
+
+      if (
+        form.mode ===
+          "CONTRIBUTION" &&
+        amount <= 0
+      ) {
+        setError(
+          "A personal contribution must be greater than zero."
+        );
+
+        return;
+      }
+
+      entriesToCreate.push({
+        amount,
+      });
+    } else if (
+      form.location === "SPLIT"
+    ) {
+      const cashAmount =
+        Number(form.cashAmount || 0);
+
+      const digitalAmount =
+        Number(form.digitalAmount || 0);
+
+      if (
+        !Number.isFinite(cashAmount) ||
+        !Number.isFinite(digitalAmount)
+      ) {
+        setError(
+          "Enter valid Cash and Digital amounts."
+        );
+
+        return;
+      }
+
+      if (
+        form.mode ===
+        "CONTRIBUTION"
+      ) {
+        if (
+          cashAmount < 0 ||
+          digitalAmount < 0 ||
+          cashAmount +
+            digitalAmount <=
+            0
+        ) {
+          setError(
+            "A split contribution must contain a positive Cash or Digital amount."
+          );
+
+          return;
+        }
+      } else if (
+        cashAmount === 0 &&
+        digitalAmount === 0
+      ) {
+        setError(
+          "Enter a non-zero Cash or Digital adjustment."
+        );
+
+        return;
+      }
+
+      if (cashAmount !== 0) {
+        entriesToCreate.push({
+          amount: cashAmount,
+          location: "CASH",
+        });
+      }
+
+      if (digitalAmount !== 0) {
+        entriesToCreate.push({
+          amount: digitalAmount,
+          location: "DIGITAL",
+        });
+      }
+    } else {
+      const amount =
+        Number(form.amount);
+
+      if (
+        !Number.isFinite(amount) ||
+        amount === 0
+      ) {
+        setError(
+          "Enter a valid non-zero amount."
+        );
+
+        return;
+      }
+
+      if (
+        form.mode ===
+          "CONTRIBUTION" &&
+        amount <= 0
+      ) {
+        setError(
+          "A personal contribution must be greater than zero."
+        );
+
+        return;
+      }
+
+      entriesToCreate.push({
+        amount,
+        location: form.location,
+      });
+    }
+
     try {
       setSaving(true);
       setError(null);
 
-      const endpoint =
-        form.mode ===
-        "CONTRIBUTION"
-          ? "/api/funds/contributions"
-          : "/api/funds/adjustments";
+      const requestBody =
+        form.source === "SINGLES" &&
+        form.location === "SPLIT"
+          ? {
+              source: form.source,
+              allocations:
+                entriesToCreate.map(
+                  (entry) => ({
+                    location:
+                      entry.location,
+                    amount:
+                      entry.amount,
+                  })
+                ),
+              transactionDate:
+                form.transactionDate,
+              note:
+                form.note.trim() ||
+                undefined,
+            }
+          : {
+              source: form.source,
+              location:
+                entriesToCreate[0]
+                  ?.location,
+              amount:
+                entriesToCreate[0]
+                  ?.amount,
+              transactionDate:
+                form.transactionDate,
+              note:
+                form.note.trim() ||
+                undefined,
+            };
 
+      // Split Singles contributions/adjustments now use one API call.
+      // The backend saves both location entries in one transaction, so
+      // Cash and Digital either both succeed or neither is recorded.
       const response =
         await fetch(endpoint, {
           method: "POST",
@@ -1185,17 +1437,9 @@ function AddFundsModal({
               "application/json",
           },
 
-          body: JSON.stringify({
-            source: form.source,
-            amount,
-
-            transactionDate:
-              form.transactionDate,
-
-            note:
-              form.note.trim() ||
-              undefined,
-          }),
+          body: JSON.stringify(
+            requestBody
+          ),
         });
 
       if (!response.ok) {
@@ -1211,6 +1455,12 @@ function AddFundsModal({
       }
 
       await onSaved();
+
+      window.dispatchEvent(
+        new Event(
+          "business-data-changed"
+        )
+      );
 
       onClose();
     } catch (error) {
@@ -1344,10 +1594,13 @@ function AddFundsModal({
                   "SEALED"
                 }
                 onClick={() =>
-                  updateForm(
-                    "source",
-                    "SEALED"
-                  )
+                  setForm((current) => ({
+                    ...current,
+                    source: "SEALED",
+                    amount: "",
+                    cashAmount: "",
+                    digitalAmount: "",
+                  }))
                 }
               >
                 Sealed
@@ -1359,10 +1612,14 @@ function AddFundsModal({
                   "SINGLES"
                 }
                 onClick={() =>
-                  updateForm(
-                    "source",
-                    "SINGLES"
-                  )
+                  setForm((current) => ({
+                    ...current,
+                    source: "SINGLES",
+                    location: "CASH",
+                    amount: "",
+                    cashAmount: "",
+                    digitalAmount: "",
+                  }))
                 }
               >
                 Singles
@@ -1370,55 +1627,204 @@ function AddFundsModal({
             </div>
           </FormField>
 
-          <FormField
-            label="Amount"
-            hint={
-              form.mode ===
-              "ADJUSTMENT"
-                ? "Use a positive amount to add money or a negative amount to remove money."
-                : "Enter the amount of personal money being added."
-            }
-          >
-            <div
-              style={{
-                position: "relative",
-              }}
+          {form.source === "SINGLES" && (
+            <FormField
+              label="Fund Location"
+              hint="Choose where the Singles money is held. Use Split when one entry contains both Cash and Digital."
             >
-              <span
+              <div
                 style={{
-                  position:
-                    "absolute",
-                  left: "13px",
-                  top: "50%",
-                  transform:
-                    "translateY(-50%)",
-                  color: "#777880",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(3, minmax(0, 1fr))",
+                  gap: "8px",
                 }}
               >
-                $
-              </span>
+                <ChoiceButton
+                  active={
+                    form.location ===
+                    "CASH"
+                  }
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      location: "CASH",
+                      cashAmount: "",
+                      digitalAmount: "",
+                    }))
+                  }
+                >
+                  Cash
+                </ChoiceButton>
 
-              <input
-                type="number"
-                step="0.01"
-                value={form.amount}
-                onChange={(event) =>
-                  updateForm(
-                    "amount",
-                    event.target
-                      .value
-                  )
-                }
-                placeholder="0.00"
-                autoFocus
+                <ChoiceButton
+                  active={
+                    form.location ===
+                    "DIGITAL"
+                  }
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      location:
+                        "DIGITAL",
+                      cashAmount: "",
+                      digitalAmount: "",
+                    }))
+                  }
+                >
+                  Digital
+                </ChoiceButton>
+
+                <ChoiceButton
+                  active={
+                    form.location ===
+                    "SPLIT"
+                  }
+                  onClick={() =>
+                    setForm((current) => ({
+                      ...current,
+                      location: "SPLIT",
+                      amount: "",
+                    }))
+                  }
+                >
+                  Split
+                </ChoiceButton>
+              </div>
+            </FormField>
+          )}
+
+          {form.source === "SINGLES" &&
+          form.location === "SPLIT" ? (
+            <FormField
+              label="Split Amount"
+              hint={
+                form.mode ===
+                "ADJUSTMENT"
+                  ? "Enter the signed Cash and Digital corrections separately."
+                  : "Enter how much of this contribution is Cash and how much is Digital."
+              }
+            >
+              <div
                 style={{
-                  ...inputStyle,
-                  paddingLeft:
-                    "28px",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "1fr 1fr",
+                  gap: "10px",
                 }}
-              />
-            </div>
-          </FormField>
+              >
+                <MoneyInput
+                  label="Cash"
+                  value={
+                    form.cashAmount
+                  }
+                  onChange={(value) =>
+                    updateForm(
+                      "cashAmount",
+                      value
+                    )
+                  }
+                />
+
+                <MoneyInput
+                  label="Digital"
+                  value={
+                    form.digitalAmount
+                  }
+                  onChange={(value) =>
+                    updateForm(
+                      "digitalAmount",
+                      value
+                    )
+                  }
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: "10px",
+                  padding: "10px 12px",
+                  border:
+                    "1px solid #292a30",
+                  borderRadius: "8px",
+                  background: "#111216",
+                  color: "#a8a9ae",
+                  fontSize: "12px",
+                }}
+              >
+                Total:{" "}
+                <strong
+                  style={{
+                    color: "#e5e5e7",
+                  }}
+                >
+                  {money(
+                    Number(
+                      form.cashAmount ||
+                        0
+                    ) +
+                      Number(
+                        form.digitalAmount ||
+                          0
+                      )
+                  )}
+                </strong>
+              </div>
+            </FormField>
+          ) : (
+            <FormField
+              label="Amount"
+              hint={
+                form.mode ===
+                "ADJUSTMENT"
+                  ? "Use a positive amount to add money or a negative amount to remove money."
+                  : form.source ===
+                      "SINGLES"
+                    ? `This amount will be added to Singles ${form.location === "CASH" ? "Cash" : "Digital"}.`
+                    : "Enter the amount of personal money being added."
+              }
+            >
+              <div
+                style={{
+                  position: "relative",
+                }}
+              >
+                <span
+                  style={{
+                    position:
+                      "absolute",
+                    left: "13px",
+                    top: "50%",
+                    transform:
+                      "translateY(-50%)",
+                    color: "#777880",
+                  }}
+                >
+                  $
+                </span>
+
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) =>
+                    updateForm(
+                      "amount",
+                      event.target
+                        .value
+                    )
+                  }
+                  placeholder="0.00"
+                  autoFocus
+                  style={{
+                    ...inputStyle,
+                    paddingLeft:
+                      "28px",
+                  }}
+                />
+              </div>
+            </FormField>
+          )}
 
           <FormField label="Date">
             <input
@@ -1579,6 +1985,73 @@ function FormField({
           {hint}
         </p>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------
+// MONEY INPUT
+// ---------------------------------------------------------
+
+function MoneyInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div>
+      <span
+        style={{
+          display: "block",
+          marginBottom: "6px",
+          color: "#777880",
+          fontSize: "10px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </span>
+
+      <div
+        style={{
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            left: "13px",
+            top: "50%",
+            transform:
+              "translateY(-50%)",
+            color: "#777880",
+          }}
+        >
+          $
+        </span>
+
+        <input
+          type="number"
+          step="0.01"
+          value={value}
+          onChange={(event) =>
+            onChange(
+              event.target.value
+            )
+          }
+          placeholder="0.00"
+          style={{
+            ...inputStyle,
+            paddingLeft: "28px",
+          }}
+        />
+      </div>
     </div>
   );
 }

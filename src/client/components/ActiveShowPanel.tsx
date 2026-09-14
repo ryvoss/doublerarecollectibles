@@ -67,6 +67,15 @@ type ActiveVisitResponse = {
   activeVisit: ShowVisit | null;
 };
 
+type FundsSummary = {
+  sealedBalance: string | number;
+  singlesBalance: string | number;
+  singlesCashBalance: string | number;
+  singlesDigitalBalance: string | number;
+  singlesUnallocatedBalance: string | number;
+  totalBusinessFunds: string | number;
+};
+
 type VisitPerformance = {
   visit: {
     visitId: number;
@@ -258,6 +267,18 @@ function isValidMoneyInput(
     Number.isFinite(numberValue) &&
     numberValue >= 0
   );
+}
+
+function moneyInputToCents(
+  value: string
+): number {
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    return 0;
+  }
+
+  return Math.round(numberValue * 100);
 }
 
 async function readApiError(
@@ -591,8 +612,8 @@ export default function ActiveShowPanel() {
                 }}
               >
                 {activeVisit
-                  ? "ACTIVE SHOW VISIT"
-                  : "SHOW WORKSPACE"}
+                  ? "ACTIVE SHOW"
+                  : "SHOW OPERATIONS"}
               </span>
             </div>
 
@@ -652,7 +673,7 @@ export default function ActiveShowPanel() {
                     fontSize: "20px",
                   }}
                 >
-                  No Active Show Visit
+                  No Active Show
                 </h3>
 
                 <p
@@ -685,8 +706,8 @@ export default function ActiveShowPanel() {
               }}
             >
               {activeVisit
-                ? "Open Visit"
-                : "Start Visit"}
+                ? "Open Show"
+                : "Start Show"}
             </button>
           )}
         </div>
@@ -825,6 +846,197 @@ function StartVisitModal({
   const [error, setError] =
     useState<string | null>(null);
 
+  const [currentSinglesFunds, setCurrentSinglesFunds] =
+    useState<number | null>(null);
+
+  const [currentSinglesCash, setCurrentSinglesCash] =
+    useState<number | null>(null);
+
+  const [currentSinglesDigital, setCurrentSinglesDigital] =
+    useState<number | null>(null);
+
+  const [currentSinglesUnallocated, setCurrentSinglesUnallocated] =
+    useState<number | null>(null);
+
+  const [fundsLoading, setFundsLoading] =
+    useState(true);
+
+  // The live Singles ledger is the source of truth for both the total
+  // balance and where that money is actually held. When the modal opens,
+  // load the persistent Cash and Digital balances and use those exact
+  // values as the starting Show snapshot.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSinglesFunds() {
+      try {
+        setFundsLoading(true);
+
+        const response = await fetch(
+          "/api/funds/summary"
+        );
+
+        if (!response.ok) {
+          throw new Error(
+            await readApiError(
+              response,
+              "Singles funds could not be loaded."
+            )
+          );
+        }
+
+        const summary =
+          (await response.json()) as FundsSummary;
+
+        const singlesBalance = Number(
+          summary.singlesBalance ?? 0
+        );
+
+        const singlesCash = Number(
+          summary.singlesCashBalance ?? 0
+        );
+
+        const singlesDigital = Number(
+          summary.singlesDigitalBalance ?? 0
+        );
+
+        const singlesUnallocated = Number(
+          summary.singlesUnallocatedBalance ?? 0
+        );
+
+        if (
+          !Number.isFinite(singlesBalance) ||
+          !Number.isFinite(singlesCash) ||
+          !Number.isFinite(singlesDigital) ||
+          !Number.isFinite(singlesUnallocated)
+        ) {
+          throw new Error(
+            "Singles funds balance is invalid."
+          );
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentSinglesFunds(
+          singlesBalance
+        );
+
+        setCurrentSinglesCash(
+          singlesCash
+        );
+
+        setCurrentSinglesDigital(
+          singlesDigital
+        );
+
+        setCurrentSinglesUnallocated(
+          singlesUnallocated
+        );
+
+        // Cash and Digital now come directly from the persistent ledger.
+        // No manual reconstruction is needed when starting a Show.
+        setForm((current) => ({
+          ...current,
+          startingCash:
+            singlesCash.toFixed(2),
+          startingDigital:
+            singlesDigital.toFixed(2),
+        }));
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setCurrentSinglesFunds(null);
+        setCurrentSinglesCash(null);
+        setCurrentSinglesDigital(null);
+        setCurrentSinglesUnallocated(null);
+
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Singles funds could not be loaded."
+        );
+      } finally {
+        if (!cancelled) {
+          setFundsLoading(false);
+        }
+      }
+    }
+
+    void loadSinglesFunds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const enteredStartingCashCents =
+    moneyInputToCents(
+      form.startingCash
+    );
+
+  const enteredStartingDigitalCents =
+    moneyInputToCents(
+      form.startingDigital
+    );
+
+  const enteredStartingFundsCents =
+    enteredStartingCashCents +
+    enteredStartingDigitalCents;
+
+  const currentSinglesFundsCents =
+    currentSinglesFunds === null
+      ? null
+      : Math.round(
+          currentSinglesFunds * 100
+        );
+
+  const currentSinglesCashCents =
+    currentSinglesCash === null
+      ? null
+      : Math.round(
+          currentSinglesCash * 100
+        );
+
+  const currentSinglesDigitalCents =
+    currentSinglesDigital === null
+      ? null
+      : Math.round(
+          currentSinglesDigital * 100
+        );
+
+  const currentSinglesUnallocatedCents =
+    currentSinglesUnallocated === null
+      ? null
+      : Math.round(
+          currentSinglesUnallocated * 100
+        );
+
+  const cashMatchesLedger =
+    currentSinglesCashCents !== null &&
+    enteredStartingCashCents ===
+      currentSinglesCashCents;
+
+  const digitalMatchesLedger =
+    currentSinglesDigitalCents !== null &&
+    enteredStartingDigitalCents ===
+      currentSinglesDigitalCents;
+
+  const noUnallocatedSinglesFunds =
+    currentSinglesUnallocatedCents !== null &&
+    currentSinglesUnallocatedCents === 0;
+
+  const startingFundsMatch =
+    currentSinglesFundsCents !== null &&
+    enteredStartingFundsCents ===
+      currentSinglesFundsCents &&
+    cashMatchesLedger &&
+    digitalMatchesLedger &&
+    noUnallocatedSinglesFunds;
+
   function updateForm(
     field: keyof StartVisitForm,
     value: string
@@ -891,6 +1103,38 @@ function StartVisitModal({
     ) {
       setError(
         "Enter a valid starting Singles digital amount."
+      );
+      return;
+    }
+
+    if (
+      currentSinglesFundsCents === null ||
+      currentSinglesCashCents === null ||
+      currentSinglesDigitalCents === null ||
+      currentSinglesUnallocatedCents === null
+    ) {
+      setError(
+        "Current Singles funds could not be verified. Close this window and try again."
+      );
+      return;
+    }
+
+    if (!noUnallocatedSinglesFunds) {
+      setError(
+        `You have ${money(
+          currentSinglesUnallocated
+        )} of unallocated Singles funds. Allocate those funds to Cash or Digital before starting a Show.`
+      );
+      return;
+    }
+
+    if (!cashMatchesLedger || !digitalMatchesLedger) {
+      setError(
+        `Starting Show funds must match the persistent Singles balances: ${money(
+          currentSinglesCash
+        )} Cash and ${money(
+          currentSinglesDigital
+        )} Digital.`
       );
       return;
     }
@@ -1038,8 +1282,8 @@ function StartVisitModal({
 
   return (
     <ModalShell
-      title="Start Show Visit"
-      subtitle="Capture the Singles position you are bringing into the show."
+      title="Start Show"
+      subtitle="Capture the Singles inventory snapshot and reconcile the live Singles funds you are bringing into the Show."
       onClose={onClose}
       maxWidth="620px"
     >
@@ -1156,11 +1400,9 @@ function StartVisitModal({
                       "12px",
                   }}
                 >
-                  These values
-                  represent the
-                  Singles side only.
-                  Sealed funds are
-                  tracked separately.
+                  Inventory is a valuation snapshot. Cash and Digital
+                  must reconcile to the live Singles Funds ledger. Sealed
+                  funds remain separate.
                 </span>
               </div>
 
@@ -1179,35 +1421,217 @@ function StartVisitModal({
                 }
               />
 
-              <MoneyField
-                label="Singles Cash"
+              <div
+                style={{
+                  padding: "14px 15px",
+                  marginBottom: "14px",
+                  border: "1px solid #303137",
+                  borderRadius: "9px",
+                  background: "#1a1b20",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "baseline",
+                    gap: "16px",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "#85868d",
+                      fontSize: "11px",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    Current Singles Funds
+                  </span>
+
+                  <strong
+                    style={{
+                      fontSize: "18px",
+                    }}
+                  >
+                    {fundsLoading
+                      ? "Loading..."
+                      : money(
+                          currentSinglesFunds
+                        )}
+                  </strong>
+                </div>
+
+                {!fundsLoading && (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(2, minmax(0, 1fr))",
+                      gap: "8px",
+                      marginTop: "12px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: "10px 11px",
+                        border: "1px solid #292a30",
+                        borderRadius: "8px",
+                        background: "#121317",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "block",
+                          color: "#777880",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Cash
+                      </span>
+
+                      <strong
+                        style={{
+                          display: "block",
+                          marginTop: "4px",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {money(
+                          currentSinglesCash
+                        )}
+                      </strong>
+                    </div>
+
+                    <div
+                      style={{
+                        padding: "10px 11px",
+                        border: "1px solid #292a30",
+                        borderRadius: "8px",
+                        background: "#121317",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "block",
+                          color: "#777880",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.06em",
+                        }}
+                      >
+                        Digital
+                      </span>
+
+                      <strong
+                        style={{
+                          display: "block",
+                          marginTop: "4px",
+                          fontSize: "14px",
+                        }}
+                      >
+                        {money(
+                          currentSinglesDigital
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+
+                {!fundsLoading &&
+                  currentSinglesUnallocatedCents !==
+                    null &&
+                  currentSinglesUnallocatedCents !==
+                    0 && (
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        padding: "10px 11px",
+                        border:
+                          "1px solid #5a3d3f",
+                        borderRadius: "8px",
+                        background: "#251b1d",
+                        color: "#e8a4a8",
+                        fontSize: "11px",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {money(
+                        currentSinglesUnallocated
+                      )}{" "}
+                      of Singles funds is still
+                      unallocated. Assign it to
+                      Cash or Digital before
+                      starting a Show.
+                    </div>
+                  )}
+
+                <p
+                  style={{
+                    margin: "10px 0 0",
+                    color: "#777880",
+                    fontSize: "11px",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  Starting Cash and Digital are loaded automatically from
+                  the persistent Singles ledger.
+                </p>
+              </div>
+
+              <ReadOnlyMoneyField
+                label="Starting Singles Cash"
                 value={
                   form.startingCash
                 }
-                onChange={(
-                  value
-                ) =>
-                  updateForm(
-                    "startingCash",
-                    value
-                  )
-                }
               />
 
-              <MoneyField
-                label="Singles Digital"
+              <ReadOnlyMoneyField
+                label="Starting Singles Digital"
                 value={
                   form.startingDigital
                 }
-                onChange={(
-                  value
-                ) =>
-                  updateForm(
-                    "startingDigital",
-                    value
-                  )
-                }
               />
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                  marginTop: "14px",
+                  padding: "11px 12px",
+                  border: startingFundsMatch
+                    ? "1px solid #304b36"
+                    : "1px solid #5a3d3f",
+                  borderRadius: "8px",
+                  background: startingFundsMatch
+                    ? "#19231c"
+                    : "#251b1d",
+                  fontSize: "12px",
+                }}
+              >
+                <span>
+                  Starting Funds
+                </span>
+
+                <strong
+                  style={{
+                    color: startingFundsMatch
+                      ? "#82d591"
+                      : "#e48c92",
+                  }}
+                >
+                  {money(
+                    enteredStartingFundsCents /
+                      100
+                  )}
+                </strong>
+              </div>
 
               <SnapshotSummary
                 inventory={
@@ -1249,6 +1673,8 @@ function StartVisitModal({
             className="primary-button"
             disabled={
               saving ||
+              fundsLoading ||
+              !startingFundsMatch ||
               activeShows.length ===
                 0
             }
@@ -1463,7 +1889,7 @@ function ActiveVisitModal({
       title={visit.show.name}
       subtitle={`${formatDate(
         visit.visitDate
-      )} · Active Show Visit`}
+      )} · Active Show`}
       onClose={onClose}
       maxWidth="920px"
     >
@@ -2551,6 +2977,56 @@ function FormField({
 
       {children}
     </label>
+  );
+}
+
+function ReadOnlyMoneyField({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <FormField label={label}>
+      <div
+        style={{
+          position: "relative",
+        }}
+      >
+        <span
+          style={{
+            position:
+              "absolute",
+            left: "12px",
+            top: "50%",
+            transform:
+              "translateY(-50%)",
+            color:
+              "#777880",
+            fontSize:
+              "13px",
+          }}
+        >
+          $
+        </span>
+
+        <input
+          type="number"
+          value={value}
+          readOnly
+          aria-readonly="true"
+          style={{
+            ...inputStyle,
+            paddingLeft:
+              "28px",
+            color: "#b9bac0",
+            cursor: "default",
+            background: "#15161a",
+          }}
+        />
+      </div>
+    </FormField>
   );
 }
 

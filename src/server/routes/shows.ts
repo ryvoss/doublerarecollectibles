@@ -919,6 +919,12 @@ router.patch(
       const result =
         await prisma.$transaction(
           async (tx) => {
+            // Serialize Show starts so two browser actions cannot both
+            // pass the "only one active visit" check at the same time.
+            await tx.$executeRaw`
+              SELECT pg_advisory_xact_lock(86420931)
+            `;
+
             // Only one Show Visit may be ACTIVE at a time.
             const currentActiveVisit =
               await tx.showVisit.findFirst({
@@ -933,12 +939,94 @@ router.patch(
 
             if (currentActiveVisit) {
               return {
-                conflict: currentActiveVisit,
-                visit: null,
+                kind:
+                  "ACTIVE_CONFLICT" as const,
+                activeVisit:
+                  currentActiveVisit,
               };
             }
 
-            const startedAt = new Date();
+            // Starting Cash and Digital must come directly from the
+            // persistent Singles ledger. This prevents a Show snapshot
+            // from drifting away from the real money balances.
+            const singlesEntries =
+              await tx.fundEntry.findMany({
+                where: {
+                  source: "SINGLES",
+                },
+
+                select: {
+                  amount: true,
+                  location: true,
+                },
+              });
+
+            let cashCents = 0;
+            let digitalCents = 0;
+            let unallocatedCents = 0;
+
+            for (
+              const entry of
+              singlesEntries
+            ) {
+              const amountCents =
+                toCents(entry.amount);
+
+              if (
+                entry.location ===
+                "CASH"
+              ) {
+                cashCents +=
+                  amountCents;
+              } else if (
+                entry.location ===
+                "DIGITAL"
+              ) {
+                digitalCents +=
+                  amountCents;
+              } else {
+                unallocatedCents +=
+                  amountCents;
+              }
+            }
+
+            if (
+              unallocatedCents !== 0
+            ) {
+              return {
+                kind:
+                  "UNALLOCATED_FUNDS" as const,
+                cashCents,
+                digitalCents,
+                unallocatedCents,
+              };
+            }
+
+            const requestedCashCents =
+              toCents(startingCash);
+
+            const requestedDigitalCents =
+              toCents(
+                startingDigital
+              );
+
+            if (
+              requestedCashCents !==
+                cashCents ||
+              requestedDigitalCents !==
+                digitalCents
+            ) {
+              return {
+                kind:
+                  "FUNDS_MISMATCH" as const,
+                cashCents,
+                digitalCents,
+                unallocatedCents,
+              };
+            }
+
+            const startedAt =
+              new Date();
 
             const updated =
               await tx.showVisit.updateMany({
@@ -955,12 +1043,15 @@ router.patch(
                       startingSinglesValue
                     ),
                   startingCash:
-                    toMoney(startingCash),
-                  startingDigital:
-                    toMoney(
-                      startingDigital
+                    centsToMoney(
+                      cashCents
                     ),
-                  endingSinglesValue: null,
+                  startingDigital:
+                    centsToMoney(
+                      digitalCents
+                    ),
+                  endingSinglesValue:
+                    null,
                   endingCash: null,
                   endingDigital: null,
                   finalizedAt: null,
@@ -969,8 +1060,8 @@ router.patch(
 
             if (updated.count !== 1) {
               return {
-                conflict: null,
-                visit: null,
+                kind:
+                  "STATUS_CHANGED" as const,
               };
             }
 
@@ -985,28 +1076,99 @@ router.patch(
                 },
               });
 
+            if (!activeVisit) {
+              return {
+                kind:
+                  "STATUS_CHANGED" as const,
+              };
+            }
+
             return {
-              conflict: null,
+              kind:
+                "STARTED" as const,
               visit: activeVisit,
             };
           }
         );
 
-      if (result.conflict) {
+      if (
+        result.kind ===
+        "ACTIVE_CONFLICT"
+      ) {
         return res.status(409).json({
           error:
             "Another show visit is already active",
           activeVisit: {
-            id: result.conflict.id,
+            id:
+              result.activeVisit.id,
             showName:
-              result.conflict.show.name,
+              result.activeVisit.show
+                .name,
             visitDate:
-              result.conflict.visitDate,
+              result.activeVisit
+                .visitDate,
           },
         });
       }
 
-      if (!result.visit) {
+      if (
+        result.kind ===
+        "UNALLOCATED_FUNDS"
+      ) {
+        return res.status(409).json({
+          error:
+            `Singles funds include ${centsToMoney(
+              result.unallocatedCents
+            )} that is not assigned to Cash or Digital. Allocate it before starting a Show.`,
+          currentSinglesFunds: {
+            cash:
+              centsToMoney(
+                result.cashCents
+              ),
+            digital:
+              centsToMoney(
+                result.digitalCents
+              ),
+            unallocated:
+              centsToMoney(
+                result.unallocatedCents
+              ),
+          },
+        });
+      }
+
+      if (
+        result.kind ===
+        "FUNDS_MISMATCH"
+      ) {
+        return res.status(409).json({
+          error:
+            `Starting Show funds must match the current Singles ledger: ${centsToMoney(
+              result.cashCents
+            )} Cash and ${centsToMoney(
+              result.digitalCents
+            )} Digital.`,
+          currentSinglesFunds: {
+            cash:
+              centsToMoney(
+                result.cashCents
+              ),
+            digital:
+              centsToMoney(
+                result.digitalCents
+              ),
+            unallocated:
+              centsToMoney(
+                result.unallocatedCents
+              ),
+          },
+        });
+      }
+
+      if (
+        result.kind ===
+        "STATUS_CHANGED"
+      ) {
         return res.status(409).json({
           error:
             "Show visit could not be started because its status changed",
@@ -1087,88 +1249,159 @@ router.patch(
         });
       }
 
-      const visit =
-        await prisma.showVisit.findUnique({
-          where: {
-            id: visitId,
-          },
-
-          include: {
-            show: true,
-
-            fundEntries: {
-              where: {
-                source: "SINGLES",
-                type: "SINGLES_SHOW_GAIN",
-              },
-
-              orderBy: {
-                id: "asc",
-              },
-            },
-          },
-        });
-
-      if (!visit) {
-        return res.status(404).json({
-          error:
-            "Show visit not found",
-        });
-      }
-
-      if (
-        visit.status === "FINALIZED" ||
-        visit.finalizedAt
-      ) {
-        return res.status(409).json({
-          error:
-            "Show visit is already finalized",
-        });
-      }
-
-      if (visit.status !== "ACTIVE") {
-        return res.status(409).json({
-          error:
-            "Show visit must be active before it can be finalized",
-        });
-      }
-
-      // Cash and Digital on a Show Visit represent the SINGLES
-      // money pool only. Sealed sales post independently to the
-      // SEALED funds ledger, so they are not subtracted here.
-      const startingSinglesFundsCents =
-        toCents(visit.startingCash) +
-        toCents(visit.startingDigital);
-
-      const endingSinglesFundsCents =
-        toCents(endingCash) +
-        toCents(endingDigital);
-
-      const singlesFundsChangeCents =
-        endingSinglesFundsCents -
-        startingSinglesFundsCents;
-
-      const existingShowGain =
-        visit.fundEntries[0] ?? null;
-
-      if (
-        existingShowGain &&
-        toCents(existingShowGain.amount) !==
-          singlesFundsChangeCents
-      ) {
-        return res.status(409).json({
-          error:
-            "This visit already has a Singles funds entry that does not match the ending snapshot",
-        });
-      }
-
-      const finalizedVisit =
+      const result =
         await prisma.$transaction(
           async (tx) => {
+            // Serialize finalization with other Show finalization attempts.
+            // All Show reconciliation entries are created in this same
+            // transaction, so either everything succeeds or nothing does.
+            await tx.$executeRaw`
+              SELECT pg_advisory_xact_lock(86420932)
+            `;
+
+            const visit =
+              await tx.showVisit.findUnique({
+                where: {
+                  id: visitId,
+                },
+
+                include: {
+                  show: true,
+
+                  fundEntries: {
+                    where: {
+                      source:
+                        "SINGLES",
+                      type:
+                        "SINGLES_SHOW_GAIN",
+                    },
+
+                    orderBy: {
+                      id: "asc",
+                    },
+                  },
+                },
+              });
+
+            if (!visit) {
+              return {
+                kind:
+                  "NOT_FOUND" as const,
+              };
+            }
+
+            if (
+              visit.status ===
+                "FINALIZED" ||
+              visit.finalizedAt
+            ) {
+              return {
+                kind:
+                  "ALREADY_FINALIZED" as const,
+              };
+            }
+
+            if (
+              visit.status !==
+              "ACTIVE"
+            ) {
+              return {
+                kind:
+                  "NOT_ACTIVE" as const,
+              };
+            }
+
+            // A successful finalization always creates its Cash and Digital
+            // reconciliation rows atomically. If linked gain rows already
+            // exist while the visit is still active, stop instead of risking
+            // a duplicate or trying to infer what happened previously.
+            if (
+              visit.fundEntries.length >
+              0
+            ) {
+              return {
+                kind:
+                  "EXISTING_GAIN" as const,
+              };
+            }
+
+            const singlesEntries =
+              await tx.fundEntry.findMany({
+                where: {
+                  source: "SINGLES",
+                },
+
+                select: {
+                  amount: true,
+                  location: true,
+                },
+              });
+
+            let currentCashCents = 0;
+            let currentDigitalCents =
+              0;
+            let unallocatedCents = 0;
+
+            for (
+              const entry of
+              singlesEntries
+            ) {
+              const amountCents =
+                toCents(entry.amount);
+
+              if (
+                entry.location ===
+                "CASH"
+              ) {
+                currentCashCents +=
+                  amountCents;
+              } else if (
+                entry.location ===
+                "DIGITAL"
+              ) {
+                currentDigitalCents +=
+                  amountCents;
+              } else {
+                unallocatedCents +=
+                  amountCents;
+              }
+            }
+
+            if (
+              unallocatedCents !== 0
+            ) {
+              return {
+                kind:
+                  "UNALLOCATED_FUNDS" as const,
+                currentCashCents,
+                currentDigitalCents,
+                unallocatedCents,
+              };
+            }
+
+            const endingCashCents =
+              toCents(endingCash);
+
+            const endingDigitalCents =
+              toCents(
+                endingDigital
+              );
+
+            // Reconcile each physical location independently. This is the
+            // key rule that makes the ending Show snapshot become the new
+            // persistent Singles Cash/Digital balance.
+            const cashReconciliationCents =
+              endingCashCents -
+              currentCashCents;
+
+            const digitalReconciliationCents =
+              endingDigitalCents -
+              currentDigitalCents;
+
             const finalizedAt =
               new Date();
 
-            const result =
+            const updateResult =
               await tx.showVisit.updateMany({
                 where: {
                   id: visitId,
@@ -1177,61 +1410,195 @@ router.patch(
                 },
 
                 data: {
-                  status: "FINALIZED",
+                  status:
+                    "FINALIZED",
                   endingSinglesValue:
                     toMoney(
                       endingSinglesValue
                     ),
                   endingCash:
-                    toMoney(endingCash),
+                    centsToMoney(
+                      endingCashCents
+                    ),
                   endingDigital:
-                    toMoney(endingDigital),
+                    centsToMoney(
+                      endingDigitalCents
+                    ),
                   finalizedAt,
                 },
               });
 
-            if (result.count !== 1) {
-              return null;
+            if (
+              updateResult.count !== 1
+            ) {
+              return {
+                kind:
+                  "STATUS_CHANGED" as const,
+              };
             }
 
-            if (!existingShowGain) {
-              await tx.fundEntry.create({
-                data: {
-                  source: "SINGLES",
-                  type: "SINGLES_SHOW_GAIN",
+            // Keep two explicit location rows, including $0.00 reconciliations.
+            // That makes every finalized Show auditable as a Cash snapshot
+            // and a Digital snapshot without changing the total unnecessarily.
+            await tx.fundEntry.createMany({
+              data: [
+                {
+                  source:
+                    "SINGLES",
+                  location:
+                    "CASH",
+                  type:
+                    "SINGLES_SHOW_GAIN",
                   amount:
                     centsToMoney(
-                      singlesFundsChangeCents
+                      cashReconciliationCents
                     ),
                   transactionDate:
                     visit.visitDate,
-                  showVisitId: visit.id,
+                  showVisitId:
+                    visit.id,
                   note:
-                    `Singles funds change - ${visit.show.name}`,
+                    `Singles cash reconciliation - ${visit.show.name}`,
+                },
+                {
+                  source:
+                    "SINGLES",
+                  location:
+                    "DIGITAL",
+                  type:
+                    "SINGLES_SHOW_GAIN",
+                  amount:
+                    centsToMoney(
+                      digitalReconciliationCents
+                    ),
+                  transactionDate:
+                    visit.visitDate,
+                  showVisitId:
+                    visit.id,
+                  note:
+                    `Singles digital reconciliation - ${visit.show.name}`,
+                },
+              ],
+            });
+
+            const finalizedVisit =
+              await tx.showVisit.findUnique({
+                where: {
+                  id: visitId,
+                },
+
+                include: {
+                  show: true,
                 },
               });
+
+            if (!finalizedVisit) {
+              return {
+                kind:
+                  "STATUS_CHANGED" as const,
+              };
             }
 
-            return tx.showVisit.findUnique({
-              where: {
-                id: visitId,
+            return {
+              kind:
+                "FINALIZED" as const,
+              visit:
+                finalizedVisit,
+              reconciliation: {
+                cash:
+                  centsToMoney(
+                    cashReconciliationCents
+                  ),
+                digital:
+                  centsToMoney(
+                    digitalReconciliationCents
+                  ),
               },
-
-              include: {
-                show: true,
-              },
-            });
+            };
           }
         );
 
-      if (!finalizedVisit) {
+      if (
+        result.kind ===
+        "NOT_FOUND"
+      ) {
+        return res.status(404).json({
+          error:
+            "Show visit not found",
+        });
+      }
+
+      if (
+        result.kind ===
+        "ALREADY_FINALIZED"
+      ) {
+        return res.status(409).json({
+          error:
+            "Show visit is already finalized",
+        });
+      }
+
+      if (
+        result.kind ===
+        "NOT_ACTIVE"
+      ) {
+        return res.status(409).json({
+          error:
+            "Show visit must be active before it can be finalized",
+        });
+      }
+
+      if (
+        result.kind ===
+        "EXISTING_GAIN"
+      ) {
+        return res.status(409).json({
+          error:
+            "This active visit already has Singles reconciliation entries. Finalization was stopped to prevent duplicate ledger activity.",
+        });
+      }
+
+      if (
+        result.kind ===
+        "UNALLOCATED_FUNDS"
+      ) {
+        return res.status(409).json({
+          error:
+            `Singles funds include ${centsToMoney(
+              result.unallocatedCents
+            )} that is not assigned to Cash or Digital. Allocate it before finalizing the Show.`,
+          currentSinglesFunds: {
+            cash:
+              centsToMoney(
+                result.currentCashCents
+              ),
+            digital:
+              centsToMoney(
+                result.currentDigitalCents
+              ),
+            unallocated:
+              centsToMoney(
+                result.unallocatedCents
+              ),
+          },
+        });
+      }
+
+      if (
+        result.kind ===
+        "STATUS_CHANGED"
+      ) {
         return res.status(409).json({
           error:
             "Show visit is no longer active",
         });
       }
 
-      res.json(finalizedVisit);
+      res.json({
+        ...result.visit,
+        reconciliation:
+          result.reconciliation,
+      });
     } catch (error) {
       console.error(
         "Error finalizing show visit:",

@@ -61,42 +61,6 @@ type InventoryItem = {
   batchCount: number;
 };
 
-type SalesSummary = {
-  totalSalesTransactions: number;
-  totalUnitsSold: number;
-  totalRevenue: string | number;
-  totalCOGS: string | number;
-  grossProfit: string | number;
-  grossMargin: number;
-  averageSaleValue: string | number;
-  averageProfitPerSale: string | number;
-  cashRevenue: string | number;
-  digitalRevenue: string | number;
-};
-
-type ProductPerformanceItem = {
-  productId: number;
-  itemId: string;
-  productName: string;
-  unitsSold: number;
-  revenue: string | number;
-  cogs: string | number;
-  grossProfit: string | number;
-  grossMargin: number;
-  roi: number;
-  hasSales: boolean;
-};
-
-type ProductPerformance = {
-  products: ProductPerformanceItem[];
-  rankings: {
-    bestSeller: ProductPerformanceItem | null;
-    highestRevenue: ProductPerformanceItem | null;
-    highestGrossProfit: ProductPerformanceItem | null;
-    highestGrossMargin: ProductPerformanceItem | null;
-    highestRoi: ProductPerformanceItem | null;
-  };
-};
 
 type ApiStatus =
   | "loading"
@@ -133,7 +97,7 @@ const navigation: {
 }[] = [
   {
     id: "dashboard",
-    label: "Dashboard",
+    label: "Command Center",
     icon: "▦",
   },
   {
@@ -176,16 +140,6 @@ function money(
   }).format(Number(value ?? 0));
 }
 
-function percent(
-  value: number | null | undefined
-) {
-  return new Intl.NumberFormat("en-US", {
-    style: "percent",
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(Number(value ?? 0));
-}
-
 // ---------------------------------------------------------
 // APP
 // ---------------------------------------------------------
@@ -200,21 +154,23 @@ function App() {
   const [inventory, setInventory] =
     useState<InventoryItem[]>([]);
 
-  const [salesSummary, setSalesSummary] =
-    useState<SalesSummary | null>(null);
 
-  const [
-    productPerformance,
-    setProductPerformance,
-  ] = useState<ProductPerformance | null>(
-    null
-  );
 
   const [dashboardLoading, setDashboardLoading] =
     useState(true);
 
   const [dashboardError, setDashboardError] =
     useState<string | null>(null);
+
+  // Command Center workflows stay on the Command Center.
+  // Each quick action mounts the existing page workflow in modal-only mode
+  // instead of navigating away and duplicating business logic.
+  const [
+    commandAction,
+    setCommandAction,
+  ] = useState<
+    "NEW_ORDER" | "RECORD_SALE" | null
+  >(null);
 
   const currentPage =
     navigation.find(
@@ -223,24 +179,18 @@ function App() {
 
   // Load the data needed by the main dashboard.
   useEffect(() => {
+    let cancelled = false;
+
     async function loadDashboard() {
       try {
         setDashboardLoading(true);
         setDashboardError(null);
 
-        const [
-          healthResponse,
-          inventoryResponse,
-          salesResponse,
-          performanceResponse,
-        ] = await Promise.all([
-          fetch("/api/health"),
-          fetch("/api/inventory"),
-          fetch("/api/sales/summary"),
-          fetch(
-            "/api/sales/product-performance"
-          ),
-        ]);
+        const [healthResponse, inventoryResponse] =
+          await Promise.all([
+            fetch("/api/health"),
+            fetch("/api/inventory"),
+          ]);
 
         if (!healthResponse.ok) {
           throw new Error(
@@ -248,42 +198,30 @@ function App() {
           );
         }
 
-        setApiStatus("online");
-
         if (!inventoryResponse.ok) {
           throw new Error(
             "Inventory data could not be loaded."
           );
         }
 
-        if (!salesResponse.ok) {
-          throw new Error(
-            "Sales summary could not be loaded."
-          );
+        if (cancelled) {
+          return;
         }
 
-        if (!performanceResponse.ok) {
-          throw new Error(
-            "Product performance could not be loaded."
-          );
-        }
+        setApiStatus("online");
 
         setInventory(
           await inventoryResponse.json()
-        );
-
-        setSalesSummary(
-          await salesResponse.json()
-        );
-
-        setProductPerformance(
-          await performanceResponse.json()
         );
       } catch (error) {
         console.error(
           "Dashboard loading error:",
           error
         );
+
+        if (cancelled) {
+          return;
+        }
 
         setApiStatus("offline");
 
@@ -293,11 +231,59 @@ function App() {
             : "Dashboard data could not be loaded."
         );
       } finally {
-        setDashboardLoading(false);
+        if (!cancelled) {
+          setDashboardLoading(false);
+        }
       }
     }
 
-    loadDashboard();
+    // Shared business workflows dispatch this event after data changes.
+    // Refresh only the inventory snapshot here so the Command Center stays
+    // visible instead of flashing back to its full loading screen.
+    async function refreshInventorySnapshot() {
+      try {
+        const inventoryResponse =
+          await fetch("/api/inventory");
+
+        if (!inventoryResponse.ok) {
+          throw new Error(
+            "Inventory data could not be refreshed."
+          );
+        }
+
+        const inventoryData =
+          await inventoryResponse.json();
+
+        if (!cancelled) {
+          setInventory(inventoryData);
+        }
+      } catch (error) {
+        console.error(
+          "Command Center inventory refresh error:",
+          error
+        );
+      }
+    }
+
+    function handleBusinessDataChanged() {
+      void refreshInventorySnapshot();
+    }
+
+    void loadDashboard();
+
+    window.addEventListener(
+      "business-data-changed",
+      handleBusinessDataChanged
+    );
+
+    return () => {
+      cancelled = true;
+
+      window.removeEventListener(
+        "business-data-changed",
+        handleBusinessDataChanged
+      );
+    };
   }, []);
 
   return (
@@ -404,12 +390,14 @@ function App() {
           {activePage === "dashboard" && (
             <Dashboard
               inventory={inventory}
-              salesSummary={salesSummary}
-              productPerformance={
-                productPerformance
-              }
               loading={dashboardLoading}
               error={dashboardError}
+              onNewOrder={() =>
+                setCommandAction("NEW_ORDER")
+              }
+              onRecordSale={() =>
+                setCommandAction("RECORD_SALE")
+              }
             />
           )}
 
@@ -434,6 +422,26 @@ function App() {
               />
             )}
         </section>
+
+        {commandAction === "NEW_ORDER" && (
+          <OrdersPage
+            initialOpenNewOrder
+            quickActionOnly
+            onQuickActionClose={() =>
+              setCommandAction(null)
+            }
+          />
+        )}
+
+        {commandAction === "RECORD_SALE" && (
+          <SalesPage
+            initialOpenRecordSale
+            quickActionOnly
+            onQuickActionClose={() =>
+              setCommandAction(null)
+            }
+          />
+        )}
       </main>
     </div>
   );
@@ -445,49 +453,42 @@ function App() {
 
 function Dashboard({
   inventory,
-  salesSummary,
-  productPerformance,
   loading,
   error,
+  onNewOrder,
+  onRecordSale,
 }: {
   inventory: InventoryItem[];
-  salesSummary: SalesSummary | null;
-  productPerformance: ProductPerformance | null;
   loading: boolean;
   error: string | null;
+  onNewOrder: () => void;
+  onRecordSale: () => void;
 }) {
-  const totalInventoryValue =
-    inventory.reduce(
-      (total, item) =>
-        total + Number(item.inventoryValue),
-      0
-    );
+  const totalInventoryValue = inventory.reduce(
+    (total, item) => total + Number(item.inventoryValue),
+    0
+  );
 
-  const totalRetailValue =
-    inventory.reduce(
-      (total, item) =>
-        total + Number(item.retailValue),
-      0
-    );
+  const totalRetailValue = inventory.reduce(
+    (total, item) => total + Number(item.retailValue),
+    0
+  );
 
-  const totalUnitsOnHand =
-    inventory.reduce(
-      (total, item) =>
-        total + item.unitsOnHand,
-      0
-    );
+  const totalUnitsOnHand = inventory.reduce(
+    (total, item) => total + item.unitsOnHand,
+    0
+  );
 
-  const productsInInventory =
-    inventory.filter(
-      (item) => item.unitsOnHand > 0
-    ).length;
+  const productsInInventory = inventory.filter(
+    (item) => item.unitsOnHand > 0
+  ).length;
 
   if (loading) {
     return (
       <LoadingPage
         icon="DR"
-        title="Loading Dashboard"
-        message="Retrieving inventory and sales data..."
+        title="Loading Command Center"
+        message="Retrieving current business data..."
       />
     );
   }
@@ -496,278 +497,247 @@ function Dashboard({
     return (
       <LoadingPage
         icon="!"
-        title="Dashboard Unavailable"
+        title="Command Center Unavailable"
         message={error}
       />
     );
   }
 
-  const bestSeller =
-    productPerformance?.rankings
-      .bestSeller ?? null;
-
-  const highestRevenue =
-    productPerformance?.rankings
-      .highestRevenue ?? null;
-
-  const highestProfit =
-    productPerformance?.rankings
-      .highestGrossProfit ?? null;
-
-  const highestRoi =
-    productPerformance?.rankings
-      .highestRoi ?? null;
-
   return (
     <>
-            <div className="page-heading">
-          <div>
-            <h2>Business Overview</h2>
-
-            <p>
-              Live funds, sealed inventory,
-              and sales performance.
-            </p>
-          </div>
-          <ActiveShowPanel />
-          
-        </div>
-
-        <FundsPanel />
-
-        <div className="metric-grid">
-        <MetricCard
-          label="Inventory Value"
-          value={money(
-            totalInventoryValue
-          )}
-          detail={`${totalUnitsOnHand} units on hand`}
-        />
-
-        <MetricCard
-          label="Retail Value"
-          value={money(
-            totalRetailValue
-          )}
-          detail={`${productsInInventory} products in inventory`}
-        />
-
-        <MetricCard
-          label="Lifetime Revenue"
-          value={money(
-            salesSummary?.totalRevenue
-          )}
-          detail={`${salesSummary?.totalSalesTransactions ?? 0} sales transactions`}
-        />
-
-        <MetricCard
-          label="Gross Profit"
-          value={money(
-            salesSummary?.grossProfit
-          )}
-          detail={`${percent(
-            salesSummary?.grossMargin
-          )} gross margin`}
-        />
-      </div>
-
-      <div className="dashboard-grid">
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>
-                Sales Performance
-              </h3>
-
-              <p>
-                Lifetime sealed product
-                performance
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{ padding: "20px" }}
-          >
-            <DashboardRow
-              label="Units Sold"
-              value={String(
-                salesSummary?.totalUnitsSold ??
-                  0
-              )}
-            />
-
-            <DashboardRow
-              label="Revenue"
-              value={money(
-                salesSummary?.totalRevenue
-              )}
-            />
-
-            <DashboardRow
-              label="COGS"
-              value={money(
-                salesSummary?.totalCOGS
-              )}
-            />
-
-            <DashboardRow
-              label="Gross Profit"
-              value={money(
-                salesSummary?.grossProfit
-              )}
-            />
-
-            <DashboardRow
-              label="Gross Margin"
-              value={percent(
-                salesSummary?.grossMargin
-              )}
-            />
-
-            <DashboardRow
-              label="Average Sale"
-              value={money(
-                salesSummary?.averageSaleValue
-              )}
-            />
-
-            <DashboardRow
-              label="Cash Revenue"
-              value={money(
-                salesSummary?.cashRevenue
-              )}
-            />
-
-            <DashboardRow
-              label="Digital Revenue"
-              value={money(
-                salesSummary?.digitalRevenue
-              )}
-              last
-            />
-          </div>
-        </div>
-
-        <div className="panel">
-          <div className="panel-header">
-            <div>
-              <h3>
-                Inventory Health
-              </h3>
-
-              <p>
-                Current sealed inventory
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{ padding: "20px" }}
-          >
-            <DashboardRow
-              label="Units On Hand"
-              value={String(
-                totalUnitsOnHand
-              )}
-            />
-
-            <DashboardRow
-              label="Products In Stock"
-              value={String(
-                productsInInventory
-              )}
-            />
-
-            <DashboardRow
-              label="Inventory Basis"
-              value={money(
-                totalInventoryValue
-              )}
-            />
-
-            <DashboardRow
-              label="Retail Value"
-              value={money(
-                totalRetailValue
-              )}
-            />
-
-            <DashboardRow
-              label="Potential Gross Profit"
-              value={money(
-                totalRetailValue -
-                  totalInventoryValue
-              )}
-              last
-            />
-          </div>
-        </div>
-      </div>
-
       <div
-        className="panel"
-        style={{ marginTop: "18px" }}
+        className="page-heading"
+        style={{ marginBottom: "16px" }}
       >
-        <div className="panel-header">
-          <div>
-            <h3>Product Leaders</h3>
-
-            <p>
-              Best-performing sealed
-              products
-            </p>
-          </div>
+        <div>
+          <h2>Command Center</h2>
+          <p>
+            Run the day-to-day business from one place.
+          </p>
         </div>
+      </div>
+
+      {/* Keep the two most common non-Show workflows easy to reach without
+          stretching them across the entire Command Center. */}
+      <section style={{ marginBottom: "18px" }}>
+        <CommandCenterSectionHeader
+          title="Quick Actions"
+        />
 
         <div
-          style={{ padding: "20px" }}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "10px",
+          }}
         >
-          <DashboardRow
-            label="Best Seller"
-            value={
-              bestSeller
-                ? `${bestSeller.productName} · ${bestSeller.unitsSold} units`
-                : "No sales yet"
-            }
+          <CommandAction
+            icon="+"
+            title="New Order"
+            detail="Buy sealed inventory"
+            onClick={onNewOrder}
           />
 
-          <DashboardRow
-            label="Highest Revenue"
-            value={
-              highestRevenue
-                ? `${highestRevenue.productName} · ${money(
-                    highestRevenue.revenue
-                  )}`
-                : "No sales yet"
-            }
-          />
-
-          <DashboardRow
-            label="Highest Gross Profit"
-            value={
-              highestProfit
-                ? `${highestProfit.productName} · ${money(
-                    highestProfit.grossProfit
-                  )}`
-                : "No sales yet"
-            }
-          />
-
-          <DashboardRow
-            label="Highest ROI"
-            value={
-              highestRoi
-                ? `${highestRoi.productName} · ${percent(
-                    highestRoi.roi
-                  )}`
-                : "No sales yet"
-            }
-            last
+          <CommandAction
+            icon="$"
+            title="Record Sale"
+            detail="Sell sealed product"
+            onClick={onRecordSale}
           />
         </div>
-      </div>
+      </section>
+
+      {/* Shows are the primary operational workflow, so keep the current
+          Show state near the top of Command Center. */}
+      <section style={{ marginBottom: "20px" }}>
+        <CommandCenterSectionHeader
+          title="Show Operations"
+          detail="Start a Show or continue the active Show"
+        />
+
+        <ActiveShowPanel />
+      </section>
+
+      <section>
+        <CommandCenterSectionHeader
+          title="Business Position"
+          detail="Funds and sealed inventory"
+        />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1fr)",
+            gap: "14px",
+            alignItems: "stretch",
+          }}
+        >
+          <div id="command-center-funds">
+            <FundsPanel />
+          </div>
+
+          <div
+            className="panel"
+            style={{
+              height: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <div className="panel-header">
+              <div>
+                <h3>Sealed Inventory</h3>
+                <p>Current inventory position</p>
+              </div>
+            </div>
+
+            <div style={{ padding: "18px 20px" }}>
+              <DashboardRow
+                label="Inventory Cost Value"
+                value={money(totalInventoryValue)}
+              />
+              <DashboardRow
+                label="Retail Value"
+                value={money(totalRetailValue)}
+              />
+              <DashboardRow
+                label="Potential Gross Profit"
+                value={money(totalRetailValue - totalInventoryValue)}
+              />
+              <DashboardRow
+                label="Units On Hand"
+                value={String(totalUnitsOnHand)}
+              />
+              <DashboardRow
+                label="Products In Stock"
+                value={String(productsInInventory)}
+                last
+              />
+            </div>
+          </div>
+        </div>
+      </section>
     </>
+  );
+}
+
+function CommandCenterSectionHeader({
+  title,
+  detail,
+}: {
+  title: string;
+  detail?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: "10px",
+        marginBottom: "9px",
+      }}
+    >
+      <span
+        style={{
+          color: "#9a9ba2",
+          fontSize: "11px",
+          fontWeight: 800,
+          letterSpacing: "0.09em",
+          textTransform: "uppercase",
+        }}
+      >
+        {title}
+      </span>
+
+      {detail && (
+        <span
+          style={{
+            color: "#5f6067",
+            fontSize: "11px",
+          }}
+        >
+          {detail}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CommandAction({
+  icon,
+  title,
+  detail,
+  onClick,
+}: {
+  icon: string;
+  title: string;
+  detail: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        width: "220px",
+        maxWidth: "100%",
+        minHeight: "58px",
+        padding: "10px 13px",
+        border: "1px solid #2f6f4a",
+        borderRadius: "9px",
+        background: "#163a28",
+        color: "#f3fff8",
+        cursor: "pointer",
+        textAlign: "left",
+        boxShadow: "0 1px 0 rgba(255, 255, 255, 0.03) inset",
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          display: "grid",
+          placeItems: "center",
+          width: "34px",
+          height: "34px",
+          flex: "0 0 34px",
+          border: "1px solid #3d8159",
+          borderRadius: "8px",
+          background: "#205338",
+          color: "#d9ffe8",
+          fontSize: "17px",
+          fontWeight: 900,
+        }}
+      >
+        {icon}
+      </span>
+
+      <span style={{ minWidth: 0 }}>
+        <strong
+          style={{
+            display: "block",
+            color: "#f5fff8",
+            fontSize: "14px",
+            lineHeight: 1.2,
+            fontWeight: 800,
+          }}
+        >
+          {title}
+        </strong>
+        <span
+          style={{
+            display: "block",
+            marginTop: "3px",
+            color: "#a9cbb6",
+            fontSize: "11px",
+            lineHeight: 1.25,
+          }}
+        >
+          {detail}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -2036,6 +2006,8 @@ const secondaryButtonStyle = {
 
 const menuItemStyle = {
   width: "100%",
+  boxSizing: "border-box" as const,
+  display: "block",
   padding: "9px 10px",
   border: 0,
   borderRadius: "6px",
@@ -2044,6 +2016,7 @@ const menuItemStyle = {
   cursor: "pointer",
   fontSize: "12px",
   textAlign: "left" as const,
+  whiteSpace: "nowrap" as const,
 };
 
 function FormField({
@@ -2286,3 +2259,4 @@ function PagePlaceholder({
 }
 
 export default App;
+
