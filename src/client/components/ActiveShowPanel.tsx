@@ -272,6 +272,19 @@ async function readApiError(
 }
 
 // ---------------------------------------------------------
+// CROSS-PAGE REFRESH SIGNAL
+// ---------------------------------------------------------
+
+// The Dashboard is made from several independent components. Dispatching
+// this event lets those components reload themselves after a Show action
+// changes shared data such as Funds, Sales, Inventory, or Show history.
+function notifyBusinessDataChanged() {
+  window.dispatchEvent(
+    new Event("business-data-changed")
+  );
+}
+
+// ---------------------------------------------------------
 // ACTIVE SHOW PANEL
 // ---------------------------------------------------------
 
@@ -507,7 +520,13 @@ export default function ActiveShowPanel() {
     setPerformance(null);
     setVisitDetail(null);
 
+    // The active visit disappears immediately after finalization.
     await loadActiveVisit();
+
+    // Finalizing a Show can change the Singles Funds balance and Show
+    // history, so let the rest of the dashboard refresh without requiring
+    // a browser reload.
+    notifyBusinessDataChanged();
   }
 
   // -------------------------------------------------------
@@ -707,6 +726,9 @@ export default function ActiveShowPanel() {
             );
 
             setShowVisitModal(true);
+
+            // Starting a visit changes Show state throughout the app.
+            notifyBusinessDataChanged();
           }}
         />
       )}
@@ -1457,10 +1479,14 @@ function ActiveVisitModal({
                 onSaleRecorded={() => {
                   // The normal Sales workflow already handles
                   // FIFO, inventory, COGS, and SEALED Funds.
-                  // After it saves, return to the Show workspace
-                  // and reload the linked Show performance.
+                  // After it saves, return to the Show workspace,
+                  // reload the linked Show performance, and tell the
+                  // rest of the dashboard that shared data changed.
                   setRecordingSale(false);
-                  void onRefresh();
+
+                  void onRefresh().then(() => {
+                    notifyBusinessDataChanged();
+                  });
                 }}
               />
             </ModalBody>

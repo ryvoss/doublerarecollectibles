@@ -205,6 +205,11 @@ export default function SalesPage({
   const [success, setSuccess] =
     useState<string | null>(null);
 
+  // When Sales is launched from an Active Show Visit, use a compact
+  // sale-entry experience instead of rendering the full Sales dashboard.
+  const embeddedShowSale =
+    initialShowVisitId !== null;
+
   // -------------------------------------------------------
   // LOAD SALES DATA
   // -------------------------------------------------------
@@ -373,58 +378,60 @@ export default function SalesPage({
 
   return (
     <>
-      <div className="panel-header">
-        <div>
-          <h3>Sealed Sales</h3>
-
-          <p>
-            Sales finalize
-            immediately and consume
-            inventory using FIFO.
-          </p>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: "10px",
-          }}
-        >
-          <button
-            type="button"
-            style={controlStyle}
-            disabled={
-              loading || adding
-            }
-            onClick={() =>
-              setRefresh(
-                (value) =>
-                  value + 1
-              )
-            }
-          >
-            Refresh
-          </button>
-
-          <button
-            type="button"
-            className="primary-button"
-            disabled={
-              loading ||
-              !!error ||
-              adding
-            }
-            onClick={() => {
-              setSuccess(null);
-              setAdding(true);
+      {!embeddedShowSale && (
+        <div className="panel-header">
+          <div>
+            <h3>Sealed Sales</h3>
+        
+            <p>
+              Sales finalize
+              immediately and consume
+              inventory using FIFO.
+            </p>
+          </div>
+        
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
             }}
           >
-            Record Sale
-          </button>
+            <button
+              type="button"
+              style={controlStyle}
+              disabled={
+                loading || adding
+              }
+              onClick={() =>
+                setRefresh(
+                  (value) =>
+                    value + 1
+                )
+              }
+            >
+              Refresh
+            </button>
+        
+            <button
+              type="button"
+              className="primary-button"
+              disabled={
+                loading ||
+                !!error ||
+                adding
+              }
+              onClick={() => {
+                setSuccess(null);
+                setAdding(true);
+              }}
+            >
+              Record Sale
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {success && (
+      {success && !embeddedShowSale && (
         <p role="status">
           {success}
         </p>
@@ -443,41 +450,43 @@ export default function SalesPage({
       ) : (
         !error && (
           <>
-            <div className="metric-grid">
-              <Metric
-                label="Revenue"
-                value={money(
-                  revenue
-                )}
-              />
-
-              <Metric
-                label="FIFO COGS"
-                value={money(
-                  total(
-                    allLines,
-                    "cogs"
-                  )
-                )}
-              />
-
-              <Metric
-                label="Gross Profit"
-                value={money(
-                  profit
-                )}
-              />
-
-              <Metric
-                label="Gross Margin"
-                value={percent(
-                  revenue > 0
-                    ? profit /
-                        revenue
-                    : 0
-                )}
-              />
-            </div>
+            {!embeddedShowSale && (
+              <div className="metric-grid">
+                <Metric
+                  label="Revenue"
+                  value={money(
+                    revenue
+                  )}
+                />
+              
+                <Metric
+                  label="FIFO COGS"
+                  value={money(
+                    total(
+                      allLines,
+                      "cogs"
+                    )
+                  )}
+                />
+              
+                <Metric
+                  label="Gross Profit"
+                  value={money(
+                    profit
+                  )}
+                />
+              
+                <Metric
+                  label="Gross Margin"
+                  value={percent(
+                    revenue > 0
+                      ? profit /
+                          revenue
+                      : 0
+                  )}
+                />
+              </div>
+            )}
 
             {adding && (
               <NewSaleForm
@@ -498,343 +507,347 @@ export default function SalesPage({
               />
             )}
 
-            <section className="panel">
-              <div className="panel-header">
-                <input
-                  aria-label="Search sales"
-                  style={
-                    controlStyle
-                  }
-                  placeholder="Search sale or product"
-                  value={search}
-                  onChange={(
-                    event
-                  ) =>
-                    setSearch(
-                      event
-                        .target
-                        .value
-                    )
-                  }
-                />
-
-                <select
-                  aria-label="Payment method filter"
-                  style={
-                    controlStyle
-                  }
-                  value={
-                    paymentFilter
-                  }
-                  onChange={(
-                    event
-                  ) =>
-                    setPaymentFilter(
-                      event
-                        .target
-                        .value
-                    )
-                  }
-                >
-                  <option value="ALL">
-                    All payments
-                  </option>
-
-                  <option value="CASH">
-                    Cash
-                  </option>
-
-                  <option value="DIGITAL">
-                    Digital
-                  </option>
-                </select>
-              </div>
-
-              {visibleSales.length ===
-              0 ? (
-                <p
-                  style={{
-                    padding:
-                      "20px",
-                  }}
-                >
-                  No sales to
-                  display.
-                </p>
-              ) : (
-                <Table
-                  headings={[
-                    "Sale",
-                    "Date",
-                    "Payment",
-                    "Show Visit",
-                    "Units",
-                    "Revenue",
-                    "FIFO COGS",
-                    "Gross Profit",
-                    "Details",
-                  ]}
-                >
-                  {visibleSales.map(
-                    (sale) => (
-                      <Fragment
-                        key={
-                          sale.id
-                        }
-                      >
-                        <tr>
-                          <Cell>
-                            {
-                              sale.saleNumber
+            {!embeddedShowSale && (
+              <>
+                <section className="panel">
+                  <div className="panel-header">
+                    <input
+                      aria-label="Search sales"
+                      style={
+                        controlStyle
+                      }
+                      placeholder="Search sale or product"
+                      value={search}
+                      onChange={(
+                        event
+                      ) =>
+                        setSearch(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                    />
+                
+                    <select
+                      aria-label="Payment method filter"
+                      style={
+                        controlStyle
+                      }
+                      value={
+                        paymentFilter
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        setPaymentFilter(
+                          event
+                            .target
+                            .value
+                        )
+                      }
+                    >
+                      <option value="ALL">
+                        All payments
+                      </option>
+                
+                      <option value="CASH">
+                        Cash
+                      </option>
+                
+                      <option value="DIGITAL">
+                        Digital
+                      </option>
+                    </select>
+                  </div>
+                
+                  {visibleSales.length ===
+                  0 ? (
+                    <p
+                      style={{
+                        padding:
+                          "20px",
+                      }}
+                    >
+                      No sales to
+                      display.
+                    </p>
+                  ) : (
+                    <Table
+                      headings={[
+                        "Sale",
+                        "Date",
+                        "Payment",
+                        "Show Visit",
+                        "Units",
+                        "Revenue",
+                        "FIFO COGS",
+                        "Gross Profit",
+                        "Details",
+                      ]}
+                    >
+                      {visibleSales.map(
+                        (sale) => (
+                          <Fragment
+                            key={
+                              sale.id
                             }
-                          </Cell>
-
-                          <Cell>
-                            {sale.saleDate.slice(
-                              0,
-                              10
-                            )}
-                          </Cell>
-
-                          <Cell>
-                            {
-                              sale.paymentMethod
-                            }
-                          </Cell>
-
-                          <Cell>
-                            {sale.showVisit
-                              ? `${sale.showVisit.show.name} (${sale.showVisit.visitDate.slice(
+                          >
+                            <tr>
+                              <Cell>
+                                {
+                                  sale.saleNumber
+                                }
+                              </Cell>
+                
+                              <Cell>
+                                {sale.saleDate.slice(
                                   0,
                                   10
-                                )})`
-                              : "None"}
-                          </Cell>
-
-                          <Cell>
-                            {sale.lines.reduce(
-                              (
-                                sum,
-                                line
-                              ) =>
-                                sum +
-                                line.quantity,
-                              0
-                            )}
-                          </Cell>
-
-                          <Cell>
-                            {money(
-                              total(
-                                sale.lines,
-                                "revenue"
-                              )
-                            )}
-                          </Cell>
-
-                          <Cell>
-                            {money(
-                              total(
-                                sale.lines,
-                                "cogs"
-                              )
-                            )}
-                          </Cell>
-
-                          <Cell>
-                            {money(
-                              total(
-                                sale.lines,
-                                "grossProfit"
-                              )
-                            )}
-                          </Cell>
-
-                          <Cell>
-                            <button
-                              type="button"
-                              style={
-                                controlStyle
-                              }
-                              aria-expanded={
-                                expandedId ===
-                                sale.id
-                              }
-                              aria-controls={`sale-${sale.id}`}
-                              onClick={() =>
-                                setExpandedId(
-                                  expandedId ===
-                                    sale.id
-                                    ? null
-                                    : sale.id
-                                )
-                              }
-                            >
-                              {expandedId ===
-                              sale.id
-                                ? "Hide"
-                                : "View"}
-                            </button>
-                          </Cell>
-                        </tr>
-
-                        {expandedId ===
-                          sale.id && (
-                          <tr>
-                            <td
-                              colSpan={
-                                9
-                              }
-                              style={{
-                                padding:
-                                  "20px",
-                                background:
-                                  "#131418",
-                              }}
-                            >
-                              <section
-                                id={`sale-${sale.id}`}
-                                aria-label={`${sale.saleNumber} details`}
-                              >
-                                <p
-                                  style={{
-                                    color:
-                                      "#a7a7ad",
-                                  }}
-                                >
-                                  Finalized
-                                  sale ·
-                                  Read-only
-                                  {sale.notes
-                                    ? ` · ${sale.notes}`
-                                    : ""}
-                                </p>
-
-                                {sale.lines.map(
+                                )}
+                              </Cell>
+                
+                              <Cell>
+                                {
+                                  sale.paymentMethod
+                                }
+                              </Cell>
+                
+                              <Cell>
+                                {sale.showVisit
+                                  ? `${sale.showVisit.show.name} (${sale.showVisit.visitDate.slice(
+                                      0,
+                                      10
+                                    )})`
+                                  : "None"}
+                              </Cell>
+                
+                              <Cell>
+                                {sale.lines.reduce(
                                   (
+                                    sum,
                                     line
-                                  ) => (
-                                    <article
-                                      key={
-                                        line.id
-                                      }
-                                      style={{
-                                        marginBottom:
-                                          "14px",
-                                        padding:
-                                          "16px",
-                                        border:
-                                          "1px solid #303137",
-                                        borderRadius:
-                                          "8px",
-                                      }}
-                                    >
-                                      <strong>
-                                        {
-                                          line.quantity
-                                        }
-                                        {
-                                          " × "
-                                        }
-                                        {
-                                          line
-                                            .product
-                                            .name
-                                        }{" "}
-                                        ·{" "}
-                                        {money(
-                                          line.unitSalePrice
-                                        )}{" "}
-                                        each
-                                      </strong>
-
-                                      <p>
-                                        Revenue{" "}
-                                        {money(
-                                          line.revenue
-                                        )}{" "}
-                                        ·
-                                        FIFO
-                                        COGS{" "}
-                                        {money(
-                                          line.cogs
-                                        )}{" "}
-                                        ·
-                                        Profit{" "}
-                                        {money(
-                                          line.grossProfit
-                                        )}{" "}
-                                        ·
-                                        Margin{" "}
-                                        {percent(
-                                          Number(
-                                            line.grossMargin
-                                          )
-                                        )}
-                                      </p>
-
-                                      <Table
-                                        headings={[
-                                          "Inventory Batch",
-                                          "Units Consumed",
-                                          "Unit Cost",
-                                          "Allocated COGS",
-                                        ]}
-                                      >
-                                        {line.allocations.map(
-                                          (
-                                            allocation
-                                          ) => (
-                                            <tr
-                                              key={
-                                                allocation.id
-                                              }
-                                            >
-                                              <Cell>
-                                                #
-                                                {
-                                                  allocation.inventoryBatchId
-                                                }
-                                              </Cell>
-
-                                              <Cell>
-                                                {
-                                                  allocation.quantity
-                                                }
-                                              </Cell>
-
-                                              <Cell>
-                                                {money(
-                                                  allocation.unitCost
-                                                )}
-                                              </Cell>
-
-                                              <Cell>
-                                                {money(
-                                                  allocation.totalCost
-                                                )}
-                                              </Cell>
-                                            </tr>
-                                          )
-                                        )}
-                                      </Table>
-                                    </article>
+                                  ) =>
+                                    sum +
+                                    line.quantity,
+                                  0
+                                )}
+                              </Cell>
+                
+                              <Cell>
+                                {money(
+                                  total(
+                                    sale.lines,
+                                    "revenue"
                                   )
                                 )}
-                              </section>
-                            </td>
-                          </tr>
-                        )}
-                      </Fragment>
-                    )
+                              </Cell>
+                
+                              <Cell>
+                                {money(
+                                  total(
+                                    sale.lines,
+                                    "cogs"
+                                  )
+                                )}
+                              </Cell>
+                
+                              <Cell>
+                                {money(
+                                  total(
+                                    sale.lines,
+                                    "grossProfit"
+                                  )
+                                )}
+                              </Cell>
+                
+                              <Cell>
+                                <button
+                                  type="button"
+                                  style={
+                                    controlStyle
+                                  }
+                                  aria-expanded={
+                                    expandedId ===
+                                    sale.id
+                                  }
+                                  aria-controls={`sale-${sale.id}`}
+                                  onClick={() =>
+                                    setExpandedId(
+                                      expandedId ===
+                                        sale.id
+                                        ? null
+                                        : sale.id
+                                    )
+                                  }
+                                >
+                                  {expandedId ===
+                                  sale.id
+                                    ? "Hide"
+                                    : "View"}
+                                </button>
+                              </Cell>
+                            </tr>
+                
+                            {expandedId ===
+                              sale.id && (
+                              <tr>
+                                <td
+                                  colSpan={
+                                    9
+                                  }
+                                  style={{
+                                    padding:
+                                      "20px",
+                                    background:
+                                      "#131418",
+                                  }}
+                                >
+                                  <section
+                                    id={`sale-${sale.id}`}
+                                    aria-label={`${sale.saleNumber} details`}
+                                  >
+                                    <p
+                                      style={{
+                                        color:
+                                          "#a7a7ad",
+                                      }}
+                                    >
+                                      Finalized
+                                      sale ·
+                                      Read-only
+                                      {sale.notes
+                                        ? ` · ${sale.notes}`
+                                        : ""}
+                                    </p>
+                
+                                    {sale.lines.map(
+                                      (
+                                        line
+                                      ) => (
+                                        <article
+                                          key={
+                                            line.id
+                                          }
+                                          style={{
+                                            marginBottom:
+                                              "14px",
+                                            padding:
+                                              "16px",
+                                            border:
+                                              "1px solid #303137",
+                                            borderRadius:
+                                              "8px",
+                                          }}
+                                        >
+                                          <strong>
+                                            {
+                                              line.quantity
+                                            }
+                                            {
+                                              " × "
+                                            }
+                                            {
+                                              line
+                                                .product
+                                                .name
+                                            }{" "}
+                                            ·{" "}
+                                            {money(
+                                              line.unitSalePrice
+                                            )}{" "}
+                                            each
+                                          </strong>
+                
+                                          <p>
+                                            Revenue{" "}
+                                            {money(
+                                              line.revenue
+                                            )}{" "}
+                                            ·
+                                            FIFO
+                                            COGS{" "}
+                                            {money(
+                                              line.cogs
+                                            )}{" "}
+                                            ·
+                                            Profit{" "}
+                                            {money(
+                                              line.grossProfit
+                                            )}{" "}
+                                            ·
+                                            Margin{" "}
+                                            {percent(
+                                              Number(
+                                                line.grossMargin
+                                              )
+                                            )}
+                                          </p>
+                
+                                          <Table
+                                            headings={[
+                                              "Inventory Batch",
+                                              "Units Consumed",
+                                              "Unit Cost",
+                                              "Allocated COGS",
+                                            ]}
+                                          >
+                                            {line.allocations.map(
+                                              (
+                                                allocation
+                                              ) => (
+                                                <tr
+                                                  key={
+                                                    allocation.id
+                                                  }
+                                                >
+                                                  <Cell>
+                                                    #
+                                                    {
+                                                      allocation.inventoryBatchId
+                                                    }
+                                                  </Cell>
+                
+                                                  <Cell>
+                                                    {
+                                                      allocation.quantity
+                                                    }
+                                                  </Cell>
+                
+                                                  <Cell>
+                                                    {money(
+                                                      allocation.unitCost
+                                                    )}
+                                                  </Cell>
+                
+                                                  <Cell>
+                                                    {money(
+                                                      allocation.totalCost
+                                                    )}
+                                                  </Cell>
+                                                </tr>
+                                              )
+                                            )}
+                                          </Table>
+                                        </article>
+                                      )
+                                    )}
+                                  </section>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        )
+                      )}
+                    </Table>
                   )}
-                </Table>
-              )}
-            </section>
-
-            <ProductProfitability
-              refresh={refresh}
-            />
+                </section>
+                
+                <ProductProfitability
+                  refresh={refresh}
+                />
+              </>
+            )}
           </>
         )
       )}
@@ -879,9 +892,6 @@ function NewSaleForm({
         )?.unitsOnHand ??
           0) > 0
     );
-
-  const [saleNumber, setSaleNumber] =
-    useState("");
 
   const [saleDate, setSaleDate] =
     useState(() => {
@@ -985,6 +995,19 @@ function NewSaleForm({
               visit.id ===
               lockedShowVisitId
           ) ?? null;
+
+  const lockedVisitDate =
+    lockedVisit?.visitDate.slice(0, 10) ??
+    null;
+
+  // A sale recorded from an Active Show belongs to that Show Visit,
+  // so its sale date should always match the visit date rather than
+  // defaulting to today's date.
+  useEffect(() => {
+    if (lockedVisitDate) {
+      setSaleDate(lockedVisitDate);
+    }
+  }, [lockedVisitDate]);
 
   // -------------------------------------------------------
   // LINE EDITING
@@ -1094,12 +1117,11 @@ function NewSaleForm({
     }
 
     if (
-      !saleNumber.trim() ||
       !saleDate ||
       !lines.length
     ) {
       setError(
-        "Enter a sale number, date, and at least one product."
+        "Enter a sale date and at least one product."
       );
 
       return;
@@ -1122,9 +1144,6 @@ function NewSaleForm({
 
             body:
               JSON.stringify({
-                saleNumber:
-                  saleNumber.trim(),
-
                 saleDate,
 
                 paymentMethod:
@@ -1185,7 +1204,7 @@ function NewSaleForm({
           error instanceof Error
             ? error.message
             : "Sale could not be saved."
-        } If the connection failed, refresh Sales and check this sale number before retrying.`
+        } If the connection failed, refresh Sales before retrying so you can confirm whether the sale was already saved.`
       );
     } finally {
       submitting.current =
@@ -1271,47 +1290,69 @@ function NewSaleForm({
             style={formGrid}
           >
             <Field label="Sale Number">
-              <input
-                required
-                style={
-                  controlStyle
-                }
-                value={
-                  saleNumber
-                }
-                onChange={(
-                  event
-                ) =>
-                  setSaleNumber(
-                    event
-                      .target
-                      .value
-                  )
-                }
-                placeholder="SALE-001"
-              />
+              <div
+                style={{
+                  ...controlStyle,
+                  boxSizing:
+                    "border-box",
+                  minHeight:
+                    "37px",
+                  display:
+                    "flex",
+                  alignItems:
+                    "center",
+                  background:
+                    "#141519",
+                  color:
+                    "#898a91",
+                }}
+              >
+                Assigned automatically
+              </div>
             </Field>
 
             <Field label="Sale Date">
-              <input
-                required
-                type="date"
-                style={
-                  controlStyle
-                }
-                value={
-                  saleDate
-                }
-                onChange={(
-                  event
-                ) =>
-                  setSaleDate(
+              {lockedVisitDate ? (
+                <div
+                  style={{
+                    ...controlStyle,
+                    boxSizing:
+                      "border-box",
+                    minHeight:
+                      "37px",
+                    display:
+                      "flex",
+                    alignItems:
+                      "center",
+                    background:
+                      "#141519",
+                    color:
+                      "#898a91",
+                  }}
+                >
+                  {lockedVisitDate}
+                </div>
+              ) : (
+                <input
+                  required
+                  type="date"
+                  style={
+                    controlStyle
+                  }
+                  value={
+                    saleDate
+                  }
+                  onChange={(
                     event
-                      .target
-                      .value
-                  )
-                }
-              />
+                  ) =>
+                    setSaleDate(
+                      event
+                        .target
+                        .value
+                    )
+                  }
+                />
+              )}
             </Field>
 
             <Field label="Payment Method">

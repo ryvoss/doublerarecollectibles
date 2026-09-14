@@ -70,7 +70,6 @@ router.get("/", async (_req, res) => {
 router.post("/", async (req, res) => {
   try {
     const {
-      orderNumber,
       orderDate,
       shippingCost,
       tariffCost,
@@ -79,22 +78,67 @@ router.post("/", async (req, res) => {
       notes,
     } = req.body;
 
-    if (!orderNumber || !orderDate) {
+    if (
+      typeof orderDate !== "string" ||
+      !orderDate.trim() ||
+      !Number.isFinite(new Date(orderDate).getTime())
+    ) {
       return res.status(400).json({
-        error: "orderNumber and orderDate are required",
+        error: "A valid orderDate is required",
       });
     }
 
-    const order = await prisma.order.create({
-      data: {
-        orderNumber,
-        orderDate: new Date(orderDate),
-        shippingCost: shippingCost ?? 0,
-        tariffCost: tariffCost ?? 0,
-        otherCost: otherCost ?? 0,
-        adjustment: adjustment ?? 0,
-        notes: notes ?? null,
-      },
+    const order = await prisma.$transaction(async (tx) => {
+      // Only one order-number generator may run at a time. This keeps
+      // two nearly simultaneous order creations from receiving the
+      // same ORD number. The lock is released automatically when this
+      // database transaction finishes.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(246813579)`;
+
+      const existingOrders = await tx.order.findMany({
+        where: {
+          orderNumber: {
+            startsWith: "ORD-",
+          },
+        },
+        select: {
+          orderNumber: true,
+        },
+      });
+
+      // Find the largest existing ORD number instead of relying on the
+      // database row ID. This also works if older/manual order numbers
+      // exist alongside the new automatic numbering system.
+      const highestOrderNumber = existingOrders.reduce(
+        (highest, existingOrder) => {
+          const match = /^ORD-(\d+)$/.exec(existingOrder.orderNumber);
+
+          if (!match) {
+            return highest;
+          }
+
+          const numericPart = Number(match[1]);
+
+          return Number.isSafeInteger(numericPart)
+            ? Math.max(highest, numericPart)
+            : highest;
+        },
+        0
+      );
+
+      const orderNumber = `ORD-${String(highestOrderNumber + 1).padStart(4, "0")}`;
+
+      return tx.order.create({
+        data: {
+          orderNumber,
+          orderDate: new Date(orderDate),
+          shippingCost: shippingCost ?? 0,
+          tariffCost: tariffCost ?? 0,
+          otherCost: otherCost ?? 0,
+          adjustment: adjustment ?? 0,
+          notes: notes ?? null,
+        },
+      });
     });
 
     res.status(201).json(order);
@@ -549,5 +593,6 @@ router.get("/:orderId", async (req, res) => {
     });
   }
 });
+
 
 export default router;

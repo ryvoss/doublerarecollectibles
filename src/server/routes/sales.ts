@@ -41,6 +41,32 @@ function centsToMoney(value: number): string {
   return (value / 100).toFixed(2);
 }
 
+// Generate the next readable sale number on the server.
+// The advisory lock prevents two simultaneous sales from receiving
+// the same SALE-#### number.
+async function getNextSaleNumber(tx: any): Promise<string> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(74291002)`;
+
+  const sales = await tx.sale.findMany({
+    select: { saleNumber: true },
+  });
+
+  let highestNumber = 0;
+
+  for (const sale of sales) {
+    const match = /^SALE-(\d+)$/.exec(sale.saleNumber.trim());
+
+    if (!match) continue;
+
+    const numericPart = Number(match[1]);
+    if (Number.isInteger(numericPart) && numericPart > highestNumber) {
+      highestNumber = numericPart;
+    }
+  }
+
+  return `SALE-${String(highestNumber + 1).padStart(4, "0")}`;
+}
+
 // ---------------------------------------------------------
 // CREATE SEALED SALE
 // ---------------------------------------------------------
@@ -48,7 +74,6 @@ function centsToMoney(value: number): string {
 router.post("/", async (req, res) => {
   try {
     const {
-      saleNumber,
       saleDate,
       paymentMethod,
       showVisitId,
@@ -61,8 +86,6 @@ router.post("/", async (req, res) => {
     // ---------------------------------------------------------
 
     if (
-      typeof saleNumber !== "string" ||
-      saleNumber.trim().length === 0 ||
       !saleDate ||
       !paymentMethod ||
       !Array.isArray(lines) ||
@@ -70,11 +93,9 @@ router.post("/", async (req, res) => {
     ) {
       return res.status(400).json({
         error:
-          "saleNumber, saleDate, paymentMethod, and at least one sale line are required",
+          "saleDate, paymentMethod, and at least one sale line are required",
       });
     }
-
-    const cleanSaleNumber = saleNumber.trim();
 
     if (!["CASH", "DIGITAL"].includes(paymentMethod)) {
       return res.status(400).json({
@@ -88,24 +109,6 @@ router.post("/", async (req, res) => {
     if (Number.isNaN(parsedSaleDate.getTime())) {
       return res.status(400).json({
         error: "saleDate must be a valid date",
-      });
-    }
-
-    // ---------------------------------------------------------
-    // DUPLICATE SALE NUMBER CHECK
-    // ---------------------------------------------------------
-
-    const existingSale =
-      await prisma.sale.findUnique({
-        where: {
-          saleNumber: cleanSaleNumber,
-        },
-      });
-
-    if (existingSale) {
-      return res.status(409).json({
-        error:
-          "A sale with this sale number already exists",
       });
     }
 
@@ -511,6 +514,9 @@ router.post("/", async (req, res) => {
     const sale =
       await prisma.$transaction(
         async (tx) => {
+          const generatedSaleNumber =
+            await getNextSaleNumber(tx);
+
           // A sale linked to a Show Visit may only be recorded
           // while that visit is actively in progress.
           if (parsedShowVisitId !== null) {
@@ -537,7 +543,7 @@ router.post("/", async (req, res) => {
             await tx.sale.create({
               data: {
                 saleNumber:
-                  cleanSaleNumber,
+                  generatedSaleNumber,
 
                 saleDate:
                   parsedSaleDate,
@@ -645,7 +651,7 @@ router.post("/", async (req, res) => {
               transactionDate:
                 parsedSaleDate,
               saleId: createdSale.id,
-              note: `Sealed sale ${cleanSaleNumber}`,
+              note: `Sealed sale ${generatedSaleNumber}`,
             },
           });
 
@@ -683,8 +689,30 @@ router.post("/", async (req, res) => {
       error
     );
 
-    res.status(error instanceof FinalizedVisitError ? 409 : 500).json({
-      error: error instanceof FinalizedVisitError ? error.message : "Failed to create sale",
+    const prismaCode =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error
+        ? String((error as { code?: unknown }).code)
+        : null;
+
+    // A unique-constraint collision should be rare because numbering is
+    // serialized, but return a clear message if one ever occurs.
+    if (prismaCode === "P2002") {
+      return res.status(409).json({
+        error:
+          "A sale with this sale number already exists. Please try again.",
+      });
+    }
+
+    if (error instanceof FinalizedVisitError) {
+      return res.status(409).json({
+        error: error.message,
+      });
+    }
+
+    res.status(500).json({
+      error: "Failed to create sale",
 
       details:
         error instanceof Error

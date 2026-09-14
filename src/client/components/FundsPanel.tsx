@@ -300,8 +300,33 @@ function FundsPanel() {
   }
 
   useEffect(() => {
-    loadSummary();
-  }, []);
+    // Load the balances when the dashboard first opens.
+    void loadSummary();
+
+    // Other parts of the app dispatch this event after business data
+    // changes, such as recording a sale or finalizing a Show Visit.
+    // Listening here keeps the funds cards and open activity modal
+    // current without requiring a manual browser refresh.
+    function refreshFundsFromBusinessChange() {
+      void loadSummary();
+
+      if (showActivity) {
+        void loadEntries();
+      }
+    }
+
+    window.addEventListener(
+      "business-data-changed",
+      refreshFundsFromBusinessChange
+    );
+
+    return () => {
+      window.removeEventListener(
+        "business-data-changed",
+        refreshFundsFromBusinessChange
+      );
+    };
+  }, [showActivity]);
 
   // -------------------------------------------------------
   // OPEN ACTIVITY MODAL

@@ -67,7 +67,6 @@ type Order = {
 };
 
 type NewOrderForm = {
-  orderNumber: string;
   orderDate: string;
   shippingCost: string;
   tariffCost: string;
@@ -596,7 +595,6 @@ function NewOrderModal({
 }) {
   const [form, setForm] =
     useState<NewOrderForm>({
-      orderNumber: order?.orderNumber ?? "",
       orderDate:
         order?.orderDate.slice(0, 10) ?? new Date()
           .toISOString()
@@ -631,14 +629,6 @@ function NewOrderModal({
   ) {
     event.preventDefault();
 
-    if (!form.orderNumber.trim()) {
-      setError(
-        "Order number is required."
-      );
-
-      return;
-    }
-
     if (!form.orderDate) {
       setError(
         "Order date is required."
@@ -662,9 +652,6 @@ function NewOrderModal({
           },
 
           body: JSON.stringify({
-            orderNumber:
-              form.orderNumber.trim(),
-
             orderDate:
               form.orderDate,
 
@@ -733,30 +720,11 @@ function NewOrderModal({
       <form onSubmit={handleSubmit}>
         <div style={twoColumnStyle}>
           <FormField
-            label="Order Number"
-            hint="Your unique reference, such as ORD3."
-          >
-            <input
-              value={
-                form.orderNumber
-              }
-              onChange={(event) =>
-                updateForm(
-                  "orderNumber",
-                  event.target.value
-                )
-              }
-              placeholder="ORD3"
-              autoFocus
-              style={inputStyle}
-            />
-          </FormField>
-
-          <FormField
             label="Order Date"
           >
             <input
               type="date"
+              autoFocus
               value={form.orderDate}
               onChange={(event) =>
                 updateForm(
