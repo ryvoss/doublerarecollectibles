@@ -1,3 +1,4 @@
+import { inputStyle } from "./uiStyles";
 import {
   useCallback,
   useEffect,
@@ -557,21 +558,10 @@ export default function ActiveShowPanel() {
   return (
     <>
       <div
-        className="panel"
-        style={{
-          marginBottom: "18px",
-          overflow: "hidden",
-        }}
+        className="panel active-show-overview"
       >
         <div
-          style={{
-            display: "flex",
-            justifyContent:
-              "space-between",
-            alignItems: "center",
-            gap: "24px",
-            padding: "22px 24px",
-          }}
+          className="active-show-overview-header"
         >
           <div
             style={{
@@ -1968,7 +1958,7 @@ function ActiveVisitModal({
 
               <button
                 type="button"
-                className="primary-button"
+                className="secondary-button"
                 onClick={
                   onBeginEnd
                 }
@@ -2548,7 +2538,7 @@ function ShowReview({
     startingBusinessValue;
 
   return (
-    <>
+    <div className="show-review">
       <SectionTitle
         title="Show Review"
         subtitle="Review the before-and-after Singles position before finalizing."
@@ -2775,7 +2765,7 @@ function ShowReview({
           )}
         />
       </MetricRow>
-    </>
+    </div>
   );
 }
 
@@ -2798,19 +2788,7 @@ function ModalShell({
 }) {
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1100,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-        background:
-          "rgba(0, 0, 0, 0.74)",
-        backdropFilter:
-          "blur(4px)",
-      }}
+      className="modal-backdrop show-modal-backdrop"
       onMouseDown={(
         event
       ) => {
@@ -2823,34 +2801,10 @@ function ModalShell({
       }}
     >
       <div
-        style={{
-          width: "100%",
-          maxWidth,
-          maxHeight:
-            "90vh",
-          overflowY: "auto",
-          border:
-            "1px solid #2c2d32",
-          borderRadius: "14px",
-          background:
-            "#17181c",
-          boxShadow:
-            "0 24px 70px rgba(0, 0, 0, 0.48)",
-        }}
+        className="modal-surface show-workspace" style={{maxWidth}}
       >
         <div
-          style={{
-            display: "flex",
-            justifyContent:
-              "space-between",
-            alignItems:
-              "flex-start",
-            gap: "20px",
-            padding:
-              "21px 24px",
-            borderBottom:
-              "1px solid #292a2f",
-          }}
+          className="show-workspace-header"
         >
           <div>
             <h2
@@ -2915,9 +2869,7 @@ function ModalBody({
 }) {
   return (
     <div
-      style={{
-        padding: "22px 24px",
-      }}
+      className="show-workspace-body"
     >
       {children}
     </div>
@@ -2931,16 +2883,7 @@ function ModalFooter({
 }) {
   return (
     <div
-      style={{
-        display: "flex",
-        justifyContent:
-          "flex-end",
-        gap: "10px",
-        padding:
-          "16px 24px",
-        borderTop:
-          "1px solid #292a2f",
-      }}
+      className="show-workspace-footer"
     >
       {children}
     </div>
@@ -3150,17 +3093,7 @@ function SummaryBox({
 }) {
   return (
     <div
-      style={{
-        padding:
-          "14px 15px",
-        border: emphasized
-          ? "1px solid #43454d"
-          : "1px solid #292a30",
-        borderRadius: "9px",
-        background: emphasized
-          ? "#202127"
-          : "#1a1b20",
-      }}
+      className={emphasized ? "show-metric is-emphasized" : "show-metric"}
     >
       <div
         style={{
@@ -3202,9 +3135,7 @@ function SectionTitle({
 }) {
   return (
     <div
-      style={{
-        marginBottom: "14px",
-      }}
+      className="show-section-title"
     >
       <h3
         style={{
@@ -3239,12 +3170,7 @@ function MetricRow({
 }) {
   return (
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns:
-          "repeat(4, minmax(0, 1fr))",
-        gap: "10px",
-      }}
+      className="show-metric-grid"
     >
       {children}
     </div>
@@ -3262,16 +3188,7 @@ function MiniMetric({
 }) {
   return (
     <div
-      style={{
-        padding:
-          "13px 14px",
-        border:
-          "1px solid #292a30",
-        borderRadius: "9px",
-        background: emphasized
-          ? "#202127"
-          : "#1a1b20",
-      }}
+      className={emphasized ? "show-metric is-emphasized" : "show-metric"}
     >
       <span
         style={{
@@ -3536,19 +3453,3 @@ function Divider() {
     />
   );
 }
-
-const inputStyle = {
-  width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding:
-    "10px 12px",
-  border:
-    "1px solid #34353b",
-  borderRadius: "7px",
-  background:
-    "#1b1c21",
-  color: "#e1e1e4",
-  outline: "none",
-  fontSize: "13px",
-};

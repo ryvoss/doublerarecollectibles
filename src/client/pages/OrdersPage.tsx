@@ -1,5 +1,7 @@
+import { inputStyle, secondaryButtonStyle } from "../components/uiStyles";
 import { resolveOrderInventory } from "../../shared/orderConversion";
 import {
+  Fragment,
   useEffect,
   useState,
 } from "react";
@@ -401,7 +403,7 @@ export default function OrdersPage({
 
   return (
     <>
-      <div style={pageHeadingStyle}>
+      <div className="page-heading orders-heading">
         <div>
           <h2
             style={{
@@ -411,7 +413,7 @@ export default function OrdersPage({
             Purchase Orders
           </h2>
 
-          <p style={pageDescriptionStyle}>
+          <p className="orders-description">
             Record product purchases and
             finalize them into inventory.
           </p>
@@ -428,7 +430,7 @@ export default function OrdersPage({
         </button>
       </div>
 
-      <div style={metricGridStyle}>
+      <div className="orders-metrics">
         <OrderMetric
           label="Total Orders"
           value={String(orders.length)}
@@ -459,7 +461,7 @@ export default function OrdersPage({
       </div>
 
       <div className="panel">
-        <div style={panelHeaderStyle}>
+        <div className="panel-header orders-panel-header">
           <div>
             <h3
               style={{
@@ -470,7 +472,7 @@ export default function OrdersPage({
               Orders
             </h3>
 
-            <p style={panelDescriptionStyle}>
+            <p className="orders-description">
               {
                 filteredOrders.length
               }{" "}
@@ -480,7 +482,7 @@ export default function OrdersPage({
             </p>
           </div>
 
-          <div style={filterGroupStyle}>
+          <div className="orders-filters">
             <FilterButton
               label="All"
               active={
@@ -537,7 +539,7 @@ export default function OrdersPage({
               overflowX: "auto",
             }}
           >
-            <table style={tableStyle}>
+            <table className="orders-table orders-history-table">
               <thead>
                 <tr>
                   <TableHeader>
@@ -588,9 +590,9 @@ export default function OrdersPage({
                       );
 
                     return (
-                      <tr
-                        key={order.id}
-                        style={tableRowStyle}
+                      <Fragment key={order.id}><tr
+                        className="orders-row expandable-row"
+                        onClick={(event) => { if (!(event.target as HTMLElement).closest("button, a, input, select, summary")) setSelectedOrderId(selectedOrderId === order.id ? null : order.id); }}
                       >
                         <TableCell>
                           <strong
@@ -655,19 +657,30 @@ export default function OrdersPage({
                         <TableCell>
                           <button
                             type="button"
+                            aria-expanded={selectedOrderId === order.id}
+                            aria-controls={`order-detail-${order.id}`}
+                            aria-label={`Details for ${order.orderNumber}`}
                             onClick={() =>
                               setSelectedOrderId(
-                                order.id
+                                selectedOrderId === order.id ? null : order.id
                               )
                             }
                             style={
                               smallButtonStyle
                             }
                           >
-                            View
+                            {selectedOrderId === order.id ? "Collapse \u25be" : "Expand \u25b8"}
                           </button>
                         </TableCell>
                       </tr>
+                      {selectedOrderId === order.id && <tr><td colSpan={8} className="expanded-row-detail">
+                        <div id={`order-detail-${order.id}`}>
+                          <OrderDetailModal inline order={order} products={products}
+                            onClose={() => setSelectedOrderId(null)}
+                            onChanged={async (id) => { await loadPageData(); setSelectedOrderId(id); }} />
+                        </div>
+                      </td></tr>}
+                      </Fragment>
                     );
                   }
                 )}
@@ -696,26 +709,7 @@ export default function OrdersPage({
         />
       )}
 
-      {selectedOrder && (
-        <OrderDetailModal
-          order={selectedOrder}
-          products={products}
-          onClose={() =>
-            setSelectedOrderId(null)
-          }
-          onChanged={
-            async (
-              keepOpenOrderId
-            ) => {
-              await loadPageData();
 
-              setSelectedOrderId(
-                keepOpenOrderId
-              );
-            }
-          }
-        />
-      )}
     </>
   );
 }
@@ -914,7 +908,7 @@ function NewOrderModal({
           />
 
           <MoneyField
-            label="Adjustment"
+            label="Adjustment (discount / credit)"
             value={form.adjustment}
             onChange={(value) =>
               updateForm(
@@ -924,6 +918,7 @@ function NewOrderModal({
             }
             allowNegative
           />
+          <p className="orders-adjustment-hint">Use a negative amount for a discount or credit, e.g. -50.00 reduces the order total by $50.</p>
         </div>
 
         <FormField
@@ -968,11 +963,13 @@ function NewOrderModal({
 // ---------------------------------------------------------
 
 function OrderDetailModal({
+  inline = false,
   order,
   products,
   onClose,
   onChanged,
 }: {
+  inline?: boolean;
   order: Order;
   products: Product[];
   onClose: () => void;
@@ -1038,7 +1035,8 @@ function OrderDetailModal({
     const confirmed =
       window.confirm(
         `Finalize ${order.orderNumber}?\n\n` +
-          "This will calculate landed costs and add the products to inventory."
+          `Total: ${money(productCost + additionalCost)}\n\n` +
+          "This will deduct the full total from SEALED funds, create inventory batches, and lock this order. Finalized orders cannot be edited."
       );
 
     if (!confirmed) {
@@ -1093,7 +1091,7 @@ function OrderDetailModal({
   }
 
   return (
-    <ModalShell
+    <ModalShell inline={inline}
       onClose={onClose}
       title={order.orderNumber}
       subtitle={`${formatDate(
@@ -1106,7 +1104,7 @@ function OrderDetailModal({
       wide
     >
       {isDraft && <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingOrder(true)}>Edit Order Information & Costs</button>}
-      <div style={orderSummaryGridStyle}>
+      <div className="orders-summary-grid">
         <SummaryBox
           label="Product Cost"
           value={money(productCost)}
@@ -1140,7 +1138,7 @@ function OrderDetailModal({
         }}
       >
         <div
-          style={sectionHeadingStyle}
+          className="orders-section-header"
         >
           <div>
             <h3
@@ -1153,9 +1151,7 @@ function OrderDetailModal({
             </h3>
 
             <p
-              style={
-                panelDescriptionStyle
-              }
+              className="orders-description"
             >
               {order.lines?.length ??
                 0}{" "}
@@ -1184,9 +1180,7 @@ function OrderDetailModal({
 
         {!order.lines?.length ? (
           <div
-            style={
-              orderEmptyStateStyle
-            }
+            className="orders-empty"
           >
             No products have been added
             to this order yet.
@@ -1197,7 +1191,7 @@ function OrderDetailModal({
               overflowX: "auto",
             }}
           >
-            <table style={tableStyle}>
+            <table className="orders-table">
               <thead>
                 <tr>
                   <TableHeader>
@@ -1236,7 +1230,7 @@ function OrderDetailModal({
                   (line) => (
                     <tr
                       key={line.id}
-                      style={tableRowStyle}
+                      className="orders-row"
                     >
                       <TableCell>
                         {getProductLabel(
@@ -1288,8 +1282,13 @@ function OrderDetailModal({
                             )}
                       </TableCell>
                       {isDraft && <TableCell>
-                        <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingLine(line)}>Edit</button>{" "}
-                        <button type="button" style={smallButtonStyle} disabled={working} onClick={() => removeLine(line)}>Remove</button>
+                        <details className="orders-action-menu">
+                          <summary aria-label="Product line actions">&hellip;</summary>
+                          <div>
+                            <button type="button" disabled={working} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setEditingLine(line); }}>Edit product</button>
+                            <button type="button" className="orders-remove" disabled={working} onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); void removeLine(line); }}>Remove product</button>
+                          </div>
+                        </details>
                       </TableCell>}
                     </tr>
                   )
@@ -1300,7 +1299,7 @@ function OrderDetailModal({
         )}
       </div>
 
-      <div style={costBreakdownStyle}>
+      <div className="orders-cost-breakdown">
         <CostRow
           label="Products"
           value={money(productCost)}
@@ -1796,22 +1795,8 @@ function FilterButton({
     <button
       type="button"
       onClick={onClick}
-      style={{
-        padding: "7px 11px",
-        border: active
-          ? "1px solid rgba(190, 45, 45, 0.55)"
-          : "1px solid #303137",
-        borderRadius: "7px",
-        background: active
-          ? "rgba(190, 45, 45, 0.15)"
-          : "#18191d",
-        color: active
-          ? "#f0d5d5"
-          : "#898a91",
-        cursor: "pointer",
-        fontSize: "11px",
-        fontWeight: 650,
-      }}
+      className={active ? "orders-filter is-active" : "orders-filter"}
+      aria-pressed={active}
     >
       {label}
     </button>
@@ -1828,23 +1813,7 @@ function OrderStatusBadge({
 
   return (
     <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "5px 9px",
-        borderRadius: "999px",
-
-        background: finalized
-          ? "rgba(63, 185, 80, 0.10)"
-          : "rgba(210, 154, 45, 0.10)",
-
-        color: finalized
-          ? "#66c878"
-          : "#d6a84e",
-
-        fontSize: "11px",
-        fontWeight: 700,
-      }}
+      className={finalized ? "orders-status is-finalized" : "orders-status is-draft"}
     >
       {finalized
         ? "Finalized"
@@ -1859,7 +1828,7 @@ function TableHeader({
   children: ReactNode;
 }) {
   return (
-    <th style={tableHeaderStyle}>
+    <th className="orders-th">
       {children}
     </th>
   );
@@ -1871,7 +1840,7 @@ function TableCell({
   children: ReactNode;
 }) {
   return (
-    <td style={tableCellStyle}>
+    <td className="orders-td">
       {children}
     </td>
   );
@@ -1969,16 +1938,22 @@ function ModalShell({
   children,
   onClose,
   wide = false,
+  inline = false,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  inline?: boolean;
 }) {
+  if (inline) return <section className="inline-order-detail" aria-label={title}>
+    <header className="orders-modal-header"><div><h3>{title}</h3><p>{subtitle}</p></div></header>
+    <div className="inline-order-body">{children}</div>
+  </section>;
   return (
     <div
-      style={modalBackdropStyle}
+      className="modal-backdrop"
       onMouseDown={(event) => {
         if (
           event.target ===
@@ -1989,14 +1964,14 @@ function ModalShell({
       }}
     >
       <div
+        className="modal-surface orders-modal"
         style={{
-          ...modalStyle,
           maxWidth: wide
             ? "920px"
             : "620px",
         }}
       >
-        <div style={modalHeaderStyle}>
+        <div className="orders-modal-header">
           <div>
             <h2
               style={{
@@ -2051,7 +2026,7 @@ function ModalActions({
   submitLabel: string;
 }) {
   return (
-    <div style={modalActionsStyle}>
+    <div className="orders-modal-actions">
       <button
         type="button"
         onClick={onCancel}
@@ -2082,7 +2057,7 @@ function ErrorMessage({
   message: string;
 }) {
   return (
-    <div style={errorStyle}>
+    <div className="orders-error">
       {message}
     </div>
   );
@@ -2096,7 +2071,7 @@ function SummaryBox({
   value: string;
 }) {
   return (
-    <div style={summaryBoxStyle}>
+    <div className="orders-summary-box">
       <span
         style={{
           color: "#777880",
@@ -2206,83 +2181,6 @@ function PageMessage({
 // STYLES
 // ---------------------------------------------------------
 
-const pageHeadingStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "20px",
-  marginBottom: "18px",
-};
-
-const pageDescriptionStyle = {
-  margin: "6px 0 0",
-  color: "#777880",
-  fontSize: "12px",
-};
-
-const metricGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: "14px",
-  marginBottom: "18px",
-};
-
-const panelHeaderStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "20px",
-  padding: "12px 16px",
-  borderBottom:
-    "1px solid #24252a",
-};
-
-const panelDescriptionStyle = {
-  margin: "5px 0 0",
-  color: "#696a71",
-  fontSize: "11px",
-};
-
-const filterGroupStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: "7px",
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse:
-    "collapse" as const,
-  minWidth: "900px",
-};
-
-const tableHeaderStyle = {
-  padding: "14px 20px",
-  textAlign: "left" as const,
-  color: "#777880",
-  fontSize: "11px",
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform:
-    "uppercase" as const,
-  whiteSpace:
-    "nowrap" as const,
-};
-
-const tableCellStyle = {
-  padding: "16px 20px",
-  color: "#a7a7ad",
-  fontSize: "13px",
-  whiteSpace:
-    "nowrap" as const,
-};
-
-const tableRowStyle = {
-  borderTop:
-    "1px solid #24252a",
-};
-
 const smallButtonStyle = {
   boxSizing:
     "border-box" as const,
@@ -2297,19 +2195,6 @@ const smallButtonStyle = {
   fontWeight: 650,
 };
 
-const inputStyle = {
-  width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding: "11px 12px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  outline: "none",
-  background: "#101115",
-  color: "#e5e5e7",
-  fontSize: "13px",
-};
 
 const fieldLabelStyle = {
   display: "block",
@@ -2336,127 +2221,10 @@ const currencyStyle = {
   color: "#777880",
 };
 
-const secondaryButtonStyle = {
-  padding: "10px 15px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  background: "#1d1e23",
-  color: "#b8b8bd",
-  cursor: "pointer",
-};
-
-const modalBackdropStyle = {
-  position:
-    "fixed" as const,
-  inset: 0,
-  zIndex: 1000,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "24px",
-  background:
-    "rgba(0, 0, 0, 0.72)",
-  backdropFilter: "blur(4px)",
-};
-
-const modalStyle = {
-  width: "100%",
-  border:
-    "1px solid #2b2c31",
-  borderRadius: "14px",
-  background: "#17181c",
-  boxShadow:
-    "0 24px 70px rgba(0, 0, 0, 0.45)",
-};
-
-const modalHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent:
-    "space-between",
-  gap: "20px",
-  padding: "22px 24px",
-  borderBottom:
-    "1px solid #24252a",
-};
-
 const closeButtonStyle = {
   border: 0,
   background: "transparent",
   color: "#777880",
   cursor: "pointer",
   fontSize: "20px",
-};
-
-const modalActionsStyle = {
-  display: "flex",
-  justifyContent: "flex-end",
-  gap: "10px",
-  marginTop: "26px",
-  paddingTop: "20px",
-  borderTop:
-    "1px solid #24252a",
-};
-
-const errorStyle = {
-  marginTop: "20px",
-  padding: "11px 13px",
-  border:
-    "1px solid rgba(220, 70, 70, 0.25)",
-  borderRadius: "8px",
-  background:
-    "rgba(220, 70, 70, 0.08)",
-  color: "#e47b7b",
-  fontSize: "12px",
-};
-
-const orderSummaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: "10px",
-};
-
-const summaryBoxStyle = {
-  display: "flex",
-  flexDirection:
-    "column" as const,
-  padding: "14px",
-  border:
-    "1px solid #292a2f",
-  borderRadius: "9px",
-  background: "#131418",
-};
-
-const sectionHeadingStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent:
-    "space-between",
-  gap: "16px",
-  marginBottom: "12px",
-};
-
-const orderEmptyStateStyle = {
-  padding: "30px",
-  border:
-    "1px dashed #303137",
-  borderRadius: "9px",
-  color: "#696a71",
-  fontSize: "12px",
-  textAlign:
-    "center" as const,
-};
-
-const costBreakdownStyle = {
-  width: "100%",
-  maxWidth: "340px",
-  marginLeft: "auto",
-  marginTop: "22px",
-  padding: "14px 16px",
-  border:
-    "1px solid #292a2f",
-  borderRadius: "9px",
-  background: "#131418",
 };

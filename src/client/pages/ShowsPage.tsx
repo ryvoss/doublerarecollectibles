@@ -1,3 +1,4 @@
+import { controlStyle } from "../components/uiStyles";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
@@ -67,9 +68,9 @@ export default function ShowsPage() {
   }
 
   const visibleShows = shows.filter((show) => show.name.toLowerCase().includes(search.trim().toLowerCase()));
-  return <>
-    <div className="panel-header">
-      <div><h3>Shows</h3><p>Create a recurring show, then add a visit for each event date.</p></div>
+  return <div className="shows-page">
+    <div className="page-heading">
+      <div><h2>Show History</h2><p>Review recurring shows and past visits. Run active visits from Command Center.</p></div>
       <div style={{display: "flex", gap: "10px"}}>
         <button type="button" style={controlStyle} disabled={loading || form !== null} onClick={() => setRefresh((value) => value + 1)}>Refresh</button>
         <button type="button" className="primary-button" disabled={form !== null || working} onClick={() => openForm("new")}>Add Show</button>
@@ -85,7 +86,7 @@ export default function ShowsPage() {
       }} />}
     <input aria-label="Search shows" placeholder="Search shows" style={{...controlStyle, marginBottom: "16px"}} value={search} onChange={(event) => setSearch(event.target.value)} />
     {loading ? <p role="status">Loading shows...</p> : error ? <p role="alert">{error}</p> : visibleShows.length === 0 ? <p>No shows match. Add a show to get started.</p> :
-      visibleShows.map((show) => <section key={show.id} className="panel" style={{marginBottom: "16px"}}>
+      visibleShows.map((show) => <section key={show.id} className="panel show-history-card">
         <div className="panel-header" style={{position: "relative"}}>
           <button type="button" className="show-expand-toggle"
             aria-label={`${expandedId === show.id ? "Collapse" : "Expand"} visits for ${show.name}`}
@@ -93,32 +94,34 @@ export default function ShowsPage() {
             onClick={() => {setExpandedId(expandedId === show.id ? null : show.id); setSelectedVisit(null);}}
           />
           <div style={{position: "relative", pointerEvents: "none"}}><h3><span aria-hidden="true">{expandedId === show.id ? "\u25be" : "\u25b8"}</span>{" "}{show.name}{!show.active ? " (Inactive)" : ""}</h3><p>{show.visits.length} visit(s){show.notes ? ` · ${show.notes}` : ""}</p></div>
-          <div style={{display: "flex", gap: "10px", position: "relative", pointerEvents: "none"}} className="show-header-actions">
+          <details className="show-admin-menu"><summary aria-label={`Actions for ${show.name}`}>&hellip;</summary><div>
             <button type="button" style={controlStyle} disabled={working || form !== null} onClick={() => openForm(show, true)}>Edit Show</button>
             <button type="button" style={controlStyle} disabled={working || form !== null} onClick={() => updateStatus(String(show.id), {active: !show.active}, show.active ? "Show deactivated. Existing visits and sales are retained." : "Show reactivated.")}>{show.active ? "Deactivate" : "Reactivate"}</button>
             <button type="button" style={controlStyle} disabled={working || !show.active || form !== null} onClick={() => openForm(show)}>Add Visit</button>
-          </div>
+          </div></details>
           <ShowSummary showId={show.id} />
         </div>
         {expandedId === show.id && <div id={`show-${show.id}`} style={{padding: "20px"}}>
-          {show.visits.length === 0 ? <p>No visits yet. Add an event date above.</p> : show.visits.map((visit) => <article key={visit.id} style={{border: "1px solid #303137", borderRadius: "8px", marginBottom: "12px", padding: "16px"}}>
-            <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", flexWrap: "wrap"}}>
-              <div><strong>{visit.visitDate.slice(0, 10)}</strong><span style={{color: "#898a91", fontSize: "12px"}}> · {visit.finalizedAt ? "Finalized" : "Open for sales"}</span>{visit.notes && <p>{visit.notes}</p>}</div>
-              <button type="button" style={controlStyle} aria-expanded={selectedVisit === visit.id} aria-controls={`visit-${visit.id}`} onClick={() => setSelectedVisit(selectedVisit === visit.id ? null : visit.id)}>{selectedVisit === visit.id ? "Hide Sales" : "View Sealed Sales"}</button>
-              {!visit.finalizedAt && <div style={{display: "flex", gap: "10px"}}>
+          {show.visits.length === 0 ? <p>No visits yet. Add an event date above.</p> : show.visits.map((visit) => <article key={visit.id} className="show-visit-card">
+            <div className="expandable-row" onClick={(event) => {
+              if (!(event.target as HTMLElement).closest("button, a, input, select, summary, details")) setSelectedVisit(selectedVisit === visit.id ? null : visit.id);
+            }} style={{display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px", flexWrap: "wrap"}}>
+              <div><strong>{visit.visitDate.slice(0, 10)}</strong><span className={visit.finalizedAt ? "orders-status is-finalized" : "orders-status is-draft"}> · {visit.finalizedAt ? "Finalized" : "Open for sales"}</span>{visit.notes && <p>{visit.notes}</p>}</div>
+              <button type="button" style={controlStyle} aria-expanded={selectedVisit === visit.id} aria-controls={`visit-${visit.id}`} onClick={() => setSelectedVisit(selectedVisit === visit.id ? null : visit.id)}>{selectedVisit === visit.id ? "Sealed Sales \u25be" : "Sealed Sales \u25b8"}</button>
+              {!visit.finalizedAt && <details className="show-admin-menu"><summary aria-label="Visit actions">&hellip;</summary><div>
                 <button type="button" style={controlStyle} disabled={working || form !== null} onClick={() => openForm(show, false, visit)}>Edit Visit</button>
                 <button type="button" style={controlStyle} disabled={working || form !== null} onClick={() => {
                   if (window.confirm(`Finalize ${show.name} on ${visit.visitDate.slice(0, 10)}? This locks the visit and prevents additional sales.`)) {
                     void updateStatus(`visits/${visit.id}/finalize`, {}, "Visit finalized. Further edits and sales are blocked.");
                   }
                 }}>Finalize Visit</button>
-              </div>}
+              </div></details>}
             </div>
             {selectedVisit === visit.id && <VisitSales key={visit.id} visitId={visit.id} />}
           </article>)}
         </div>}
       </section>)}
-  </>;
+  </div>;
 }
 
 type ShowPerformance = {
@@ -266,4 +269,3 @@ function Field({label, children}: {label: string; children: ReactNode}) {
 function Metric({label, value}: {label: string; value: string}) {
   return <article className="metric-card"><span className="metric-label">{label}</span><strong className="metric-value">{value}</strong></article>;
 }
-const controlStyle = {padding: "9px 12px", border: "1px solid #303137", borderRadius: "7px", background: "#18191d", color: "#c8c8cd", fontSize: "12px"};

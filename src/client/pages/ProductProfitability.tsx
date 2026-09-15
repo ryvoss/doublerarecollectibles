@@ -1,3 +1,4 @@
+import { controlStyle } from "../components/uiStyles";
 import { useEffect, useState } from "react";
 
 type ProductPerformance = {
@@ -116,5 +117,4 @@ function Ranking({label, product, value}: {label: string; product: ProductPerfor
   </article>;
 }
 
-const controlStyle = {padding: "9px 12px", border: "1px solid #303137", borderRadius: "7px", background: "#18191d", color: "#c8c8cd", fontSize: "12px"};
 const cellStyle = {padding: "14px 16px", borderBottom: "1px solid #303137", textAlign: "left" as const, color: "#a7a7ad", fontSize: "13px", whiteSpace: "nowrap" as const};

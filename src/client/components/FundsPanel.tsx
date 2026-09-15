@@ -1,3 +1,4 @@
+import { inputStyle, secondaryButtonStyle } from "./uiStyles";
 import {
   useEffect,
   useState,
@@ -403,14 +404,14 @@ function FundsPanel({
 
   if (loading) {
     return (
-      <section style={panelStyle}>
+      <section className="panel funds-panel">
         <div
           style={{
             padding: "26px",
           }}
         >
           <span
-            style={eyebrowStyle}
+            className="funds-eyebrow"
           >
             AVAILABLE BUSINESS FUNDS
           </span>
@@ -435,14 +436,14 @@ function FundsPanel({
 
   if (error) {
     return (
-      <section style={panelStyle}>
+      <section className="panel funds-panel">
         <div
           style={{
             padding: "26px",
           }}
         >
           <span
-            style={eyebrowStyle}
+            className="funds-eyebrow"
           >
             AVAILABLE BUSINESS FUNDS
           </span>
@@ -506,17 +507,13 @@ function FundsPanel({
       summary?.singlesUnallocatedBalance ?? 0
     );
 
-  const singlesDetail =
-    singlesUnallocatedBalance !== 0
-      ? `Cash ${money(singlesCashBalance)} · Digital ${money(singlesDigitalBalance)} · Unallocated ${money(singlesUnallocatedBalance)}`
-      : `Cash ${money(singlesCashBalance)} · Digital ${money(singlesDigitalBalance)}`;
 
   return (
     <>
-      <section style={panelStyle}>
-        <div style={panelHeaderStyle}>
+      <section className="panel funds-panel">
+        <div className="panel-header funds-panel-header">
           <div>
-            <span style={eyebrowStyle}>
+            <span className="funds-eyebrow">
               AVAILABLE BUSINESS FUNDS
             </span>
 
@@ -543,10 +540,7 @@ function FundsPanel({
         </div>
 
         <div
-          style={{
-            padding:
-              "30px 28px 26px",
-          }}
+          className="funds-panel-body"
         >
           <div
             style={{
@@ -610,26 +604,27 @@ function FundsPanel({
           </div>
 
           <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "repeat(2, minmax(0, 1fr))",
-              gap: "12px",
-              marginTop: "26px",
-            }}
+            className="funds-pool-grid"
           >
             <FundBalanceCard
               label="Sealed Funds"
               value={sealedBalance}
-              detail="Sales minus inventory purchases"
+              detail="Sale proceeds, purchases and manual entries"
             />
 
             <FundBalanceCard
               label="Singles Funds"
               value={singlesBalance}
-              detail={singlesDetail}
+              detail="Cash and Digital breakdown below"
             />
           </div>
+          <dl className="funds-location-breakdown" aria-label="Singles fund locations">
+            <div><dt>Singles Cash</dt><dd>{money(singlesCashBalance)}</dd></div>
+            <div><dt>Singles Digital</dt><dd>{money(singlesDigitalBalance)}</dd></div>
+          </dl>
+          {singlesUnallocatedBalance !== 0 && <p className="funds-unallocated" role="status">
+            Unallocated Singles funds: <strong>{money(singlesUnallocatedBalance)}</strong>. This amount is included in Singles total but has no Cash/Digital location.
+          </p>}
         </div>
       </section>
 
@@ -676,13 +671,7 @@ function FundBalanceCard({
 }) {
   return (
     <div
-      style={{
-        padding: "18px",
-        border:
-          "1px solid #292a30",
-        borderRadius: "10px",
-        background: "#121317",
-      }}
+      className="funds-balance-card"
     >
       <span
         style={{
@@ -749,7 +738,7 @@ function FundsActivityModal({
 }) {
   return (
     <div
-      style={modalBackdropStyle}
+      className="modal-backdrop"
       onMouseDown={(event) => {
         if (
           event.target ===
@@ -760,21 +749,19 @@ function FundsActivityModal({
       }}
     >
       <div
+        className="modal-surface funds-modal"
         style={{
-          ...modalStyle,
           maxWidth: "760px",
         }}
       >
-        <div style={modalHeaderStyle}>
+        <div className="funds-modal-header">
           <div>
-            <h2 style={modalTitleStyle}>
+            <h2 className="funds-modal-title">
               Funds Activity
             </h2>
 
             <p
-              style={
-                modalSubtitleStyle
-              }
+              className="funds-modal-subtitle"
             >
               Money moving into and
               out of the business.
@@ -882,9 +869,7 @@ function FundsActivityModal({
 
           {loading && (
             <div
-              style={
-                emptyActivityStyle
-              }
+              className="funds-empty"
             >
               Loading activity...
             </div>
@@ -893,7 +878,7 @@ function FundsActivityModal({
           {!loading && error && (
             <div
               style={{
-                ...emptyActivityStyle,
+                padding: "24px 16px", border: "1px solid var(--border)", borderRadius: "8px", textAlign: "center",
                 color: "#e47b7b",
               }}
             >
@@ -905,9 +890,7 @@ function FundsActivityModal({
             !error &&
             entries.length === 0 && (
               <div
-                style={
-                  emptyActivityStyle
-                }
+                className="funds-empty"
               >
                 No fund activity has
                 been recorded yet.
@@ -965,18 +948,7 @@ function FundActivityRow({
 
   return (
     <div
-      style={{
-        display: "grid",
-        gridTemplateColumns:
-          "minmax(0, 1fr) auto",
-        alignItems: "center",
-        gap: "18px",
-        padding: "14px 16px",
-        borderBottom: last
-          ? "none"
-          : "1px solid #24252a",
-        background: "#131419",
-      }}
+      className="funds-activity-row" style={{borderBottom: last ? "none" : undefined}}
     >
       <div
         style={{
@@ -1481,7 +1453,7 @@ function AddFundsModal({
 
   return (
     <div
-      style={modalBackdropStyle}
+      className="modal-backdrop"
       onMouseDown={(event) => {
         if (
           event.target ===
@@ -1493,21 +1465,19 @@ function AddFundsModal({
       }}
     >
       <div
+        className="modal-surface funds-modal"
         style={{
-          ...modalStyle,
           maxWidth: "520px",
         }}
       >
-        <div style={modalHeaderStyle}>
+        <div className="funds-modal-header">
           <div>
-            <h2 style={modalTitleStyle}>
+            <h2 className="funds-modal-title">
               Add Funds
             </h2>
 
             <p
-              style={
-                modalSubtitleStyle
-              }
+              className="funds-modal-subtitle"
             >
               Record money added
               manually to Sealed or
@@ -2073,24 +2043,8 @@ function ChoiceButton({
     <button
       type="button"
       onClick={onClick}
-      style={{
-        padding: "10px 12px",
-        border: active
-          ? "1px solid #a93636"
-          : "1px solid #303137",
-        borderRadius: "8px",
-        background: active
-          ? "rgba(169, 54, 54, 0.12)"
-          : "#101115",
-        color: active
-          ? "#ececef"
-          : "#8c8d94",
-        cursor: "pointer",
-        fontSize: "12px",
-        fontWeight: active
-          ? 700
-          : 600,
-      }}
+      className={active ? "funds-choice is-active" : "funds-choice"}
+      aria-pressed={active}
     >
       {children}
     </button>
@@ -2101,88 +2055,13 @@ function ChoiceButton({
 // STYLES
 // ---------------------------------------------------------
 
-const panelStyle = {
-  width: "100%",
-  boxSizing:
-    "border-box" as const,
-  marginBottom: "18px",
-  border:
-    "1px solid #292a30",
-  borderRadius: "12px",
-  background: "#17181c",
-  overflow: "hidden",
-};
 
-const panelHeaderStyle = {
-  display: "flex",
-  alignItems:
-    "center" as const,
-  justifyContent:
-    "space-between" as const,
-  gap: "20px",
-  padding: "18px 24px",
-  borderBottom:
-    "1px solid #24252a",
-};
 
-const eyebrowStyle = {
-  color: "#85868d",
-  fontSize: "10px",
-  fontWeight: 750,
-  letterSpacing: "0.1em",
-};
 
-const modalBackdropStyle = {
-  position: "fixed" as const,
-  inset: 0,
-  zIndex: 1000,
-  display: "flex",
-  alignItems:
-    "center" as const,
-  justifyContent:
-    "center" as const,
-  padding: "24px",
-  background:
-    "rgba(0, 0, 0, 0.72)",
-  backdropFilter: "blur(4px)",
-};
 
-const modalStyle = {
-  width: "100%",
-  maxHeight: "88vh",
-  overflowY:
-    "auto" as const,
-  border:
-    "1px solid #2b2c31",
-  borderRadius: "14px",
-  background: "#17181c",
-  boxShadow:
-    "0 24px 70px rgba(0, 0, 0, 0.45)",
-};
 
-const modalHeaderStyle = {
-  display: "flex",
-  alignItems:
-    "flex-start" as const,
-  justifyContent:
-    "space-between" as const,
-  gap: "20px",
-  padding: "22px 24px",
-  borderBottom:
-    "1px solid #24252a",
-};
 
-const modalTitleStyle = {
-  margin: 0,
-  color: "#e5e5e7",
-  fontSize: "18px",
-};
 
-const modalSubtitleStyle = {
-  margin: "6px 0 0",
-  color: "#777880",
-  fontSize: "12px",
-};
 
 const closeButtonStyle = {
   border: 0,
@@ -2193,46 +2072,8 @@ const closeButtonStyle = {
   fontSize: "20px",
 };
 
-const secondaryButtonStyle = {
-  boxSizing:
-    "border-box" as const,
-  padding: "9px 13px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  background: "#1d1e23",
-  color: "#b8b8bd",
-  cursor: "pointer",
-  fontSize: "12px",
-  fontWeight: 650,
-  whiteSpace:
-    "nowrap" as const,
-};
 
-const inputStyle = {
-  width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding: "11px 12px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  outline: "none",
-  background: "#101115",
-  color: "#e5e5e7",
-  fontSize: "13px",
-};
 
-const emptyActivityStyle = {
-  padding: "30px 16px",
-  border:
-    "1px solid #292a30",
-  borderRadius: "10px",
-  background: "#131419",
-  color: "#777880",
-  fontSize: "12px",
-  textAlign:
-    "center" as const,
-};
+
 
 export default FundsPanel;

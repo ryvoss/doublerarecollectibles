@@ -1,3 +1,4 @@
+import { inputStyle, secondaryButtonStyle } from "./client/components/uiStyles";
 import {
   useEffect,
   useState,
@@ -504,7 +505,7 @@ function Dashboard({
   }
 
   return (
-    <>
+    <div className="command-center">
       <div
         className="page-heading"
         style={{ marginBottom: "16px" }}
@@ -519,18 +520,12 @@ function Dashboard({
 
       {/* Keep the two most common non-Show workflows easy to reach without
           stretching them across the entire Command Center. */}
-      <section style={{ marginBottom: "18px" }}>
+      <section className="command-section">
         <CommandCenterSectionHeader
           title="Quick Actions"
         />
 
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "10px",
-          }}
-        >
+        <div className="command-actions">
           <CommandAction
             icon="+"
             title="New Order"
@@ -549,7 +544,7 @@ function Dashboard({
 
       {/* Shows are the primary operational workflow, so keep the current
           Show state near the top of Command Center. */}
-      <section style={{ marginBottom: "20px" }}>
+      <section className="command-section command-show">
         <CommandCenterSectionHeader
           title="Show Operations"
           detail="Start a Show or continue the active Show"
@@ -558,30 +553,19 @@ function Dashboard({
         <ActiveShowPanel />
       </section>
 
-      <section>
+      <section className="command-section">
         <CommandCenterSectionHeader
           title="Business Position"
           detail="Funds and sealed inventory"
         />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.15fr) minmax(0, 1fr)",
-            gap: "14px",
-            alignItems: "stretch",
-          }}
-        >
+        <div className="command-position-grid">
           <div id="command-center-funds">
             <FundsPanel />
           </div>
 
           <div
-            className="panel"
-            style={{
-              height: "100%",
-              boxSizing: "border-box",
-            }}
+            className="panel command-inventory"
           >
             <div className="panel-header">
               <div>
@@ -590,7 +574,7 @@ function Dashboard({
               </div>
             </div>
 
-            <div style={{ padding: "18px 20px" }}>
+            <div className="command-inventory-body">
               <DashboardRow
                 label="Inventory Cost Value"
                 value={money(totalInventoryValue)}
@@ -616,129 +600,25 @@ function Dashboard({
           </div>
         </div>
       </section>
-    </>
-  );
-}
-
-function CommandCenterSectionHeader({
-  title,
-  detail,
-}: {
-  title: string;
-  detail?: string;
-}) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "baseline",
-        gap: "10px",
-        marginBottom: "9px",
-      }}
-    >
-      <span
-        style={{
-          color: "#9a9ba2",
-          fontSize: "11px",
-          fontWeight: 800,
-          letterSpacing: "0.09em",
-          textTransform: "uppercase",
-        }}
-      >
-        {title}
-      </span>
-
-      {detail && (
-        <span
-          style={{
-            color: "#5f6067",
-            fontSize: "11px",
-          }}
-        >
-          {detail}
-        </span>
-      )}
     </div>
   );
 }
 
-function CommandAction({
-  icon,
-  title,
-  detail,
-  onClick,
-}: {
-  icon: string;
-  title: string;
-  detail: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        width: "220px",
-        maxWidth: "100%",
-        minHeight: "58px",
-        padding: "10px 13px",
-        border: "1px solid #2f6f4a",
-        borderRadius: "9px",
-        background: "#163a28",
-        color: "#f3fff8",
-        cursor: "pointer",
-        textAlign: "left",
-        boxShadow: "0 1px 0 rgba(255, 255, 255, 0.03) inset",
-      }}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          display: "grid",
-          placeItems: "center",
-          width: "34px",
-          height: "34px",
-          flex: "0 0 34px",
-          border: "1px solid #3d8159",
-          borderRadius: "8px",
-          background: "#205338",
-          color: "#d9ffe8",
-          fontSize: "17px",
-          fontWeight: 900,
-        }}
-      >
-        {icon}
-      </span>
+function CommandCenterSectionHeader({title, detail}: {title: string; detail?: string}) {
+  return <div className="command-section-header">
+    <h3>{title}</h3>
+    {detail && <p>{detail}</p>}
+  </div>;
+}
 
-      <span style={{ minWidth: 0 }}>
-        <strong
-          style={{
-            display: "block",
-            color: "#f5fff8",
-            fontSize: "14px",
-            lineHeight: 1.2,
-            fontWeight: 800,
-          }}
-        >
-          {title}
-        </strong>
-        <span
-          style={{
-            display: "block",
-            marginTop: "3px",
-            color: "#a9cbb6",
-            fontSize: "11px",
-            lineHeight: 1.25,
-          }}
-        >
-          {detail}
-        </span>
-      </span>
-    </button>
-  );
+function CommandAction({icon, title, detail, onClick}: {
+  icon: string; title: string; detail: string; onClick: () => void;
+}) {
+  return <button type="button" className="command-action" onClick={onClick}>
+    <span className="command-action-icon" aria-hidden="true">{icon}</span>
+    <span><strong>{title}</strong><span className="command-action-detail">{detail}</span></span>
+    <span className="command-action-arrow" aria-hidden="true">&rarr;</span>
+  </button>;
 }
 
 // ---------------------------------------------------------
@@ -897,7 +777,7 @@ function ProductsPage() {
   }
 
   return (
-    <>
+    <div className="products-page">
       <div
         className="page-heading"
         style={{
@@ -976,7 +856,7 @@ function ProductsPage() {
 
       <div className="panel">
         <div
-          className="panel-header"
+          className="panel-header products-toolbar"
           style={{
             display: "flex",
             justifyContent:
@@ -1021,6 +901,7 @@ function ProductsPage() {
               ([value, label]) => (
                 <button
                   key={value}
+                  aria-pressed={filter === value}
                   type="button"
                   onClick={() => {
                     setFilter(value);
@@ -1095,13 +976,7 @@ function ProductsPage() {
               overflowY: "visible",
             }}
           >
-            <table
-              style={{
-                width: "100%",
-                borderCollapse:
-                  "collapse",
-                minWidth: "880px",
-              }}
+            <table className="products-table"
             >
               <thead>
                 <tr>
@@ -1148,6 +1023,7 @@ function ProductsPage() {
                   (product) => (
                     <tr
                       key={product.id}
+                      className={product.active ? "product-row" : "product-row is-inactive"}
                       style={{
                         borderTop:
                           "1px solid #24252a",
@@ -1182,11 +1058,11 @@ function ProductsPage() {
                       </ProductCell>
 
                       <ProductCell>
-                        {product.type}
+                        <span className="product-badge">{product.type}</span>
                       </ProductCell>
 
                       <ProductCell>
-                        {product.unitType}
+                        <span className={`product-badge product-unit-${product.unitType.toLowerCase()}`}>{product.unitType}</span>
                       </ProductCell>
 
                       <ProductCell>
@@ -1296,7 +1172,7 @@ function ProductsPage() {
           }}
         />
       )}
-    </>
+    </div>
   );
 }
 
@@ -1590,18 +1466,7 @@ function ProductModal({
 
   return (
     <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "24px",
-        background:
-          "rgba(0, 0, 0, 0.72)",
-        backdropFilter: "blur(4px)",
-      }}
+      className="modal-backdrop"
       onMouseDown={(event) => {
         if (
           event.target ===
@@ -1612,16 +1477,7 @@ function ProductModal({
       }}
     >
       <div
-        style={{
-          width: "100%",
-          maxWidth: "560px",
-          border:
-            "1px solid #2b2c31",
-          borderRadius: "14px",
-          background: "#17181c",
-          boxShadow:
-            "0 24px 70px rgba(0, 0, 0, 0.45)",
-        }}
+        className="modal-surface modal-surface--product product-modal"
       >
         <div
           style={{
@@ -1980,29 +1836,7 @@ function ProductModal({
 // FORM HELPERS
 // ---------------------------------------------------------
 
-const inputStyle = {
-  width: "100%",
-  boxSizing:
-    "border-box" as const,
-  padding: "11px 12px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  outline: "none",
-  background: "#101115",
-  color: "#e5e5e7",
-  fontSize: "13px",
-};
 
-const secondaryButtonStyle = {
-  padding: "10px 15px",
-  border:
-    "1px solid #303137",
-  borderRadius: "8px",
-  background: "#1d1e23",
-  color: "#b8b8bd",
-  cursor: "pointer",
-};
 
 const menuItemStyle = {
   width: "100%",
@@ -2075,18 +1909,7 @@ function ProductHeader({
   children: ReactNode;
 }) {
   return (
-    <th
-      style={{
-        padding: "14px 20px",
-        textAlign: "left",
-        color: "#777880",
-        fontSize: "11px",
-        fontWeight: 700,
-        letterSpacing: "0.08em",
-        textTransform: "uppercase",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <th>
       {children}
     </th>
   );
@@ -2098,14 +1921,7 @@ function ProductCell({
   children: ReactNode;
 }) {
   return (
-    <td
-      style={{
-        padding: "16px 20px",
-        color: "#a7a7ad",
-        fontSize: "13px",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <td>
       {children}
     </td>
   );

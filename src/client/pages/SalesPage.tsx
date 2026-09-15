@@ -1,3 +1,4 @@
+import { controlStyle } from "../components/uiStyles";
 import {
   Fragment,
   useEffect,
@@ -423,11 +424,11 @@ export default function SalesPage({
   // -------------------------------------------------------
 
   return (
-    <>
+    <div className="sales-page">
       {!compactSaleWorkflow && (
-        <div className="panel-header">
+        <div className="page-heading sales-heading">
           <div>
-            <h3>Sealed Sales</h3>
+            <h2>Sealed Sales</h2>
         
             <p>
               Sales finalize
@@ -497,9 +498,10 @@ export default function SalesPage({
         !error && (
           <>
             {!compactSaleWorkflow && (
-              <div className="metric-grid">
+              <div className="metric-grid sales-metrics">
                 <Metric
                   label="Revenue"
+                  detail="Full sale proceeds"
                   value={money(
                     revenue
                   )}
@@ -507,6 +509,7 @@ export default function SalesPage({
               
                 <Metric
                   label="FIFO COGS"
+                  detail="Historical inventory cost sold"
                   value={money(
                     total(
                       allLines,
@@ -517,6 +520,7 @@ export default function SalesPage({
               
                 <Metric
                   label="Gross Profit"
+                  detail="Revenue less FIFO COGS"
                   value={money(
                     profit
                   )}
@@ -524,6 +528,7 @@ export default function SalesPage({
               
                 <Metric
                   label="Gross Margin"
+                  detail="Combined profit / revenue"
                   value={percent(
                     revenue > 0
                       ? profit /
@@ -535,22 +540,9 @@ export default function SalesPage({
             )}
 
             {adding &&
-              (quickActionOnly ? (
+              (!embeddedShowSale ? (
                 <div
-                  style={{
-                    position: "fixed",
-                    inset: 0,
-                    zIndex: 1200,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    padding: "24px",
-                    background:
-                      "rgba(0, 0, 0, 0.72)",
-                    backdropFilter:
-                      "blur(4px)",
-                    overflowY: "auto",
-                  }}
+                  className="modal-backdrop sales-backdrop"
                   onMouseDown={(event) => {
                     if (
                       event.target ===
@@ -561,19 +553,7 @@ export default function SalesPage({
                   }}
                 >
                   <div
-                    style={{
-                      width: "100%",
-                      maxWidth: "980px",
-                      maxHeight:
-                        "calc(100vh - 48px)",
-                      overflowY: "auto",
-                      border:
-                        "1px solid #303137",
-                      borderRadius: "14px",
-                      background: "#17181c",
-                      boxShadow:
-                        "0 24px 70px rgba(0, 0, 0, 0.5)",
-                    }}
+                    className="modal-surface sales-modal"
                   >
                     <NewSaleForm
                       products={products}
@@ -612,7 +592,7 @@ export default function SalesPage({
             {!compactSaleWorkflow && (
               <>
                 <section className="panel">
-                  <div className="panel-header">
+                  <div className="panel-header sales-filters">
                     <input
                       aria-label="Search sales"
                       style={
@@ -671,8 +651,7 @@ export default function SalesPage({
                           "20px",
                       }}
                     >
-                      No sales to
-                      display.
+                      No matching sales. Try another filter or record your first sale.
                     </p>
                   ) : (
                     <Table
@@ -695,7 +674,9 @@ export default function SalesPage({
                               sale.id
                             }
                           >
-                            <tr>
+                            <tr className="expandable-row" onClick={(event) => {
+                              if (!(event.target as HTMLElement).closest("button, a, input, select")) setExpandedId(expandedId === sale.id ? null : sale.id);
+                            }}>
                               <Cell>
                                 {
                                   sale.saleNumber
@@ -785,8 +766,8 @@ export default function SalesPage({
                                 >
                                   {expandedId ===
                                   sale.id
-                                    ? "Hide"
-                                    : "View"}
+                                    ? "Collapse \u25be"
+                                    : "Expand \u25b8"}
                                 </button>
                               </Cell>
                             </tr>
@@ -953,7 +934,7 @@ export default function SalesPage({
           </>
         )
       )}
-    </>
+    </div>
   );
 }
 
@@ -1324,7 +1305,7 @@ function NewSaleForm({
 
   return (
     <section
-      className={modalMode ? undefined : "panel"}
+      className={`sales-form ${modalMode ? "" : "panel"} ${lockedVisit ? "sales-form--show" : ""}`}
       style={{
         padding: modalMode
           ? "24px"
@@ -1400,7 +1381,7 @@ function NewSaleForm({
           }}
         >
           <div
-            style={formGrid}
+            className="sales-form-grid"
           >
             <Field label="Sale Number">
               <div
@@ -1604,15 +1585,7 @@ function NewSaleForm({
                 key={
                   line.key
                 }
-                style={{
-                  ...formGrid,
-                  borderTop:
-                    "1px solid #303137",
-                  paddingTop:
-                    "16px",
-                  marginTop:
-                    "16px",
-                }}
+                className="sales-line-grid"
               >
                 <Field label="Product">
                   <select
@@ -1887,7 +1860,7 @@ function NewSaleForm({
             </Field>
           </div>
 
-          <p>
+          <p className="sales-total">
             <strong>
               Total Revenue:{" "}
               {money(
@@ -1962,15 +1935,7 @@ function Field({
 }) {
   return (
     <label
-      style={{
-        display: "flex",
-        flexDirection:
-          "column",
-        gap: "7px",
-        minWidth: 0,
-        fontSize: "12px",
-        color: "#c8c8cd",
-      }}
+      className="sales-field"
     >
       {label}
       {children}
@@ -1981,9 +1946,11 @@ function Field({
 function Metric({
   label,
   value,
+  detail,
 }: {
   label: string;
   value: string;
+  detail: string;
 }) {
   return (
     <article className="metric-card">
@@ -1994,6 +1961,7 @@ function Metric({
       <strong className="metric-value">
         {value}
       </strong>
+      <span className="metric-detail">{detail}</span>
     </article>
   );
 }
@@ -2007,17 +1975,9 @@ function Table({
 }) {
   return (
     <div
-      style={{
-        overflowX:
-          "auto",
-      }}
+      className="table-scroll"
     >
-      <table
-        style={{
-          width: "100%",
-          borderCollapse:
-            "collapse",
-        }}
+      <table className="sales-table"
       >
         <thead>
           <tr>
@@ -2027,18 +1987,7 @@ function Table({
                   key={
                     heading
                   }
-                  style={{
-                    padding:
-                      "14px 16px",
-                    textAlign:
-                      "left",
-                    color:
-                      "#898a91",
-                    fontSize:
-                      "11px",
-                    whiteSpace:
-                      "nowrap",
-                  }}
+
                 >
                   {heading}
                 </th>
@@ -2062,36 +2011,9 @@ function Cell({
 }) {
   return (
     <td
-      style={{
-        padding:
-          "14px 16px",
-        borderTop:
-          "1px solid #303137",
-        fontSize: "13px",
-        color: "#a7a7ad",
-        whiteSpace:
-          "nowrap",
-      }}
+
     >
       {children}
     </td>
   );
 }
-
-const controlStyle = {
-  padding: "10px 12px",
-  border:
-    "1px solid #303137",
-  borderRadius: "7px",
-  background: "#18191d",
-  color: "#c8c8cd",
-  fontSize: "12px",
-  minWidth: 0,
-};
-
-const formGrid = {
-  display: "grid",
-  gridTemplateColumns:
-    "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: "14px",
-};

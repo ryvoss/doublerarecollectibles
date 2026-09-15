@@ -862,3 +862,32 @@ professional
 dense enough for business use
 easy to operate during Shows
 visually consistent
+
+## Reporting
+
+Reports are read-only analytical views derived from existing business records.
+
+Information architecture:
+
+- Overview
+- Sales
+- Inventory
+- Shows
+
+Reporting should prioritize at-a-glance understanding followed by progressively more detailed data.
+
+Use:
+- KPI cards for important single values
+- line charts for time-based trends
+- bar charts for comparisons and rankings
+- stacked bars for meaningful composition
+- tables when exact values matter
+
+Do not create visualizations merely for decoration.
+
+Reporting calculations should use the same underlying business definitions as operational workflows. Do not create alternate definitions of Revenue, COGS, Gross Profit, Gross Margin, Inventory Value, or Show reconciliation metrics inside the frontend.
+
+Singles Inventory Change is not profit.
+
+Command Center is for operating the business.
+Reports is for understanding the business.
