@@ -17,6 +17,7 @@ import SalesPage from "./client/pages/SalesPage";
 import ShowsPage from "./client/pages/ShowsPage";
 import { matchingBoxName } from "./shared/caseProduct";
 import ActiveShowPanel from "./client/components/ActiveShowPanel";
+import ReportsPage from "./client/pages/ReportsPage";
 
 // ---------------------------------------------------------
 // TYPES
@@ -28,7 +29,8 @@ type Page =
   | "orders"
   | "inventory"
   | "sales"
-  | "shows";
+  | "shows"
+  | "reports";
 
 type ProductUnitType = "CASE" | "BOX" | "ITEM";
 
@@ -126,6 +128,7 @@ const navigation: {
     label: "Shows",
     icon: "★",
   },
+  { id: "reports", label: "Reports", icon: "▥" },
 ];
 
 // ---------------------------------------------------------
@@ -359,6 +362,7 @@ function App() {
       </aside>
 
       <main className="main-content">
+        {import.meta.env.MODE === "test" && <div className="test-environment-banner" role="status">TEST ENVIRONMENT — DISPOSABLE DATA</div>}
         <header className="topbar">
           <div>
             <p className="eyebrow">
@@ -411,13 +415,15 @@ function App() {
           {activePage === "inventory" && <InventoryPage />}
           {activePage === "sales" && <SalesPage />}
           {activePage === "shows" && <ShowsPage />}
+          {activePage === "reports" && <ReportsPage />}
 
           {activePage !== "dashboard" &&
             activePage !== "inventory" &&
             activePage !== "sales" &&
             activePage !== "shows" &&
             activePage !== "products" &&
-            activePage !== "orders" && (
+            activePage !== "orders" &&
+            activePage !== "reports" && (
               <PagePlaceholder
                 title={currentPage.label}
               />

@@ -1,4 +1,5 @@
 import { prisma } from "../src/server/prisma";
+import { assertDatabaseEnvironment, databaseName } from "../src/server/environment";
 
 // ---------------------------------------------------------
 // BUSINESS DATA RESET
@@ -82,6 +83,7 @@ async function showCurrentRecordCounts() {
 }
 
 async function main() {
+  if (assertDatabaseEnvironment() !== "REAL") throw new Error("The legacy business-data reset is REAL-only and refuses TEST.");
   console.log("");
   console.log("========================================");
   console.log(" DOUBLE RARE COLLECTIBLES");
@@ -112,6 +114,9 @@ async function main() {
     console.log("");
     return;
   }
+
+  const connected = await prisma.$queryRaw<{ name: string }[]>`SELECT current_database() AS name`;
+  if (connected[0]?.name !== databaseName(process.env.DIRECT_DATABASE_URL)) throw new Error("Database URL and actual connected database differ; refusing destructive reset.");
 
   console.log(
     "Confirmation received. Clearing business data..."

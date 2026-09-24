@@ -1,6 +1,9 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../generated/prisma/client";
+import { assertDatabaseEnvironment } from "./environment";
+
+assertDatabaseEnvironment();
 
 const adapter = new PrismaPg({
   connectionString: process.env.DIRECT_DATABASE_URL!,

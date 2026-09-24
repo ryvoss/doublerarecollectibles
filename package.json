@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:test": "vite --mode test",
+    "server:test": "node --env-file=.env.test --import tsx src/server/server.ts",
+    "test:setup": "node scripts/test-setup.mjs",
+    "test:reset": "node --env-file=.env.test scripts/test-reset.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

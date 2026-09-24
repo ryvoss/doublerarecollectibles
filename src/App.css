@@ -1391,3 +1391,5 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
   .orders-modal-header, .show-workspace-header, .funds-modal-header { padding: 16px; }
   .orders-modal-actions, .show-workspace-footer { gap: 8px; }
 }
+.test-environment-banner { position: sticky; top: 0; z-index: 20; padding: 7px 16px; background: #71551b; color: #fff1c9; border-bottom: 1px solid #a37a28; text-align: center; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.test-environment-banner + .topbar { top: 29px; }
