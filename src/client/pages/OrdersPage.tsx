@@ -1,5 +1,6 @@
 import { inputStyle, secondaryButtonStyle } from "../components/uiStyles";
 import { resolveOrderInventory } from "../../shared/orderConversion";
+import { analyzeLandedCosts } from "../../shared/landedCostAnalysis";
 import {
   Fragment,
   useEffect,
@@ -10,6 +11,7 @@ import type {
   FormEvent,
   ReactNode,
 } from "react";
+import type { LandedCostMethod } from "../../shared/landedCostAnalysis";
 
 // ---------------------------------------------------------
 // TYPES
@@ -989,6 +991,9 @@ function OrderDetailModal({
   const [error, setError] =
     useState<string | null>(null);
 
+  const [landedCostView, setLandedCostView] =
+    useState<LandedCostMethod>("STORED");
+
   const productCost =
     calculateProductCost(order);
 
@@ -1000,6 +1005,15 @@ function OrderDetailModal({
 
   const isDraft =
     order.status === "DRAFT";
+
+  const landedCostAnalyses = isDraft ? null : {
+    STORED: analyzeLandedCosts(order, "STORED"),
+    BLEND: analyzeLandedCosts(order, "BLEND"),
+    QUANTITY: analyzeLandedCosts(order, "QUANTITY"),
+  };
+
+  const activeLandedCostAnalysis =
+    landedCostAnalyses?.[landedCostView] ?? null;
 
   async function removeLine(line: OrderLine) {
     if (!isDraft || !window.confirm("Remove this product line from the draft order?")) return;
@@ -1298,6 +1312,88 @@ function OrderDetailModal({
           </div>
         )}
       </div>
+
+      {!isDraft && activeLandedCostAnalysis && landedCostAnalyses && (
+        <section className="orders-landed-analysis" aria-labelledby={`landed-analysis-${order.id}`}>
+          <div className="orders-landed-header">
+            <div>
+              <h3 id={`landed-analysis-${order.id}`}>Landed Cost Analysis</h3>
+              <p>
+                Stored is the actual recorded accounting cost. Blend and Quantity are read-only estimates.
+              </p>
+            </div>
+            <div className="orders-landed-control" aria-label="Landed Cost View">
+              <span>Landed Cost View</span>
+              <div role="group">
+                {(["STORED", "BLEND", "QUANTITY"] as LandedCostMethod[]).map(method => (
+                  <button key={method} type="button" aria-pressed={landedCostView === method}
+                    className={landedCostView === method ? "is-active" : ""}
+                    onClick={() => setLandedCostView(method)}>
+                    {method === "STORED" ? "Stored" : method === "BLEND" ? "50/50 Blend" : "Quantity"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="table-scroll">
+            <table className="orders-table orders-landed-table">
+              <thead><tr>
+                <TableHeader>Product</TableHeader>
+                <TableHeader>Sellable Qty</TableHeader>
+                <TableHeader>Product Cost</TableHeader>
+                <TableHeader>Allocated Shipping</TableHeader>
+                <TableHeader>Total Landed Cost</TableHeader>
+                <TableHeader>Landed / Unit</TableHeader>
+                <TableHeader>Expected Sale Price</TableHeader>
+                <TableHeader>Expected Profit / Unit</TableHeader>
+                <TableHeader>Expected Margin</TableHeader>
+                <TableHeader>Unit Cost Comparison</TableHeader>
+              </tr></thead>
+              <tbody>{order.lines.map((line, index) => {
+                const analysis = activeLandedCostAnalysis.lines[index];
+                const stored = landedCostAnalyses.STORED.lines[index];
+                const blend = landedCostAnalyses.BLEND.lines[index];
+                const quantity = landedCostAnalyses.QUANTITY.lines[index];
+                const expectedPrice = line.sellableProduct?.expectedSalePrice ??
+                  products.find(product => product.id === line.sellableProductId)?.expectedSalePrice ?? null;
+                const expectedProfit = expectedPrice === null ? null : Number(expectedPrice) - analysis.landedUnitCost;
+                const expectedMargin = expectedPrice === null || Number(expectedPrice) === 0
+                  ? null : expectedProfit! / Number(expectedPrice);
+                return <tr key={line.id}>
+                  <TableCell>{getProductLabel(line.sellableProduct, line.sellableProductId, products)}</TableCell>
+                  <TableCell>{line.sellableQuantity}</TableCell>
+                  <TableCell>{money(line.productCost)}</TableCell>
+                  <TableCell>{money(analysis.allocatedShipping)}</TableCell>
+                  <TableCell>{money(analysis.landedCost)}</TableCell>
+                  <TableCell>
+                    <strong>{money(analysis.landedUnitCost)}</strong>
+                    {analysis.differenceFromStoredUnitCost !== null && (
+                      <span className={analysis.differenceFromStoredUnitCost >= 0 ? "orders-landed-delta is-up" : "orders-landed-delta is-down"}>
+                        {analysis.differenceFromStoredUnitCost >= 0 ? "+" : ""}{money(analysis.differenceFromStoredUnitCost)} vs stored
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>{expectedPrice === null ? "—" : money(expectedPrice)}</TableCell>
+                  <TableCell>{expectedProfit === null ? "—" : money(expectedProfit)}</TableCell>
+                  <TableCell>{expectedMargin === null ? "—" : `${(expectedMargin * 100).toFixed(1)}%`}</TableCell>
+                  <TableCell><div className="orders-landed-comparison">
+                    <span><em>Stored</em>{money(stored.landedUnitCost)}</span>
+                    <span><em>50/50</em>{money(blend.landedUnitCost)}</span>
+                    <span><em>Quantity</em>{money(quantity.landedUnitCost)}</span>
+                  </div></TableCell>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+          <div className={activeLandedCostAnalysis.reconciled ? "orders-landed-reconciliation" : "orders-landed-reconciliation is-error"}>
+            <span>{landedCostView === "STORED" ? "Recorded accounting total" : "Analytical estimate"}</span>
+            <strong>{money(activeLandedCostAnalysis.calculatedTotal)}</strong>
+            <span>Order total {money(activeLandedCostAnalysis.expectedTotal)}</span>
+            <span>{activeLandedCostAnalysis.reconciled ? "Reconciled to the cent" : `Difference ${money(activeLandedCostAnalysis.reconciliationDifference)}`}</span>
+          </div>
+        </section>
+      )}
 
       <div className="orders-cost-breakdown">
         <CostRow
