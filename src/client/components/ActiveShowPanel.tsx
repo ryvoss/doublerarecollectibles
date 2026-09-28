@@ -10,8 +10,6 @@ import type {
   ReactNode,
 } from "react";
 
-import SalesPage from "../pages/SalesPage";
-
 // ---------------------------------------------------------
 // TYPES
 // ---------------------------------------------------------
@@ -134,6 +132,7 @@ type VisitDetail = ShowVisit & {
     id: number;
     saleNumber: string;
     saleDate: string;
+    createdAt: string;
     paymentMethod: "CASH" | "DIGITAL";
     notes: string | null;
 
@@ -166,6 +165,29 @@ type EndingSnapshotForm = {
   endingSinglesValue: string;
   endingCash: string;
   endingDigital: string;
+};
+
+type ShowInventoryItem = {
+  productId: number;
+  itemId: string;
+  productName: string;
+  productType: "SEALED" | "SINGLE";
+  unitsOnHand: number;
+  inventoryValue: string | number;
+  expectedSalePrice: string | number | null;
+};
+
+type InventoryDetail = {
+  product: {
+    id: number;
+    name: string;
+    expectedSalePrice: string | number | null;
+  };
+  batches: Array<{
+    batchId: number;
+    quantityRemaining: number;
+    landedUnitCost: string | number;
+  }>;
 };
 
 // ---------------------------------------------------------
@@ -558,7 +580,17 @@ export default function ActiveShowPanel() {
   return (
     <>
       <div
-        className="panel active-show-overview"
+        className={`panel active-show-overview${activeVisit ? " is-clickable" : ""}`}
+        role={activeVisit ? "button" : undefined}
+        tabIndex={activeVisit ? 0 : undefined}
+        aria-label={activeVisit ? `Open active Show ${activeVisit.show.name}` : undefined}
+        onClick={activeVisit ? () => { void openActiveVisit(); } : undefined}
+        onKeyDown={activeVisit ? event => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            void openActiveVisit();
+          }
+        } : undefined}
       >
         <div
           className="active-show-overview-header"
@@ -684,21 +716,13 @@ export default function ActiveShowPanel() {
           </div>
 
           {!loading && (
-            <button
-              type="button"
-              className="primary-button"
-              onClick={() => {
-                if (activeVisit) {
-                  void openActiveVisit();
-                } else {
-                  void openStartVisit();
-                }
-              }}
-            >
-              {activeVisit
-                ? "Open Show"
-                : "Start Show"}
-            </button>
+            activeVisit ? (
+              <span className="primary-button active-show-open-label" aria-hidden="true">Open Show</span>
+            ) : (
+              <button type="button" className="primary-button" onClick={() => { void openStartVisit(); }}>
+                Start Show
+              </button>
+            )
           )}
         </div>
 
@@ -1738,10 +1762,41 @@ function ActiveVisitModal({
   const [error, setError] =
     useState<string | null>(null);
 
-  // When true, the existing Sales workflow is shown inside
-  // this active Show Visit. The sale is locked to this visit.
-  const [recordingSale, setRecordingSale] =
-    useState(false);
+  const [inventory, setInventory] =
+    useState<ShowInventoryItem[]>([]);
+
+  const [inventoryLoading, setInventoryLoading] =
+    useState(true);
+
+  const [selectedInventory, setSelectedInventory] =
+    useState<ShowInventoryItem | null>(null);
+
+  const [saleNotice, setSaleNotice] =
+    useState<string | null>(null);
+
+  const loadInventory = useCallback(async () => {
+    try {
+      setInventoryLoading(true);
+      const response = await fetch("/api/inventory");
+      if (!response.ok) throw new Error(await readApiError(response, "Inventory could not be loaded."));
+      const data = (await response.json()) as ShowInventoryItem[];
+      setInventory(data.filter(item => item.productType === "SEALED" && item.unitsOnHand > 0));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Inventory could not be loaded.");
+    } finally {
+      setInventoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadTimer = window.setTimeout(() => {
+      void loadInventory();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(loadTimer);
+    };
+  }, [loadInventory]);
 
   function updateEndingForm(
     field:
@@ -1884,42 +1939,18 @@ function ActiveVisitModal({
       maxWidth="920px"
     >
       {!showEndForm ? (
-        recordingSale ? (
           <>
             <ModalBody>
-              <SalesPage
-                initialShowVisitId={visit.id}
-                onCancelShowSale={() => {
-                  setRecordingSale(false);
-                }}
-                onSaleRecorded={() => {
-                  // The normal Sales workflow already handles
-                  // FIFO, inventory, COGS, and SEALED Funds.
-                  // After it saves, return to the Show workspace,
-                  // reload the linked Show performance, and tell the
-                  // rest of the dashboard that shared data changed.
-                  setRecordingSale(false);
+              {saleNotice && <div className="show-sale-success" role="status">{saleNotice}</div>}
 
-                  void onRefresh().then(() => {
-                    notifyBusinessDataChanged();
-                  });
-                }}
+              <ShowInventory
+                inventory={inventory}
+                loading={inventoryLoading}
+                onSell={setSelectedInventory}
               />
-            </ModalBody>
 
-            <ModalFooter>
-              <SecondaryButton
-                onClick={() => {
-                  setRecordingSale(false);
-                }}
-              >
-                Back to Show
-              </SecondaryButton>
-            </ModalFooter>
-          </>
-        ) : (
-          <>
-            <ModalBody>
+              <Divider />
+
               <ActiveVisitOverview
                 visit={visit}
                 performance={
@@ -1948,16 +1979,6 @@ function ActiveVisitModal({
 
               <button
                 type="button"
-                className="primary-button"
-                onClick={() => {
-                  setRecordingSale(true);
-                }}
-              >
-                Record Sealed Sale
-              </button>
-
-              <button
-                type="button"
                 className="secondary-button"
                 onClick={
                   onBeginEnd
@@ -1967,7 +1988,6 @@ function ActiveVisitModal({
               </button>
             </ModalFooter>
           </>
-        )
       ) : !showReview ? (
         <form
           onSubmit={
@@ -2143,8 +2163,174 @@ function ActiveVisitModal({
           </ModalFooter>
         </>
       )}
+
+      {selectedInventory && (
+        <QuickShowSaleModal
+          visit={visit}
+          item={selectedInventory}
+          onClose={() => setSelectedInventory(null)}
+          onSold={async saleNumber => {
+            setSelectedInventory(null);
+            setSaleNotice(`${saleNumber} recorded successfully.`);
+            window.setTimeout(() => setSaleNotice(null), 3500);
+            await Promise.all([loadInventory(), onRefresh()]);
+            notifyBusinessDataChanged();
+          }}
+        />
+      )}
     </ModalShell>
   );
+}
+
+// ---------------------------------------------------------
+// ACTIVE SHOW SEALED POS
+// ---------------------------------------------------------
+
+function ShowInventory({
+  inventory,
+  loading,
+  onSell,
+}: {
+  inventory: ShowInventoryItem[];
+  loading: boolean;
+  onSell: (item: ShowInventoryItem) => void;
+}) {
+  return <section className="show-inventory">
+    <SectionTitle title="Sell Sealed Inventory" subtitle="Select an in-stock product to record a Show sale." />
+    {loading ? <div className="show-inventory-empty">Loading available inventory…</div>
+      : inventory.length === 0 ? <div className="show-inventory-empty">No sealed inventory is currently available.</div>
+      : <div className="show-inventory-grid">{inventory.map(item =>
+        <button type="button" className="show-inventory-item" key={item.productId} onClick={() => onSell(item)}>
+          <span className="show-inventory-name">{item.productName}<small>{item.itemId}</small></span>
+          <span className="show-inventory-price"><small>Expected</small>{money(item.expectedSalePrice)}</span>
+          <span className="show-inventory-stock"><strong>{item.unitsOnHand}</strong><small>available</small></span>
+          <span className="show-inventory-sell">Sell</span>
+        </button>
+      )}</div>}
+  </section>;
+}
+
+function QuickShowSaleModal({
+  visit,
+  item,
+  onClose,
+  onSold,
+}: {
+  visit: ShowVisit;
+  item: ShowInventoryItem;
+  onClose: () => void;
+  onSold: (saleNumber: string) => Promise<void>;
+}) {
+  const [quantity, setQuantity] = useState(1);
+  const [price, setPrice] = useState(item.expectedSalePrice === null ? "" : String(item.expectedSalePrice));
+  const [payment, setPayment] = useState<"CASH" | "DIGITAL">("CASH");
+  const [detail, setDetail] = useState<InventoryDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadDetail() {
+      try {
+        const response = await fetch(`/api/inventory/${item.productId}`);
+        if (!response.ok) throw new Error(await readApiError(response, "Inventory cost could not be loaded."));
+        const data = (await response.json()) as InventoryDetail;
+        if (!cancelled) setDetail(data);
+      } catch (error) {
+        if (!cancelled) setError(error instanceof Error ? error.message : "Inventory cost could not be loaded.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void loadDetail();
+    return () => { cancelled = true; };
+  }, [item.productId]);
+
+  const numericPrice = Number(price);
+  const validPrice = price.trim() !== "" && Number.isFinite(numericPrice) && numericPrice >= 0;
+  const saleTotal = validPrice ? quantity * numericPrice : 0;
+  const currentLandedCost = detail?.batches.find(batch => batch.quantityRemaining > 0);
+  let remaining = quantity;
+  let estimatedCogs = 0;
+  for (const batch of detail?.batches ?? []) {
+    const used = Math.min(remaining, batch.quantityRemaining);
+    estimatedCogs += used * Number(batch.landedUnitCost);
+    remaining -= used;
+    if (remaining === 0) break;
+  }
+  const estimatedProfit = saleTotal - estimatedCogs;
+  const estimatedMargin = saleTotal > 0 ? estimatedProfit / saleTotal : 0;
+  const belowCost = validPrice && currentLandedCost !== undefined && numericPrice < Number(currentLandedCost.landedUnitCost);
+  const canSubmit = !loading && !saving && quantity > 0 && quantity <= item.unitsOnHand && validPrice && remaining === 0;
+
+  function changeQuantity(next: number) {
+    setQuantity(Math.max(0, Math.min(item.unitsOnHand, Number.isFinite(next) ? Math.trunc(next) : 0)));
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const response = await fetch("/api/sales", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          saleDate: visit.visitDate.slice(0, 10),
+          paymentMethod: payment,
+          showVisitId: visit.id,
+          notes: null,
+          lines: [{ productId: item.productId, quantity, unitSalePrice: numericPrice }],
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Sale could not be saved.");
+      await onSold(body.saleNumber ?? "Sale");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Sale could not be saved.");
+      setSaving(false);
+    }
+  }
+
+  return <ModalShell title={`Sell ${item.productName}`} subtitle={`${visit.show.name} · ${item.unitsOnHand} currently available`} onClose={onClose} maxWidth="560px">
+    <form onSubmit={submit}>
+      <ModalBody>
+        <div className="show-sale-reference">
+          <div><span>Expected sale price</span><strong>{money(item.expectedSalePrice)}</strong></div>
+          <div><span>Current landed cost / unit</span><strong>{loading ? "Loading…" : currentLandedCost ? money(currentLandedCost.landedUnitCost) : "—"}</strong></div>
+        </div>
+        <div className="show-sale-fields">
+          <FormField label="Quantity">
+            <div className="show-quantity-control">
+              <button type="button" aria-label="Decrease quantity" onClick={() => changeQuantity(quantity - 1)}>−</button>
+              <input type="number" min="0" max={item.unitsOnHand} step="1" value={quantity} onChange={event => changeQuantity(Number(event.target.value))} />
+              <button type="button" aria-label="Increase quantity" onClick={() => changeQuantity(quantity + 1)}>+</button>
+            </div>
+          </FormField>
+          <FormField label="Sale price per unit">
+            <div className="show-price-input"><span>$</span><input type="number" min="0" step="0.01" value={price} onChange={event => setPrice(event.target.value)} /></div>
+          </FormField>
+        </div>
+        {belowCost && <div className="show-below-cost" role="status">Sale price is below the current FIFO landed cost. You can still confirm this sale.</div>}
+        <div className="show-sale-totals">
+          <div><span>Sale total</span><strong>{money(saleTotal)}</strong></div>
+          <div><span>Estimated COGS</span><strong>{loading ? "—" : money(estimatedCogs)}</strong></div>
+          <div><span>Estimated gross profit</span><strong className={estimatedProfit < 0 ? "is-negative" : ""}>{loading ? "—" : money(estimatedProfit)}</strong></div>
+          <div><span>Estimated gross margin</span><strong className={estimatedMargin < 0 ? "is-negative" : ""}>{loading ? "—" : percent(estimatedMargin)}</strong></div>
+        </div>
+        <fieldset className="show-payment"><legend>Payment method</legend>{(["CASH", "DIGITAL"] as const).map(method =>
+          <button key={method} type="button" aria-pressed={payment === method} className={payment === method ? "is-active" : ""} onClick={() => setPayment(method)}>{method === "CASH" ? "Cash" : "Digital"}</button>
+        )}</fieldset>
+        {error && <ErrorBox>{error}</ErrorBox>}
+      </ModalBody>
+      <ModalFooter>
+        <SecondaryButton onClick={onClose} disabled={saving}>Cancel</SecondaryButton>
+        <button type="submit" className="primary-button" disabled={!canSubmit}>{saving ? "Recording Sale…" : `Confirm Sale — ${money(saleTotal)}`}</button>
+      </ModalFooter>
+    </form>
+  </ModalShell>;
 }
 
 // ---------------------------------------------------------
@@ -2186,6 +2372,11 @@ function ActiveVisitOverview({
   const startingBusinessValue =
     startingInventory +
     startingFunds;
+
+  const recentSales =
+    [...(visitDetail?.sales ?? [])]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 8);
 
   return (
     <>
@@ -2314,8 +2505,8 @@ function ActiveVisitOverview({
       <Divider />
 
       <SectionTitle
-        title="Sealed Sales"
-        subtitle="Sales currently attached to this active visit."
+        title="Recent Show Sales"
+        subtitle="Latest sealed transactions attached to this visit."
       />
 
       {!visitDetail ||
@@ -2344,7 +2535,7 @@ function ActiveVisitOverview({
             overflow: "hidden",
           }}
         >
-          {visitDetail.sales.map(
+          {recentSales.map(
             (sale, index) => {
               const revenue =
                 sale.lines.reduce(
@@ -2413,9 +2604,9 @@ function ActiveVisitOverview({
                           "11px",
                       }}
                     >
-                      {formatDate(
-                        sale.saleDate
-                      )}
+                      {new Date(sale.createdAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      {" · "}
+                      {sale.lines.map(line => line.product.name).join(", ")}
                     </span>
                   </div>
 

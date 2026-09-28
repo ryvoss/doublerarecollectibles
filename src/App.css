@@ -1117,6 +1117,10 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
 .active-show-overview-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px 24px; padding: 22px 24px; }
 .active-show-overview-header > div { flex: 1 1 240px; }
 .active-show-overview-header > button { flex: 0 0 auto; }
+.active-show-overview.is-clickable { cursor: pointer; transition: border-color 140ms ease, background 140ms ease; }
+.active-show-overview.is-clickable:hover { border-color: #567563; background: linear-gradient(110deg, #1c2b23, var(--surface) 75%); }
+.active-show-overview.is-clickable:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.active-show-open-label { display: inline-flex; align-items: center; flex: 0 0 auto; }
 .command-show .active-show-overview { margin-bottom: 0; border-color: #3c584b; background: linear-gradient(110deg, #192720, var(--surface) 75%); box-shadow: inset 3px 0 #638e75; }
 .command-position-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .command-position-grid > * { min-width: 0; }
@@ -1309,6 +1313,38 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
 .show-section-title h3 { font-size: 15px !important; }
 .show-section-title p { color: var(--text-muted) !important; font-size: 12px !important; }
 .show-review { padding: 16px; border: 1px solid #465e4e; border-radius: 8px; background: #151e19; }
+.show-inventory { min-width: 0; }
+.show-inventory-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 9px; }
+.show-inventory-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 12px; min-width: 0; padding: 12px 13px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-input); color: var(--text); text-align: left; cursor: pointer; }
+.show-inventory-item:hover { border-color: #4e6a5a; background: #1b2520; }
+.show-inventory-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 650; }
+.show-inventory-name small { display: block; margin-top: 3px; color: var(--text-muted); font-size: 9px; font-weight: 500; }
+.show-inventory-price, .show-inventory-stock { display: grid; gap: 2px; justify-items: end; font-size: 12px; font-variant-numeric: tabular-nums; }
+.show-inventory-price small, .show-inventory-stock small { color: var(--text-muted); font-size: 9px; font-weight: 500; }
+.show-inventory-sell { padding: 6px 9px; border-radius: 5px; background: #28513a; color: #d1eddb; font-size: 11px; font-weight: 700; }
+.show-inventory-empty { padding: 20px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-muted); text-align: center; font-size: 12px; }
+.show-sale-success { margin-bottom: 16px; padding: 11px 14px; border: 1px solid var(--positive-border); border-radius: 7px; background: #1d3426; color: #bce0c8; font-size: 12px; }
+.show-sale-reference, .show-sale-totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.show-sale-reference { margin-bottom: 18px; }
+.show-sale-reference > div, .show-sale-totals > div { display: grid; gap: 5px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-input); }
+.show-sale-reference span, .show-sale-totals span { color: var(--text-muted); font-size: 10px; }
+.show-sale-reference strong, .show-sale-totals strong { font-size: 15px; font-variant-numeric: tabular-nums; }
+.show-sale-fields { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 14px; }
+.show-quantity-control { display: grid; grid-template-columns: 38px minmax(60px, 1fr) 38px; }
+.show-quantity-control button { border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--text); font-size: 18px; }
+.show-quantity-control button:first-child { border-radius: 7px 0 0 7px; }
+.show-quantity-control button:last-child { border-radius: 0 7px 7px 0; }
+.show-quantity-control input { width: 100%; min-height: 38px; border-block: 1px solid var(--border-strong); border-inline: 0; background: var(--surface-input); color: var(--text); text-align: center; font: inherit; font-variant-numeric: tabular-nums; }
+.show-price-input { position: relative; }
+.show-price-input span { position: absolute; top: 50%; left: 12px; transform: translateY(-50%); color: var(--text-muted); }
+.show-price-input input { width: 100%; min-height: 38px; padding: 8px 10px 8px 28px; border: 1px solid var(--border-strong); border-radius: 7px; background: var(--surface-input); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
+.show-below-cost { margin: 0 0 16px; padding: 10px 12px; border: 1px solid #756038; border-radius: 7px; background: #302919; color: #e1c88e; font-size: 11px; }
+.show-sale-totals { margin-bottom: 18px; }
+.show-sale-totals strong.is-negative { color: var(--danger); }
+.show-payment { display: flex; gap: 6px; margin: 0; padding: 0; border: 0; }
+.show-payment legend { width: 100%; margin-bottom: 7px; color: var(--text-muted); font-size: 11px; font-weight: 650; }
+.show-payment button { flex: 1; padding: 9px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface-input); color: var(--text-muted); font-size: 12px; font-weight: 650; }
+.show-payment button.is-active { border-color: var(--positive-border); background: #23392a; color: #d9ecdf; }
 .show-workspace table { font-variant-numeric: tabular-nums; }
 .shows-page > .page-heading { align-items: center; }
 .shows-page > .page-heading > div:last-child { flex-wrap: wrap; }
@@ -1326,6 +1362,9 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
   .show-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .show-workspace-header, .show-workspace-body, .show-workspace-footer { padding: 16px; }
   .show-review { padding: 12px; }
+  .show-inventory-grid, .show-sale-reference, .show-sale-totals, .show-sale-fields { grid-template-columns: minmax(0, 1fr); }
+  .show-inventory-item { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .show-inventory-price { display: none; }
 }
 
 /* Funds: purpose balances, Singles locations, and auditable movements. */

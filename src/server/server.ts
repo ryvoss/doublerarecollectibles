@@ -7,6 +7,7 @@ import salesRouter from "./routes/sales";
 import showsRouter from "./routes/shows";
 import fundsRouter from "./routes/funds";
 import reportsRouter from "./routes/reports";
+import whatIfScenariosRouter from "./routes/whatIfScenarios";
 import { assertDatabaseEnvironment } from "./environment";
 import { TEST_DATABASE_NAME } from "./environment";
 import { prisma } from "./prisma";
@@ -43,6 +44,7 @@ app.use("/api/sales", salesRouter);
 app.use("/api/shows", showsRouter);
 app.use("/api/funds", fundsRouter);
 app.use("/api/reports", reportsRouter);
+app.use("/api/what-if-scenarios", whatIfScenariosRouter);
 
 // ---------------------------------------------------------
 // SERVER

@@ -263,3 +263,35 @@ enum FundEntryType {
   PERSONAL_CONTRIBUTION
   MANUAL_ADJUSTMENT
 }
+
+// ---------------------------------------------------------
+// WHAT-IF SCENARIOS
+// ---------------------------------------------------------
+
+// Analytical workspace data is deliberately isolated from transactional
+// Sale, InventoryBatch, FundEntry, Order, and Show records.
+model WhatIfScenario {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  baseSource   String   @default("CURRENT_INVENTORY") @db.VarChar(40)
+  scenarioData Json     @default("{\"lines\":[]}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines WhatIfScenarioLine[]
+}
+
+model WhatIfScenarioLine {
+  id            Int      @id @default(autoincrement())
+  scenarioId    Int
+  productId     Int
+  quantity      Int
+  unitSalePrice Decimal  @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  scenario WhatIfScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+
+  @@unique([scenarioId, productId])
+  @@index([scenarioId])
+}

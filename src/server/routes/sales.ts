@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { simulateFifoConsumption } from "../../shared/fifoSimulation";
 
 const router = Router();
 class FinalizedVisitError extends Error {}
@@ -287,28 +288,23 @@ router.post("/", async (req, res) => {
       // the date the inventory batch happened to be created.
       // ---------------------------------------------------------
 
-      batches.sort((a, b) => {
-        const dateDifference =
-          a.orderLine.order.orderDate.getTime() -
-          b.orderLine.order.orderDate.getTime();
+      const fifoSimulation = simulateFifoConsumption(
+        batches.map(batch => ({
+          id: batch.id,
+          orderDate: batch.orderLine.order.orderDate,
+          quantityReceived: batch.quantityReceived,
+          quantitySold: batch.quantitySold,
+          landedCost: Number(batch.landedCost),
+          landedUnitCost: Number(batch.landedUnitCost),
+          previouslyAllocatedCost: batch.saleAllocations.reduce(
+            (total, allocation) => total + Number(allocation.totalCost),
+            0
+          ),
+        })),
+        line.quantity
+      );
 
-        if (dateDifference !== 0) {
-          return dateDifference;
-        }
-
-        return a.id - b.id;
-      });
-
-      const availableInventory =
-        batches.reduce(
-          (total, batch) =>
-            total +
-            (
-              batch.quantityReceived -
-              batch.quantitySold
-            ),
-          0
-        );
+      const availableInventory = fifoSimulation.availableQuantity;
 
       if (
         availableInventory <
@@ -333,96 +329,7 @@ router.post("/", async (req, res) => {
       // BUILD FIFO ALLOCATIONS
       // ---------------------------------------------------------
 
-      let quantityRemaining =
-        line.quantity;
-
-      const fifoAllocations:
-        FifoAllocation[] = [];
-
-      for (const batch of batches) {
-        if (quantityRemaining === 0) {
-          break;
-        }
-
-        const batchAvailable =
-          batch.quantityReceived -
-          batch.quantitySold;
-
-        if (batchAvailable <= 0) {
-          continue;
-        }
-
-        const quantityFromBatch =
-          Math.min(
-            batchAvailable,
-            quantityRemaining
-          );
-
-        // Total historical COGS already recognized
-        // from this inventory batch.
-        const previouslyAllocatedCostCents =
-          batch.saleAllocations.reduce(
-            (total, allocation) =>
-              total +
-              toCents(
-                allocation.totalCost
-              ),
-            0
-          );
-
-        // Exact landed cost remaining in this batch.
-        const remainingBatchCostCents =
-          toCents(batch.landedCost) -
-          previouslyAllocatedCostCents;
-
-        let allocationCostCents:
-          number;
-
-        if (
-          quantityFromBatch ===
-          batchAvailable
-        ) {
-          // If this sale consumes everything remaining
-          // in the batch, use the exact remaining cost.
-          //
-          // This guarantees that the batch eventually
-          // reconciles exactly to its historical landed cost.
-          allocationCostCents =
-            remainingBatchCostCents;
-        } else {
-          // A partial batch sale uses the more precise
-          // landed unit cost.
-          allocationCostCents =
-            Math.round(
-              quantityFromBatch *
-                Number(
-                  batch.landedUnitCost
-                ) *
-                100
-            );
-        }
-
-        fifoAllocations.push({
-          inventoryBatchId:
-            batch.id,
-
-          quantity:
-            quantityFromBatch,
-
-          unitCost:
-            Number(
-              batch.landedUnitCost
-            ).toFixed(6),
-
-          totalCost:
-            centsToMoney(
-              allocationCostCents
-            ),
-        });
-
-        quantityRemaining -=
-          quantityFromBatch;
-      }
+      const fifoAllocations: FifoAllocation[] = fifoSimulation.allocations;
 
       // ---------------------------------------------------------
       // CALCULATE LINE FINANCIALS
