@@ -3,17 +3,24 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
     "dev": "vite",
     "dev:test": "vite --mode test",
     "server:test": "node --env-file=.env.test --import tsx src/server/server.ts",
     "test:setup": "node scripts/test-setup.mjs",
     "test:reset": "node --env-file=.env.test scripts/test-reset.mjs",
-    "build": "tsc -b && vite build",
+    "build": "prisma generate --config prisma7.config.ts && tsc -b && vite build && npm run build:server",
+    "build:server": "esbuild src/server/server.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=dist-server/server.js",
+    "start": "node dist-server/server.js",
+    "db:migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1149.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@prisma/extension-accelerate": "^3.0.1",
@@ -30,6 +37,7 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.1.0",
+    "esbuild": "~0.28.2",
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",

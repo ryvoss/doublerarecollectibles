@@ -2,7 +2,7 @@
 // npm install --save-dev prisma dotenv
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
-import { assertDatabaseEnvironment } from "./src/server/environment";
+import { assertDatabaseEnvironment, migrationDatabaseUrl } from "./src/server/environment";
 
 const environment = assertDatabaseEnvironment();
 
@@ -12,7 +12,7 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-  url: process.env["DIRECT_DATABASE_URL"],
-  shadowDatabaseUrl: environment === "TEST" ? undefined : process.env["SHADOW_DATABASE_URL"],
-},
+    url: migrationDatabaseUrl(),
+    shadowDatabaseUrl: environment === "TEST" ? undefined : process.env["SHADOW_DATABASE_URL"],
+  },
 });
