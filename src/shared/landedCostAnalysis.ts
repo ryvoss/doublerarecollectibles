@@ -1,4 +1,4 @@
-export type LandedCostMethod = "STORED" | "BLEND" | "QUANTITY";
+export type LandedCostMethod = "STORED" | "VALUE" | "BLEND" | "QUANTITY";
 
 export type LandedCostAnalysisOrder = {
   shippingCost: string | number;
@@ -70,6 +70,19 @@ export function analyzeLandedCosts(
   const tariff = allocateCents(toCents(order.tariffCost), valueWeights);
   const other = allocateCents(toCents(order.otherCost), valueWeights);
   const adjustment = allocateCents(toCents(order.adjustment), valueWeights);
+  const totalAdditionalCents = toCents(order.shippingCost) + toCents(order.tariffCost) +
+    toCents(order.otherCost) + toCents(order.adjustment);
+  const officialAdditional = allocateCents(totalAdditionalCents, valueWeights);
+
+  // Official finalization allocates the combined additional-cost total by
+  // product value. Reconcile the component display to those exact line totals
+  // so the preview matches the cents that will be committed server-side.
+  if (method === "VALUE" || method === "STORED") {
+    adjustment.forEach((value, index) => {
+      adjustment[index] = value + officialAdditional[index] -
+        (shipping[index] + tariff[index] + other[index] + value);
+    });
+  }
 
   const lines = order.lines.map((line, index) => {
     const storedUnit = line.landedUnitCost === null ? null : Number(line.landedUnitCost);

@@ -3,6 +3,7 @@ export type FifoBatchInput = {
   orderDate: Date;
   quantityReceived: number;
   quantitySold: number;
+  quantityConverted?: number;
   landedCost: string | number;
   landedUnitCost: string | number;
   previouslyAllocatedCost: string | number;
@@ -26,14 +27,14 @@ export function simulateFifoConsumption(batches: FifoBatchInput[], requestedQuan
     return dateDifference !== 0 ? dateDifference : a.id - b.id;
   });
   const availableQuantity = ordered.reduce(
-    (total, batch) => total + Math.max(0, batch.quantityReceived - batch.quantitySold),
+    (total, batch) => total + Math.max(0, batch.quantityReceived - batch.quantitySold - (batch.quantityConverted ?? 0)),
     0
   );
   let quantityRemaining = requestedQuantity;
   const allocations: FifoSimulationAllocation[] = [];
   for (const batch of ordered) {
     if (quantityRemaining === 0) break;
-    const batchAvailable = batch.quantityReceived - batch.quantitySold;
+    const batchAvailable = batch.quantityReceived - batch.quantitySold - (batch.quantityConverted ?? 0);
     if (batchAvailable <= 0) continue;
     const quantity = Math.min(batchAvailable, quantityRemaining);
     const remainingBatchCostCents = toCents(batch.landedCost) - toCents(batch.previouslyAllocatedCost);

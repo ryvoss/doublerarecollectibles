@@ -14,3 +14,12 @@ body {
   width: 100%;
   min-height: 100svh;
 }
+
+.route-loading {
+  display: grid;
+  place-items: center;
+  min-height: 100svh;
+  background: #0b0c0f;
+  color: #a8a9ae;
+  font: 600 13px/1.5 Inter, ui-sans-serif, system-ui, sans-serif;
+}

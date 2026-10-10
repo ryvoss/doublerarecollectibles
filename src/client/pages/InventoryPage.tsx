@@ -1,6 +1,7 @@
 import { controlStyle } from "../components/uiStyles";
 import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import PublicListingManager from "../components/PublicListingManager";
 
 type InventoryItem = {
   productId: number;
@@ -15,6 +16,38 @@ type InventoryItem = {
   retailValue: number;
   potentialGrossProfit: number;
   batchCount: number;
+  packPoolCount: number;
+  unitType: "CASE" | "BOX" | "ITEM";
+  packsPerBox: number | null;
+  packDisplayName: string | null;
+  defaultPackPrice: number | null;
+};
+
+type PackInventoryItem = {
+  sourceBoxProductId: number;
+  itemId: string;
+  sourceBoxProductName: string;
+  packDisplayName: string;
+  packsOnHand: number;
+  remainingCostBasis: number;
+  costPerPack: number;
+  defaultPackPrice: number | null;
+  expectedRetailValue: number | null;
+  potentialGrossProfit: number | null;
+  potentialGrossMargin: number | null;
+  poolCount: number;
+};
+
+type PackBreakdownPreview = {
+  availableBoxes: number;
+  quantityBoxes: number;
+  packsPerBox: number;
+  packDisplayName: string;
+  packsCreated: number;
+  transferredCostBasis: number;
+  costPerPack: number;
+  defaultPackPrice: number | null;
+  expectedRetailValue: number | null;
 };
 
 type InventoryDetail = {
@@ -25,6 +58,7 @@ type InventoryDetail = {
     orderDate: string;
     quantityReceived: number;
     quantitySold: number;
+    quantityConverted: number;
     quantityRemaining: number;
     landedCost: number;
     landedUnitCost: number;
@@ -48,6 +82,10 @@ export default function InventoryPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InventoryDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [showPublicListings, setShowPublicListings] = useState(false);
+  const [packInventory, setPackInventory] = useState<PackInventoryItem[]>([]);
+  const [breakdown, setBreakdown] = useState<InventoryItem | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -55,10 +93,19 @@ export default function InventoryPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/inventory", {signal: controller.signal});
-        if (!response.ok) throw new Error("Inventory could not be loaded.");
-        const data: InventoryItem[] = await response.json();
-        if (!controller.signal.aborted) setItems(data.filter((item) => item.productType === "SEALED"));
+        const [inventoryResponse, packResponse] = await Promise.all([
+          fetch("/api/inventory", {signal: controller.signal}),
+          fetch("/api/pack-pools/inventory", {signal: controller.signal}),
+        ]);
+        if (!inventoryResponse.ok || !packResponse.ok) throw new Error("Inventory could not be loaded.");
+        const [data, packData] = await Promise.all([
+          inventoryResponse.json() as Promise<InventoryItem[]>,
+          packResponse.json() as Promise<PackInventoryItem[]>,
+        ]);
+        if (!controller.signal.aborted) {
+          setItems(data.filter((item) => item.productType === "SEALED"));
+          setPackInventory(packData);
+        }
       } catch (error) {
         if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Inventory could not be loaded.");
       } finally {
@@ -100,16 +147,22 @@ export default function InventoryPage() {
     return difference || a.productId - b.productId;
   });
   // Sum monetary API values in cents; batch accounting remains on the backend.
-  const totalValue = items.reduce((sum, item) => sum + Math.round(item.inventoryValue * 100), 0) / 100;
-  const totalRetail = items.reduce((sum, item) => sum + Math.round(item.retailValue * 100), 0) / 100;
+  const totalValue = (items.reduce((sum, item) => sum + Math.round(item.inventoryValue * 100), 0) +
+    packInventory.reduce((sum, item) => sum + Math.round(item.remainingCostBasis * 100), 0)) / 100;
+  const totalRetail = (items.reduce((sum, item) => sum + Math.round(item.retailValue * 100), 0) +
+    packInventory.reduce((sum, item) => sum + Math.round((item.expectedRetailValue ?? 0) * 100), 0)) / 100;
 
   return (
     <div className="inventory-page">
       <div className="page-heading">
         <div><h2>Sealed Inventory</h2><p>Active, sellable products. Inventory is added when orders are finalized.</p></div>
-        <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh</button>
+        <div className="inventory-page-actions">
+          <button className="primary-button" type="button" onClick={() => setShowPublicListings(true)}>Manage Public Listings</button>
+          <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh</button>
+        </div>
       </div>
       {error && <p role="alert">{error}</p>}
+      {message && <p className="inventory-success" role="status">{message}</p>}
       {loading ? <p role="status">Loading inventory...</p> : !error && <>
         <div className="metric-grid inventory-metrics">
           <Metric detail={`${items.filter((item) => item.unitsOnHand > 0).length} products in stock`} label="Units on Hand" value={String(items.reduce((sum, item) => sum + item.unitsOnHand, 0))} />
@@ -130,7 +183,7 @@ export default function InventoryPage() {
           </div>
           <p className="inventory-caption">{visibleItems.length} of {items.length} products. Totals above include all listed inventory. Retail estimates use current expected prices; unset prices count as zero.</p>
           {visibleItems.length === 0 ? <div className="empty-state"><strong>{items.length === 0 ? "No sealed inventory yet" : "No matching products"}</strong><p>{items.length === 0 ? "Finalize a purchase order to receive inventory." : "Try another search or stock filter."}</p></div> :
-            <Table headings={["Item ID", "Product", "Received", "Sold", "On Hand", "Historical Cost", "Expected Price", "Retail Value", "Potential Profit", "Margin", "Batches"]}>
+            <Table headings={["Item ID", "Product", "Received", "Sold", "On Hand", "Historical Cost", "Expected Price", "Retail Value", "Potential Profit", "Margin", "Batches", "Actions"]}>
               {visibleItems.map((item) => <Fragment key={item.productId}><tr className="expandable-row" onClick={(event) => {
                 if ((event.target as HTMLElement).closest("button, a, input, select")) return;
                 if (selectedId !== item.productId) { setDetail(null); setDetailError(null); setSelectedId(item.productId); }
@@ -154,9 +207,13 @@ export default function InventoryPage() {
                     setSelectedId(null);
                   }
                 }}>{selectedId === item.productId ? "Batches \u25b4" : `Batches (${item.batchCount}) \u25be`}</button></Cell>
+                <Cell>{item.unitType === "BOX" && <button type="button" className="inventory-breakdown-button" disabled={item.unitsOnHand <= 0} onClick={() => {
+                  setMessage(null);
+                  setBreakdown(item);
+                }}>Break Down</button>}</Cell>
               </tr>
               {selectedId === item.productId && <tr>
-                <td colSpan={11} className="inventory-expanded">
+                <td colSpan={12} className="inventory-expanded">
                   <section id={`inventory-batches-${item.productId}`} aria-label={`Batches for ${item.productName}`}
                     className="inventory-batch-section">
                     <h4 style={{margin: "0 0 6px", color: "#e5e5e7"}}>{item.productName} — Purchase Batches</h4>
@@ -174,6 +231,7 @@ export default function InventoryPage() {
                           <dl className="inventory-batch-values">
                             <BatchValue label="Received" value={String(batch.quantityReceived)} />
                             <BatchValue label="Sold" value={String(batch.quantitySold)} />
+                            <BatchValue label="Converted to Packs" value={String(batch.quantityConverted)} />
                             <BatchValue label="Remaining Units" value={String(batch.quantityRemaining)} />
                             <BatchValue label="Original Landed Cost" value={money(batch.landedCost)} />
                             <BatchValue label="Cost per Unit" value={money(batch.landedUnitCost)} />
@@ -188,7 +246,18 @@ export default function InventoryPage() {
               </Fragment>)}
             </Table>}
         </section>
+        <PackInventorySection items={packInventory} />
       </>}
+      {showPublicListings && (
+        <PublicListingManager onClose={() => setShowPublicListings(false)} />
+      )}
+      {breakdown && <PackBreakdownModal item={breakdown} onClose={() => setBreakdown(null)} onComplete={(text) => {
+        setBreakdown(null);
+        setMessage(text);
+        setSelectedId(null);
+        setRefresh((value) => value + 1);
+        window.dispatchEvent(new Event("business-data-changed"));
+      }} />}
     </div>
   );
 }
@@ -213,4 +282,147 @@ function Table({headings, children}: {headings: string[]; children: ReactNode}) 
 
 function Cell({children}: {children: ReactNode}) {
   return <td >{children}</td>;
+}
+
+function PackInventorySection({items}: {items: PackInventoryItem[]}) {
+  const totalPacks = items.reduce((sum, item) => sum + item.packsOnHand, 0);
+  const totalCost = items.reduce((sum, item) => sum + Math.round(item.remainingCostBasis * 100), 0) / 100;
+  return <section className="panel pack-inventory-panel" aria-labelledby="pack-inventory-title">
+    <div className="panel-header pack-inventory-header"><div><span>Inventory transformation</span><h3 id="pack-inventory-title">Pack Inventory</h3><p>Current PackPool inventory prepared from sealed boxes. This is a breakout of inventory already included in the totals above.</p></div><div><strong>{totalPacks}</strong><span>Packs on hand</span><small>{money(totalCost)} cost basis</small></div></div>
+    {items.length === 0 ? <div className="empty-state"><strong>No pack inventory yet</strong><p>Use Break Down on a Box product to configure and prepare packs before a Show.</p></div> : <div className="table-scroll"><table className="pack-inventory-table">
+      <thead><tr><th>Derived Pack Inventory</th><th>Packs On Hand</th><th>Remaining Cost</th><th>Cost / Pack</th><th>Default Price</th><th>Expected Retail</th><th>Potential Profit</th><th>Potential Margin</th></tr></thead>
+      <tbody>{items.map(item => <tr key={item.sourceBoxProductId}><td><strong>{item.packDisplayName}</strong><small>From {item.sourceBoxProductName} · {item.itemId} · {item.poolCount} pool{item.poolCount === 1 ? "" : "s"}</small></td><td>{item.packsOnHand}</td><td>{money(item.remainingCostBasis)}</td><td>{money(item.costPerPack)}</td><td>{item.defaultPackPrice === null ? "—" : money(item.defaultPackPrice)}</td><td>{item.expectedRetailValue === null ? "—" : money(item.expectedRetailValue)}</td><td>{item.potentialGrossProfit === null ? "—" : money(item.potentialGrossProfit)}</td><td>{item.potentialGrossMargin === null ? "—" : `${(item.potentialGrossMargin * 100).toFixed(1)}%`}</td></tr>)}</tbody>
+    </table></div>}
+  </section>;
+}
+
+function PackBreakdownModal({item, onClose, onComplete}: {
+  item: InventoryItem;
+  onClose: () => void;
+  onComplete: (message: string) => void;
+}) {
+  const initiallyConfigured = item.packsPerBox !== null && item.packDisplayName !== null;
+  const [quantity, setQuantity] = useState("1");
+  const [packsPerBox, setPacksPerBox] = useState(item.packsPerBox?.toString() ?? "");
+  const [packDisplayName, setPackDisplayName] = useState(item.packDisplayName ?? item.productName.replace(/\s+Box$/i, "") + " Pack");
+  const [defaultPackPrice, setDefaultPackPrice] = useState(item.defaultPackPrice?.toString() ?? "");
+  const [preview, setPreview] = useState<PackBreakdownPreview | null>(null);
+  const [previewing, setPreviewing] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const amount = Number(quantity);
+    const packCount = Number(packsPerBox);
+    const packPrice = defaultPackPrice === "" ? null : Number(defaultPackPrice);
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > item.unitsOnHand) {
+      setPreview(null);
+      setPreviewing(false);
+      setError(`Enter a whole number from 1 to ${item.unitsOnHand}.`);
+      return;
+    }
+    if (!Number.isSafeInteger(packCount) || packCount <= 0 || !packDisplayName.trim()) {
+      setPreview(null);
+      setPreviewing(false);
+      setError(null);
+      return;
+    }
+    if (packPrice !== null && (!Number.isFinite(packPrice) || packPrice < 0)) {
+      setPreview(null);
+      setPreviewing(false);
+      setError("Default pack price must be a valid non-negative amount.");
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      try {
+        setPreviewing(true);
+        setError(null);
+        const response = await fetch("/api/pack-pools/break-down-preview", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            sourceBoxProductId: item.productId,
+            quantityBoxes: amount,
+            ...(!initiallyConfigured ? {
+              packsPerBox: packCount,
+              packDisplayName: packDisplayName.trim(),
+              defaultPackPrice: packPrice,
+            } : {}),
+          }),
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(body?.error ?? "Breakdown preview could not be calculated.");
+        if (!controller.signal.aborted) setPreview(body as PackBreakdownPreview);
+      } catch (cause) {
+        if (!controller.signal.aborted) {
+          setPreview(null);
+          setError(cause instanceof Error ? cause.message : "Breakdown preview could not be calculated.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setPreviewing(false);
+      }
+    }, 150);
+    return () => { window.clearTimeout(timeout); controller.abort(); };
+  }, [defaultPackPrice, initiallyConfigured, item.productId, item.unitsOnHand, packDisplayName, packsPerBox, quantity]);
+
+  async function confirm() {
+    const amount = Number(quantity);
+    if (!preview || preview.quantityBoxes !== amount) return;
+    try {
+      setSaving(true);
+      setError(null);
+      const response = await fetch("/api/pack-pools/break-down", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        // No Show Visit is sent: this creates normal prep inventory.
+        body: JSON.stringify({
+          sourceBoxProductId: item.productId,
+          quantityBoxes: amount,
+          ...(!initiallyConfigured ? {
+            packsPerBox: Number(packsPerBox),
+            packDisplayName: packDisplayName.trim(),
+            defaultPackPrice: defaultPackPrice === "" ? null : Number(defaultPackPrice),
+          } : {}),
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Box inventory could not be broken down.");
+      onComplete(`Converted ${amount} × ${item.productName} into ${preview.packsCreated} ${preview.packDisplayName}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Box inventory could not be broken down.");
+      setSaving(false);
+    }
+  }
+
+  return <div className="modal-backdrop inventory-breakdown-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}>
+    <section className="modal-surface inventory-breakdown-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-breakdown-title">
+      <header><div><span>Inventory transformation</span><h2 id="inventory-breakdown-title">Break Down Box</h2><p>Transfer sealed box inventory and its exact FIFO cost basis into Pack Inventory.</p></div><button type="button" aria-label="Close" disabled={saving} onClick={onClose}>×</button></header>
+      <div className="inventory-breakdown-body">
+        <div className="inventory-breakdown-products"><div><span>Source Box</span><strong>{item.productName}</strong><small>{item.unitsOnHand} currently available</small></div><b aria-hidden="true">→</b><div><span>Derived Pack Inventory</span><strong>{packDisplayName.trim() || "Configure below"}</strong><small>{packsPerBox ? `1 Box = ${packsPerBox} Packs` : "Pack metadata required"}</small></div></div>
+        {!initiallyConfigured && <div className="inventory-breakdown-configuration">
+          <strong>Configure this Box</strong><p>This configuration is saved on the Box Product and reused for future breakdowns.</p>
+          <label><span>Packs per Box</span><input type="number" min="1" step="1" value={packsPerBox} disabled={saving} onChange={event => setPacksPerBox(event.target.value)} placeholder="18" /></label>
+          <label><span>Pack Display Name</span><input value={packDisplayName} maxLength={160} disabled={saving} onChange={event => setPackDisplayName(event.target.value)} placeholder="Gem 6 Pack" /></label>
+          <label><span>Default Pack Price <small>Optional</small></span><input type="number" min="0" step="0.01" value={defaultPackPrice} disabled={saving} onChange={event => setDefaultPackPrice(event.target.value)} placeholder="0.00" /></label>
+        </div>}
+        <label className="inventory-breakdown-quantity"><span>Boxes to break down</span><input type="number" min="1" max={item.unitsOnHand} step="1" value={quantity} disabled={saving} onChange={event => setQuantity(event.target.value)} /></label>
+        {previewing ? <p className="inventory-breakdown-loading" role="status">Calculating FIFO cost transfer…</p> : preview && <dl className="inventory-breakdown-preview">
+          <BreakdownValue label="Packs Created" value={String(preview.packsCreated)} />
+          <BreakdownValue label="Transferred FIFO Cost" value={money(preview.transferredCostBasis)} />
+          <BreakdownValue label="Cost per Pack" value={money(preview.costPerPack)} />
+          <BreakdownValue label="Default Pack Price" value={preview.defaultPackPrice === null ? "Not set" : money(preview.defaultPackPrice)} />
+          <BreakdownValue label="Expected Retail Created" value={preview.expectedRetailValue === null ? "Unavailable" : money(preview.expectedRetailValue)} />
+        </dl>}
+        <p className="inventory-breakdown-note">This moves inventory cost only. It creates no Sale, revenue, or FundEntry and is not attached to a Show.</p>
+        {error && <p className="inventory-breakdown-error" role="alert">{error}</p>}
+      </div>
+      <footer><button type="button" className="secondary-button" disabled={saving} onClick={onClose}>Cancel</button><button type="button" className="primary-button" disabled={saving || previewing || !preview} onClick={() => void confirm()}>{saving ? "Breaking Down…" : preview ? `${initiallyConfigured ? "Break Down" : "Save & Break Down"} — Create ${preview.packsCreated} Packs` : initiallyConfigured ? "Break Down" : "Save & Break Down"}</button></footer>
+    </section>
+  </div>;
+}
+
+function BreakdownValue({label, value}: {label: string; value: string}) {
+  return <div><dt>{label}</dt><dd>{value}</dd></div>;
 }

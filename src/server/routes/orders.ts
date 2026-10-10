@@ -3,6 +3,7 @@ import type { RequestHandler } from "express";
 import type { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
 import { resolveOrderInventory } from "../../shared/orderConversion";
+import { analyzeLandedCosts } from "../../shared/landedCostAnalysis";
 
 const router = Router();
 
@@ -433,69 +434,28 @@ router.post("/:orderId/finalize", async (req, res) => {
       toCents(order.otherCost) +
       toCents(order.adjustment);
 
-    // We keep track of how much additional cost has already
-    // been allocated. This lets the final line receive any
-    // rounding remainder so every cent is accounted for.
-    let allocatedAdditionalCostCents = 0;
-
     // ---------------------------------------------------------
     // BUILD LANDED COST CALCULATIONS
     // ---------------------------------------------------------
+    const officialAnalysis = analyzeLandedCosts({
+      shippingCost: Number(order.shippingCost),
+      tariffCost: Number(order.tariffCost),
+      otherCost: Number(order.otherCost),
+      adjustment: Number(order.adjustment),
+      lines: order.lines.map(line => ({
+        id: line.id,
+        productCost: Number(line.productCost),
+        sellableQuantity: line.sellableQuantity,
+        landedCost: null,
+        landedUnitCost: null,
+      })),
+    }, "VALUE");
 
-    const calculatedLines = order.lines.map((line, index) => {
-  const productCostCents = toCents(line.productCost);
-
-  let allocatedCostCents: number;
-
-  const isLastLine = index === order.lines.length - 1;
-
-  if (isLastLine) {
-    // The final line receives the exact remaining cents.
-    //
-    // Example:
-    // Shipping needs to be split into:
-    // $3.33
-    // $3.33
-    // $3.34
-    //
-    // This guarantees the allocations always add back
-    // to the exact order-level additional cost.
-    allocatedCostCents =
-      totalAdditionalCostCents - allocatedAdditionalCostCents;
-  } else {
-    const allocationPercent =
-      productCostCents / totalProductCostCents;
-
-    allocatedCostCents = Math.round(
-      totalAdditionalCostCents * allocationPercent
-    );
-
-    allocatedAdditionalCostCents += allocatedCostCents;
-  }
-
-  const landedCostCents =
-    productCostCents + allocatedCostCents;
-
-  // Store total landed cost to the penny.
-  const landedCost = centsToMoney(landedCostCents);
-
-  // Unit cost gets additional decimal precision.
-  //
-  // We start from landedCostCents rather than the formatted
-  // dollar value so we retain the exact line total.
-  const landedUnitCost = (
-    landedCostCents /
-    100 /
-    line.sellableQuantity
-  ).toFixed(6);
-
-  return {
-    line,
-    allocatedCost: centsToMoney(allocatedCostCents),
-    landedCost,
-    landedUnitCost,
-  };
-});
+    const calculatedLines = order.lines.map((line, index) => ({
+      line,
+      landedCost: officialAnalysis.lines[index].landedCost.toFixed(2),
+      landedUnitCost: officialAnalysis.lines[index].landedUnitCost.toFixed(6),
+    }));
 
     // ---------------------------------------------------------
     // SAVE EVERYTHING AS ONE DATABASE TRANSACTION

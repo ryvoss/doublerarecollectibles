@@ -167,6 +167,48 @@ type EndingSnapshotForm = {
   endingDigital: string;
 };
 
+type AvailablePackProduct = {
+  sourceBoxProductId: number;
+  sourceItemId: string;
+  sourceBoxProductName: string;
+  packDisplayName: string;
+  defaultPackPrice: number | null;
+  availablePacks: number;
+  availableCostBasis: number;
+  costPerPack: number;
+};
+
+type ShowPackSnapshot = {
+  id: number;
+  showVisitId: number;
+  sourceBoxProductId: number;
+  packDisplayName: string;
+  startingPacks: number;
+  addedPacks: number;
+  giveaways: number;
+  damaged: number;
+  endingPacks: number | null;
+  packsSold: number | null;
+  declaredValuePerPack: string | number;
+  startingCostBasis: string | number;
+  startingCostPerPack: string | number;
+  addedCostBasis: string | number;
+  declaredSalesValue: string | number | null;
+  estimatedCogs: string | number | null;
+  actualRevenue: string | number | null;
+  actualGrossProfit: string | number | null;
+  actualGrossMargin: string | number | null;
+  finalizedAt: string | null;
+  sourceBoxProduct: { id: number; itemId: string; name: string; defaultPackPrice: string | number | null };
+};
+
+type PackEndingForm = {
+  endingPacks: string;
+  actualRevenue: string;
+  actualCashRevenue: string;
+  actualDigitalRevenue: string;
+};
+
 type ShowInventoryItem = {
   productId: number;
   itemId: string;
@@ -875,6 +917,36 @@ function StartVisitModal({
   const [fundsLoading, setFundsLoading] =
     useState(true);
 
+  const [availablePacks, setAvailablePacks] = useState<AvailablePackProduct[]>([]);
+  const [packsLoading, setPacksLoading] = useState(true);
+  const [selectedPacks, setSelectedPacks] = useState<Record<number, { selected: boolean; quantity: string; declaredValue: string }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPacks() {
+      try {
+        setPacksLoading(true);
+        const response = await fetch("/api/shows/packs/available");
+        if (!response.ok) throw new Error(await readApiError(response, "Pack inventory could not be loaded."));
+        const items = (await response.json()) as AvailablePackProduct[];
+        if (!cancelled) {
+          setAvailablePacks(items);
+          setSelectedPacks(Object.fromEntries(items.map(item => [item.sourceBoxProductId, {
+            selected: false,
+            quantity: String(item.availablePacks),
+            declaredValue: item.defaultPackPrice === null ? "" : String(item.defaultPackPrice),
+          }])));
+        }
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Pack inventory could not be loaded.");
+      } finally {
+        if (!cancelled) setPacksLoading(false);
+      }
+    }
+    void loadPacks();
+    return () => { cancelled = true; };
+  }, []);
+
   // The live Singles ledger is the source of truth for both the total
   // balance and where that money is actually held. When the modal opens,
   // load the persistent Cash and Digital balances and use those exact
@@ -1153,6 +1225,21 @@ function StartVisitModal({
       return;
     }
 
+    const packSnapshots = availablePacks.filter(item => selectedPacks[item.sourceBoxProductId]?.selected).map(item => ({
+      sourceBoxProductId: item.sourceBoxProductId,
+      startingPacks: Number(selectedPacks[item.sourceBoxProductId]?.quantity),
+      declaredValuePerPack: Number(selectedPacks[item.sourceBoxProductId]?.declaredValue),
+    }));
+    if (packSnapshots.some(item => !Number.isSafeInteger(item.startingPacks) || item.startingPacks <= 0 ||
+        !Number.isFinite(item.declaredValuePerPack) || item.declaredValuePerPack < 0)) {
+      setError("Every selected Pack inventory row needs a positive quantity and a valid declared value per pack.");
+      return;
+    }
+    if (packSnapshots.some(item => item.startingPacks > (availablePacks.find(pack => pack.sourceBoxProductId === item.sourceBoxProductId)?.availablePacks ?? 0))) {
+      setError("Packs brought to the Show cannot exceed available Pack Inventory.");
+      return;
+    }
+
     const selectedShow =
       shows.find(
         (show) =>
@@ -1259,6 +1346,7 @@ function StartVisitModal({
                 Number(
                   form.startingDigital
                 ),
+              packSnapshots,
             }),
           }
         );
@@ -1664,6 +1752,22 @@ function StartVisitModal({
                 )}
                 label="Starting Singles Business Value"
               />
+
+              <section className="show-pack-start">
+                <div className="show-pack-heading"><div><h3>Packs</h3><p>Select pack inventory being brought into this Show. Starting quantity and cost are captured from PackPools.</p></div></div>
+                {packsLoading ? <p className="show-inventory-empty">Loading pack inventory...</p> : availablePacks.length === 0 ? <p className="show-inventory-empty">No unallocated pack inventory is available.</p> : (
+                  <div className="show-pack-start-list">
+                    {availablePacks.map(item => {
+                      const selection = selectedPacks[item.sourceBoxProductId] ?? { selected: false, quantity: String(item.availablePacks), declaredValue: "" };
+                      return <div className={selection.selected ? "show-pack-start-row is-selected" : "show-pack-start-row"} key={item.sourceBoxProductId}>
+                        <label><input type="checkbox" checked={selection.selected} onChange={event => setSelectedPacks(current => ({ ...current, [item.sourceBoxProductId]: { ...selection, selected: event.target.checked } }))} /><span><strong>{item.packDisplayName}</strong><small>From {item.sourceBoxProductName} · {item.availablePacks} packs · Cost {money(item.availableCostBasis)} · {money(item.costPerPack)} each</small></span></label>
+                        <div><span>Packs brought to Show</span><input type="number" min="1" max={item.availablePacks} step="1" disabled={!selection.selected} value={selection.quantity} onChange={event => setSelectedPacks(current => ({ ...current, [item.sourceBoxProductId]: { ...selection, quantity: event.target.value } }))} /></div>
+                        <div><span>Declared value / pack</span><input type="number" min="0" step="0.01" disabled={!selection.selected} value={selection.declaredValue} onChange={event => setSelectedPacks(current => ({ ...current, [item.sourceBoxProductId]: { ...selection, declaredValue: event.target.value } }))} /></div>
+                      </div>;
+                    })}
+                  </div>
+                )}
+              </section>
             </>
           )}
 
@@ -1774,6 +1878,31 @@ function ActiveVisitModal({
   const [saleNotice, setSaleNotice] =
     useState<string | null>(null);
 
+  const [packSnapshots, setPackSnapshots] = useState<ShowPackSnapshot[]>([]);
+  const [packsLoading, setPacksLoading] = useState(true);
+  const [packEndingForms, setPackEndingForms] = useState<Record<number, PackEndingForm>>({});
+  const [packAction, setPackAction] = useState<{ type: "ADD" | "BREAK"; snapshot: ShowPackSnapshot } | null>(null);
+
+  const loadPackSnapshots = useCallback(async () => {
+    try {
+      setPacksLoading(true);
+      const response = await fetch(`/api/shows/visits/${visit.id}/pack-snapshots`);
+      if (!response.ok) throw new Error(await readApiError(response, "Show pack tracking could not be loaded."));
+      const snapshots = (await response.json()) as ShowPackSnapshot[];
+      setPackSnapshots(snapshots);
+      setPackEndingForms(current => Object.fromEntries(snapshots.map(snapshot => [snapshot.id, current[snapshot.id] ?? {
+        endingPacks: String(snapshot.startingPacks + snapshot.addedPacks - snapshot.giveaways - snapshot.damaged),
+        actualRevenue: "",
+        actualCashRevenue: "",
+        actualDigitalRevenue: "",
+      }])));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Show pack tracking could not be loaded.");
+    } finally {
+      setPacksLoading(false);
+    }
+  }, [visit.id]);
+
   const loadInventory = useCallback(async () => {
     try {
       setInventoryLoading(true);
@@ -1797,6 +1926,37 @@ function ActiveVisitModal({
       window.clearTimeout(loadTimer);
     };
   }, [loadInventory]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => { void loadPackSnapshots(); }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadPackSnapshots]);
+
+  useEffect(() => {
+    if (!showEndForm) return;
+    setPackEndingForms(Object.fromEntries(packSnapshots.map(snapshot => [snapshot.id, {
+      endingPacks: String(snapshot.startingPacks + snapshot.addedPacks - snapshot.giveaways - snapshot.damaged),
+      actualRevenue: "",
+      actualCashRevenue: "",
+      actualDigitalRevenue: "",
+    }])));
+  }, [showEndForm, packSnapshots]);
+
+  async function savePackAdjustments(snapshot: ShowPackSnapshot, giveaways: number, damaged: number) {
+    try {
+      setError(null);
+      const response = await fetch(`/api/shows/visits/${visit.id}/pack-snapshots/${snapshot.id}/adjustments`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ giveaways, damaged }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response, "Pack adjustments could not be saved."));
+      await loadPackSnapshots();
+      notifyBusinessDataChanged();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Pack adjustments could not be saved.");
+    }
+  }
 
   function updateEndingForm(
     field:
@@ -1836,6 +1996,24 @@ function ActiveVisitModal({
       )
     ) {
       return "Enter a valid ending Singles digital amount.";
+    }
+
+    for (const snapshot of packSnapshots) {
+      const packForm = packEndingForms[snapshot.id];
+      const endingPacks = Number(packForm?.endingPacks);
+      if (!packForm || !Number.isSafeInteger(endingPacks) || endingPacks < 0) {
+        return `Enter a valid ending pack count for ${snapshot.packDisplayName}.`;
+      }
+      const packsSold = snapshot.startingPacks + snapshot.addedPacks - endingPacks - snapshot.giveaways - snapshot.damaged;
+      if (packsSold < 0) return `Packs Sold cannot be negative for ${snapshot.packDisplayName}.`;
+      if (packForm.actualRevenue.trim() !== "") {
+        if (!isValidMoneyInput(packForm.actualRevenue) || !isValidMoneyInput(packForm.actualCashRevenue) || !isValidMoneyInput(packForm.actualDigitalRevenue)) {
+          return `Enter valid Actual, Cash, and Digital pack revenue for ${snapshot.packDisplayName}.`;
+        }
+        if (moneyInputToCents(packForm.actualCashRevenue) + moneyInputToCents(packForm.actualDigitalRevenue) !== moneyInputToCents(packForm.actualRevenue)) {
+          return `Pack Cash plus Digital must equal Actual Pack Revenue for ${snapshot.packDisplayName}.`;
+        }
+      }
     }
 
     return null;
@@ -1899,6 +2077,17 @@ function ActiveVisitModal({
                 Number(
                   endingForm.endingDigital
                 ),
+              packSnapshots: packSnapshots.map(snapshot => {
+                const packForm = packEndingForms[snapshot.id];
+                const actualEntered = packForm.actualRevenue.trim() !== "";
+                return {
+                  snapshotId: snapshot.id,
+                  endingPacks: Number(packForm.endingPacks),
+                  actualRevenue: actualEntered ? Number(packForm.actualRevenue) : null,
+                  actualCashRevenue: actualEntered ? Number(packForm.actualCashRevenue) : null,
+                  actualDigitalRevenue: actualEntered ? Number(packForm.actualDigitalRevenue) : null,
+                };
+              }),
             }),
           }
         );
@@ -1947,6 +2136,14 @@ function ActiveVisitModal({
                 inventory={inventory}
                 loading={inventoryLoading}
                 onSell={setSelectedInventory}
+              />
+
+              <ShowPackTracker
+                snapshots={packSnapshots}
+                loading={packsLoading}
+                onAdjust={savePackAdjustments}
+                onAdd={snapshot => setPackAction({ type: "ADD", snapshot })}
+                onBreak={snapshot => setPackAction({ type: "BREAK", snapshot })}
               />
 
               <Divider />
@@ -2094,6 +2291,28 @@ function ActiveVisitModal({
               label="Ending Singles Business Value"
             />
 
+            {packSnapshots.length > 0 && <section className="show-pack-ending">
+              <div className="show-pack-heading"><div><h3>Ending Packs</h3><p>Enter the physical ending count. Actual revenue is optional; when entered, Cash and Digital must reconcile exactly.</p></div></div>
+              {packSnapshots.map(snapshot => {
+                const packForm = packEndingForms[snapshot.id];
+                if (!packForm) return null;
+                const sold = snapshot.startingPacks + snapshot.addedPacks - Number(packForm.endingPacks || 0) - snapshot.giveaways - snapshot.damaged;
+                const actualEntered = packForm.actualRevenue.trim() !== "";
+                const update = (field: keyof PackEndingForm, value: string) => setPackEndingForms(current => ({ ...current, [snapshot.id]: { ...packForm, [field]: value } }));
+                return <div className="show-pack-ending-row" key={snapshot.id}>
+                  <div className="show-pack-ending-title"><strong>{snapshot.packDisplayName}</strong><span>From {snapshot.sourceBoxProduct.name} · Started {snapshot.startingPacks} · Added {snapshot.addedPacks} · Giveaways {snapshot.giveaways} · Damaged {snapshot.damaged}</span></div>
+                  <label><span>Ending Packs</span><input type="number" min="0" step="1" value={packForm.endingPacks} onChange={event => update("endingPacks", event.target.value)} /></label>
+                  <label><span>Actual Revenue <small>optional</small></span><input type="number" min="0" step="0.01" placeholder="Leave blank" value={packForm.actualRevenue} onChange={event => {
+                    const value = event.target.value;
+                    setPackEndingForms(current => ({ ...current, [snapshot.id]: { ...packForm, actualRevenue: value, ...(value === "" ? { actualCashRevenue: "", actualDigitalRevenue: "" } : {}) } }));
+                  }} /></label>
+                  <label><span>Pack Cash</span><input type="number" min="0" step="0.01" disabled={!actualEntered} value={packForm.actualCashRevenue} onChange={event => update("actualCashRevenue", event.target.value)} /></label>
+                  <label><span>Pack Digital</span><input type="number" min="0" step="0.01" disabled={!actualEntered} value={packForm.actualDigitalRevenue} onChange={event => update("actualDigitalRevenue", event.target.value)} /></label>
+                  <div className={sold < 0 ? "show-pack-sold is-error" : "show-pack-sold"}><span>Packs Sold</span><strong>{sold}</strong><small>Declared sales {money(Math.max(0, sold) * Number(snapshot.declaredValuePerPack))}</small></div>
+                </div>;
+              })}
+            </section>}
+
             {error && (
               <ErrorBox>
                 {error}
@@ -2129,6 +2348,8 @@ function ActiveVisitModal({
               endingForm={
                 endingForm
               }
+              packSnapshots={packSnapshots}
+              packEndingForms={packEndingForms}
             />
 
             {error && (
@@ -2178,8 +2399,132 @@ function ActiveVisitModal({
           }}
         />
       )}
+
+      {packAction && <PackActionModal
+        visitId={visit.id}
+        snapshot={packAction.snapshot}
+        type={packAction.type}
+        onClose={() => setPackAction(null)}
+        onComplete={async message => {
+          setPackAction(null);
+          setSaleNotice(message);
+          window.setTimeout(() => setSaleNotice(null), 3500);
+          await Promise.all([loadPackSnapshots(), loadInventory(), onRefresh()]);
+          notifyBusinessDataChanged();
+        }}
+      />}
     </ModalShell>
   );
+}
+
+// ---------------------------------------------------------
+// ACTIVE SHOW PACK TRACKING
+// ---------------------------------------------------------
+
+function ShowPackTracker({ snapshots, loading, onAdjust, onAdd, onBreak }: {
+  snapshots: ShowPackSnapshot[];
+  loading: boolean;
+  onAdjust: (snapshot: ShowPackSnapshot, giveaways: number, damaged: number) => Promise<void>;
+  onAdd: (snapshot: ShowPackSnapshot) => void;
+  onBreak: (snapshot: ShowPackSnapshot) => void;
+}) {
+  return <section className="show-pack-tracker">
+    <div className="show-pack-heading"><div><h3>Packs</h3><p>Quantity-based Show inventory. Cost remains tied to PackPools.</p></div></div>
+    {loading ? <div className="show-inventory-empty">Loading pack tracking...</div> : snapshots.length === 0 ? <div className="show-inventory-empty">No Pack Inventory was included when this Show started.</div> : (
+      <div className="show-pack-grid">{snapshots.map(snapshot => <ShowPackRow key={snapshot.id} snapshot={snapshot} onAdjust={onAdjust} onAdd={onAdd} onBreak={onBreak} />)}</div>
+    )}
+  </section>;
+}
+
+function ShowPackRow({ snapshot, onAdjust, onAdd, onBreak }: {
+  snapshot: ShowPackSnapshot;
+  onAdjust: (snapshot: ShowPackSnapshot, giveaways: number, damaged: number) => Promise<void>;
+  onAdd: (snapshot: ShowPackSnapshot) => void;
+  onBreak: (snapshot: ShowPackSnapshot) => void;
+}) {
+  const [giveaways, setGiveaways] = useState(String(snapshot.giveaways));
+  const [damaged, setDamaged] = useState(String(snapshot.damaged));
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { setGiveaways(String(snapshot.giveaways)); setDamaged(String(snapshot.damaged)); }, [snapshot.giveaways, snapshot.damaged]);
+  const current = snapshot.startingPacks + snapshot.addedPacks - snapshot.giveaways - snapshot.damaged;
+  const dirty = Number(giveaways) !== snapshot.giveaways || Number(damaged) !== snapshot.damaged;
+  return <article className="show-pack-card">
+    <header><div><strong>{snapshot.packDisplayName}</strong><span>From {snapshot.sourceBoxProduct.name} · {money(snapshot.declaredValuePerPack)} declared · {money(snapshot.startingCostPerPack)} starting cost</span></div><b>{current}<small> current</small></b></header>
+    <div className="show-pack-stats"><div><span>Started</span><strong>{snapshot.startingPacks}</strong></div><div><span>Added</span><strong>{snapshot.addedPacks}</strong></div><div><span>Cost Basis</span><strong>{money(Number(snapshot.startingCostBasis) + Number(snapshot.addedCostBasis))}</strong></div></div>
+    <div className="show-pack-adjustments">
+      <label><span>Giveaways</span><input type="number" min="0" step="1" value={giveaways} onChange={event => setGiveaways(event.target.value)} /></label>
+      <label><span>Damaged</span><input type="number" min="0" step="1" value={damaged} onChange={event => setDamaged(event.target.value)} /></label>
+      <button type="button" className="secondary-button" disabled={!dirty || saving || !Number.isSafeInteger(Number(giveaways)) || !Number.isSafeInteger(Number(damaged))} onClick={() => {
+        setSaving(true);
+        void onAdjust(snapshot, Number(giveaways), Number(damaged)).finally(() => setSaving(false));
+      }}>{saving ? "Saving..." : "Save"}</button>
+    </div>
+    <footer><button type="button" className="secondary-button" onClick={() => onAdd(snapshot)}>Add Packs</button><button type="button" className="secondary-button" onClick={() => onBreak(snapshot)}>Break Down Box</button></footer>
+  </article>;
+}
+
+function PackActionModal({ visitId, snapshot, type, onClose, onComplete }: {
+  visitId: number;
+  snapshot: ShowPackSnapshot;
+  type: "ADD" | "BREAK";
+  onClose: () => void;
+  onComplete: (message: string) => Promise<void>;
+}) {
+  const [quantity, setQuantity] = useState("1");
+  const [available, setAvailable] = useState<number | null>(null);
+  const [availableBoxes, setAvailableBoxes] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        setLoading(true);
+        if (type === "ADD") {
+          const response = await fetch("/api/shows/packs/available");
+          if (!response.ok) throw new Error(await readApiError(response, "Available packs could not be loaded."));
+          const products = (await response.json()) as AvailablePackProduct[];
+          if (!cancelled) setAvailable(products.find(item => item.sourceBoxProductId === snapshot.sourceBoxProductId)?.availablePacks ?? 0);
+        } else {
+          const inventoryResponse = await fetch("/api/inventory");
+          if (!inventoryResponse.ok) throw new Error("Source Box inventory could not be loaded.");
+          const inventory = (await inventoryResponse.json()) as ShowInventoryItem[];
+          if (!cancelled) setAvailableBoxes(inventory.find(row => row.productId === snapshot.sourceBoxProductId)?.unitsOnHand ?? 0);
+        }
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Pack inventory could not be loaded.");
+      } finally { if (!cancelled) setLoading(false); }
+    }
+    void load();
+    return () => { cancelled = true; };
+  }, [snapshot.sourceBoxProductId, type]);
+
+  const max = type === "ADD" ? available ?? 0 : availableBoxes ?? 0;
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const amount = Number(quantity);
+    if (!Number.isSafeInteger(amount) || amount <= 0 || amount > max) { setError(`Enter a quantity from 1 to ${max}.`); return; }
+    try {
+      setSaving(true); setError(null);
+      const response = type === "ADD"
+        ? await fetch(`/api/shows/visits/${visitId}/pack-snapshots/${snapshot.id}/add-existing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: amount }) })
+        : await fetch("/api/pack-pools/break-down", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceBoxProductId: snapshot.sourceBoxProductId, quantityBoxes: amount, showVisitId: visitId }) });
+      if (!response.ok) throw new Error(await readApiError(response, type === "ADD" ? "Packs could not be added." : "Box could not be broken down."));
+      await onComplete(type === "ADD" ? `${amount} packs added to ${snapshot.packDisplayName}.` : `${amount} box${amount === 1 ? "" : "es"} converted and added to ${snapshot.packDisplayName}.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Pack action could not be completed."); setSaving(false); }
+  }
+
+  return <ModalShell title={type === "ADD" ? "Add Existing Packs" : "Break Down Box"} subtitle={snapshot.packDisplayName} onClose={onClose} maxWidth="520px">
+    <form onSubmit={submit}><ModalBody>
+      {loading ? <div className="show-inventory-empty">Loading inventory...</div> : type === "ADD" ? <>
+        <div className="show-sale-reference"><div><span>Available Outside Show</span><strong>{available ?? 0}</strong></div><div><span>Current Show Packs</span><strong>{snapshot.startingPacks + snapshot.addedPacks - snapshot.giveaways - snapshot.damaged}</strong></div></div>
+      </> : <div className="show-sale-reference"><div><span>Source Box</span><strong>{snapshot.sourceBoxProduct.name}</strong></div><div><span>Boxes Available</span><strong>{availableBoxes ?? 0}</strong></div></div>}
+      {!loading && max > 0 && <FormField label={type === "ADD" ? "Packs to Add" : "Boxes to Break Down"}><input type="number" min="1" max={max} step="1" value={quantity} onChange={event => setQuantity(event.target.value)} style={inputStyle} /></FormField>}
+      {error && <ErrorBox>{error}</ErrorBox>}
+    </ModalBody><ModalFooter><SecondaryButton onClick={onClose} disabled={saving}>Cancel</SecondaryButton><button type="submit" className="primary-button" disabled={saving || loading || max <= 0}>{saving ? "Saving..." : type === "ADD" ? "Add Packs" : "Break Down Box"}</button></ModalFooter></form>
+  </ModalShell>;
 }
 
 // ---------------------------------------------------------
@@ -2663,6 +3008,8 @@ function ShowReview({
   visit,
   performance,
   endingForm,
+  packSnapshots,
+  packEndingForms,
 }: {
   visit: ShowVisit;
 
@@ -2671,6 +3018,8 @@ function ShowReview({
     | null;
 
   endingForm: EndingSnapshotForm;
+  packSnapshots: ShowPackSnapshot[];
+  packEndingForms: Record<number, PackEndingForm>;
 }) {
   const startingInventory =
     Number(
@@ -2838,6 +3187,19 @@ function ShowReview({
           </tbody>
         </table>
       </div>
+
+      {packSnapshots.length > 0 && <section className="show-pack-review">
+        <div className="show-pack-heading"><div><h3>Pack Results</h3><p>Pack revenue posts to SEALED Funds only where Actual Revenue is entered.</p></div></div>
+        <div className="table-scroll"><table className="report-table"><thead><tr><th>Pack</th><th>Start + Added</th><th>End</th><th>Giveaway / Damaged</th><th>Sold</th><th>Declared Sales</th><th>Actual Revenue</th><th>Cash / Digital</th></tr></thead><tbody>
+          {packSnapshots.map(snapshot => {
+            const form = packEndingForms[snapshot.id];
+            const ending = Number(form?.endingPacks ?? 0);
+            const sold = snapshot.startingPacks + snapshot.addedPacks - ending - snapshot.giveaways - snapshot.damaged;
+            const actual = form?.actualRevenue.trim() ? Number(form.actualRevenue) : null;
+            return <tr key={snapshot.id}><td><strong>{snapshot.packDisplayName}</strong><small>From {snapshot.sourceBoxProduct.name}</small></td><td>{snapshot.startingPacks} + {snapshot.addedPacks}</td><td>{ending}</td><td>{snapshot.giveaways} / {snapshot.damaged}</td><td><strong>{sold}</strong></td><td>{money(sold * Number(snapshot.declaredValuePerPack))}</td><td>{actual === null ? "Analytical only" : money(actual)}</td><td>{actual === null ? "—" : `${money(form.actualCashRevenue)} / ${money(form.actualDigitalRevenue)}`}</td></tr>;
+          })}
+        </tbody></table></div>
+      </section>}
 
       <div
         style={{

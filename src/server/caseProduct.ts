@@ -7,11 +7,16 @@ export async function saveCaseProduct(input: {
   id?: number;
   itemId: string;
   name: string;
+  displayName: string | null;
+  shortDescription: string | null;
   type: string;
   active: boolean;
   boxItemId: unknown;
   boxesPerCase: unknown;
   boxExpectedSalePrice: unknown;
+  publicVisible: boolean;
+  publicPrice: number | null;
+  featured: boolean;
 }) {
   const quantity = Number(input.boxesPerCase);
   const boxItemId = typeof input.boxItemId === "string" ? input.boxItemId.trim().toUpperCase() : "";
@@ -61,9 +66,14 @@ export async function saveCaseProduct(input: {
       throw new CaseProductError("The contained Box must be the lowest sellable unit.");
     }
     const data = {
-      itemId: input.itemId, name: input.name, type: "SEALED" as const,
+      itemId: input.itemId, name: input.name,
+      displayName: input.displayName, shortDescription: input.shortDescription,
+      type: "SEALED" as const,
       unitType: "CASE" as const, sellable: false, active: input.active,
       parentProductId: null, quantityPerParent: null, expectedSalePrice: null,
+      publicVisible: input.publicVisible,
+      publicPrice: input.publicPrice,
+      featured: input.featured,
     };
     const caseProduct = input.id === undefined
       ? await tx.product.create({data})

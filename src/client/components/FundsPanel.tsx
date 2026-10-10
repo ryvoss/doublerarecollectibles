@@ -30,6 +30,7 @@ type FundEntryType =
   | "SEALED_SALE"
   | "ORDER_PURCHASE"
   | "SINGLES_SHOW_GAIN"
+  | "PACK_SHOW_REVENUE"
   | "PERSONAL_CONTRIBUTION"
   | "MANUAL_ADJUSTMENT";
 
@@ -181,6 +182,11 @@ function getEntryLabel(
       return entry.showVisit
         ? `Singles Gain · ${entry.showVisit.show.name}`
         : "Singles Show Gain";
+
+    case "PACK_SHOW_REVENUE":
+      return entry.showVisit
+        ? `Pack Revenue · ${entry.showVisit.show.name}`
+        : "Pack Show Revenue";
 
     case "PERSONAL_CONTRIBUTION":
       return "Personal Contribution";

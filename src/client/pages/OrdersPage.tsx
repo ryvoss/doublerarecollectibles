@@ -1,4 +1,5 @@
 import { inputStyle, secondaryButtonStyle } from "../components/uiStyles";
+import ProductModal from "../components/ProductModal";
 import { resolveOrderInventory } from "../../shared/orderConversion";
 import { analyzeLandedCosts } from "../../shared/landedCostAnalysis";
 import {
@@ -21,6 +22,9 @@ type Product = {
   id: number;
   itemId: string;
   name: string;
+  displayName: string | null;
+  shortDescription: string | null;
+  imageUrl: string | null;
   type: "SEALED" | "SINGLE";
   unitType: "CASE" | "BOX" | "ITEM";
   parentProductId: number | null;
@@ -28,6 +32,12 @@ type Product = {
   sellable: boolean;
   active: boolean;
   expectedSalePrice: string | number | null;
+  publicVisible: boolean;
+  publicPrice: string | number | null;
+  featured: boolean;
+  packsPerBox: number | null;
+  packDisplayName: string | null;
+  defaultPackPrice: string | number | null;
 };
 
 type OrderStatus =
@@ -984,6 +994,7 @@ function OrderDetailModal({
 
   const [editingLine, setEditingLine] = useState<OrderLine | null>(null);
   const [editingOrder, setEditingOrder] = useState(false);
+  const [showFinalizeReview, setShowFinalizeReview] = useState(false);
 
   const [working, setWorking] =
     useState(false);
@@ -992,7 +1003,7 @@ function OrderDetailModal({
     useState<string | null>(null);
 
   const [landedCostView, setLandedCostView] =
-    useState<LandedCostMethod>("STORED");
+    useState<Exclude<LandedCostMethod, "VALUE">>("STORED");
 
   const productCost =
     calculateProductCost(order);
@@ -1046,17 +1057,6 @@ function OrderDetailModal({
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        `Finalize ${order.orderNumber}?\n\n` +
-          `Total: ${money(productCost + additionalCost)}\n\n` +
-          "This will deduct the full total from SEALED funds, create inventory batches, and lock this order. Finalized orders cannot be edited."
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
     try {
       setWorking(true);
       setError(null);
@@ -1088,6 +1088,7 @@ function OrderDetailModal({
       window.dispatchEvent(
         new Event("business-data-changed")
       );
+      setShowFinalizeReview(false);
     } catch (error) {
       console.error(
         "Order finalization error:",
@@ -1325,7 +1326,7 @@ function OrderDetailModal({
             <div className="orders-landed-control" aria-label="Landed Cost View">
               <span>Landed Cost View</span>
               <div role="group">
-                {(["STORED", "BLEND", "QUANTITY"] as LandedCostMethod[]).map(method => (
+                {(["STORED", "BLEND", "QUANTITY"] as Array<Exclude<LandedCostMethod, "VALUE">>).map(method => (
                   <button key={method} type="button" aria-pressed={landedCostView === method}
                     className={landedCostView === method ? "is-active" : ""}
                     onClick={() => setLandedCostView(method)}>
@@ -1493,7 +1494,14 @@ function OrderDetailModal({
             type="button"
             className="primary-button"
             disabled={working}
-            onClick={finalizeOrder}
+            onClick={() => {
+              setError(null);
+              if (!order.lines?.length) {
+                setError("Add at least one product before finalizing this order.");
+                return;
+              }
+              setShowFinalizeReview(true);
+            }}
           >
             {working
               ? "Finalizing..."
@@ -1531,8 +1539,119 @@ function OrderDetailModal({
           }}
         />
       )}
+      {showFinalizeReview && isDraft && (
+        <OrderFinalizationReview
+          order={order}
+          products={products}
+          working={working}
+          error={error}
+          onBack={() => setShowFinalizeReview(false)}
+          onFinalize={() => void finalizeOrder()}
+        />
+      )}
     </ModalShell>
   );
+}
+
+function OrderFinalizationReview({
+  order,
+  products,
+  working,
+  error,
+  onBack,
+  onFinalize,
+}: {
+  order: Order;
+  products: Product[];
+  working: boolean;
+  error: string | null;
+  onBack: () => void;
+  onFinalize: () => void;
+}) {
+  const [method, setMethod] = useState<LandedCostMethod>("VALUE");
+  const analyses = {
+    VALUE: analyzeLandedCosts(order, "VALUE"),
+    BLEND: analyzeLandedCosts(order, "BLEND"),
+    QUANTITY: analyzeLandedCosts(order, "QUANTITY"),
+  };
+  const analysis = analyses[method as keyof typeof analyses];
+  const productCost = calculateProductCost(order);
+  const warnings: string[] = [];
+  let projectedRevenueCents = 0;
+  let missingPriceUnits = 0;
+  const missingPriceProductIds = new Set<number>();
+
+  order.lines.forEach((line, index) => {
+    const product = line.sellableProduct ?? products.find(item => item.id === line.sellableProductId);
+    const price = product?.expectedSalePrice;
+    const landedUnitCost = analysis.lines[index].landedUnitCost;
+    if (price === null || price === undefined || !Number.isFinite(Number(price))) {
+      missingPriceProductIds.add(line.sellableProductId);
+      missingPriceUnits += line.sellableQuantity;
+      warnings.push(`${product?.name ?? `Product #${line.sellableProductId}`} has no expected sale price.`);
+      return;
+    }
+    const numericPrice = Number(price);
+    projectedRevenueCents += Math.round(numericPrice * 100) * line.sellableQuantity;
+    if (numericPrice < landedUnitCost) {
+      warnings.push(`${product?.name ?? `Product #${line.sellableProductId}`} is priced below landed cost in this view.`);
+    } else if (numericPrice > 0 && (numericPrice - landedUnitCost) / numericPrice < 0.2) {
+      warnings.push(`${product?.name ?? `Product #${line.sellableProductId}`} has an expected margin below 20% in this view.`);
+    }
+  });
+  const projectionComplete = missingPriceProductIds.size === 0;
+  const projectedRevenue = projectedRevenueCents / 100;
+  const totalLandedCost = analysis.expectedTotal;
+  const projectedGrossProfit = projectedRevenue - totalLandedCost;
+  const projectedGrossMargin = projectedRevenue > 0 ? projectedGrossProfit / projectedRevenue : null;
+  const projectedRoi = totalLandedCost !== 0 ? projectedGrossProfit / totalLandedCost : null;
+
+  return <div className="modal-backdrop orders-review-backdrop">
+    <div className="modal-surface orders-review-modal" role="dialog" aria-modal="true" aria-labelledby={`finalize-review-${order.id}`}>
+      <header className="orders-modal-header">
+        <div><h2 id={`finalize-review-${order.id}`}>Review &amp; Finalize {order.orderNumber}</h2><p>Review the read-only landed-cost allocation before inventory and funds are committed.</p></div>
+        <button type="button" onClick={onBack} disabled={working} style={closeButtonStyle}>×</button>
+      </header>
+      <div className="orders-review-body">
+        <section className="orders-landed-analysis orders-review-analysis">
+          <div className="orders-landed-header">
+            <div><h3>Landed Cost Allocation</h3><p>{method === "VALUE" ? "Official finalization method. These values will be recalculated by the server." : "Analytical view only. Finalization still uses Value Allocation."}</p></div>
+            <div className="orders-landed-control" aria-label="Allocation view"><span>Allocation View</span><div role="group">
+              {(["VALUE", "BLEND", "QUANTITY"] as LandedCostMethod[]).map(item => <button key={item} type="button" className={method === item ? "is-active" : ""} aria-pressed={method === item} onClick={() => setMethod(item)}>{item === "VALUE" ? "Value Allocation" : item === "BLEND" ? "50/50 Blend" : "Quantity Allocation"}</button>)}
+            </div></div>
+          </div>
+          <div className="table-scroll"><table className="orders-table orders-review-table"><thead><tr>
+            <TableHeader>Product</TableHeader><TableHeader>Sellable Qty</TableHeader><TableHeader>Product Cost</TableHeader><TableHeader>Shipping</TableHeader><TableHeader>Tariff</TableHeader><TableHeader>Other</TableHeader><TableHeader>Adjustment</TableHeader><TableHeader>Total Landed</TableHeader><TableHeader>Landed / Unit</TableHeader><TableHeader>Expected Price</TableHeader><TableHeader>Profit / Unit</TableHeader><TableHeader>Gross Margin</TableHeader>
+          </tr></thead><tbody>{order.lines.map((line, index) => {
+            const row = analysis.lines[index];
+            const product = line.sellableProduct ?? products.find(item => item.id === line.sellableProductId);
+            const rawExpectedPrice = product?.expectedSalePrice ?? null;
+            const expectedPrice = rawExpectedPrice !== null && Number.isFinite(Number(rawExpectedPrice))
+              ? Number(rawExpectedPrice)
+              : null;
+            const profit = expectedPrice === null ? null : Number(expectedPrice) - row.landedUnitCost;
+            const margin = expectedPrice === null || Number(expectedPrice) === 0 ? null : profit! / Number(expectedPrice);
+            return <tr key={line.id}><TableCell>{product ? `${product.itemId} — ${product.name}` : `Product #${line.sellableProductId}`}</TableCell><TableCell>{line.sellableQuantity}</TableCell><TableCell>{money(line.productCost)}</TableCell><TableCell>{money(row.allocatedShipping)}</TableCell><TableCell>{money(row.allocatedTariff)}</TableCell><TableCell>{money(row.allocatedOther)}</TableCell><TableCell>{money(row.allocatedAdjustment)}</TableCell><TableCell>{money(row.landedCost)}</TableCell><TableCell><strong>{money(row.landedUnitCost)}</strong></TableCell><TableCell>{expectedPrice === null ? "—" : money(expectedPrice)}</TableCell><TableCell>{profit === null ? "—" : money(profit)}</TableCell><TableCell>{margin === null ? "—" : `${(margin * 100).toFixed(1)}%`}</TableCell></tr>;
+          })}</tbody></table></div>
+        </section>
+        <section className={projectionComplete ? "orders-order-projection" : "orders-order-projection is-incomplete"}>
+          <div className="orders-projection-heading"><div><span>Order Projection</span><h3>Projected profitability</h3></div>{projectionComplete ? <strong>Complete pricing</strong> : <strong>Incomplete pricing</strong>}</div>
+          <div className="orders-projection-metrics">
+            <div><span>Projected Revenue</span><strong>{projectionComplete ? money(projectedRevenue) : "Incomplete"}</strong></div>
+            <div><span>Total Landed Cost</span><strong>{money(totalLandedCost)}</strong></div>
+            <div><span>Projected Gross Profit</span><strong>{projectionComplete ? money(projectedGrossProfit) : "Incomplete"}</strong></div>
+            <div><span>Projected Gross Margin</span><strong>{projectionComplete && projectedGrossMargin !== null ? `${(projectedGrossMargin * 100).toFixed(1)}%` : "—"}</strong></div>
+            <div><span>Projected ROI</span><strong>{projectionComplete && projectedRoi !== null ? `${(projectedRoi * 100).toFixed(1)}%` : "—"}</strong></div>
+          </div>
+          {!projectionComplete && <p>{missingPriceProductIds.size} {missingPriceProductIds.size === 1 ? "product" : "products"} covering {missingPriceUnits} {missingPriceUnits === 1 ? "unit is" : "units are"} missing expected pricing. Finalization remains available.</p>}
+        </section>
+        {warnings.length > 0 && <section className="orders-review-warnings"><strong>Review warnings</strong><ul>{warnings.map((message, index) => <li key={`${index}-${message}`}>{message}</li>)}</ul></section>}
+        <section className="orders-review-reconciliation"><h3>Order Reconciliation</h3><div><CostRow label="Product Cost" value={money(productCost)} /><CostRow label="Shipping" value={money(order.shippingCost)} /><CostRow label="Tariffs" value={money(order.tariffCost)} /><CostRow label="Other" value={money(order.otherCost)} /><CostRow label="Adjustment" value={money(order.adjustment)} /><CostRow label="Total Landed Cost" value={money(analysis.expectedTotal)} strong /></div><div><CostRow label="Total allocated to products" value={money(analysis.calculatedTotal)} /><CostRow label="Difference" value={money(analysis.reconciliationDifference)} strong /></div></section>
+        {error && <ErrorMessage message={error} />}
+      </div>
+      <footer className="orders-review-actions"><button type="button" style={secondaryButtonStyle} disabled={working} onClick={onBack}>Back to Order</button><div><span>Finalizes with Value Allocation</span><button type="button" className="primary-button" disabled={working} onClick={onFinalize}>{working ? "Finalizing..." : "Finalize Order"}</button></div></footer>
+    </div>
+  </div>;
 }
 
 // ---------------------------------------------------------
@@ -1552,8 +1671,10 @@ function AddOrderLineModal({
   onClose: () => void;
   onAdded: () => Promise<void>;
 }) {
+  const [catalogProducts, setCatalogProducts] = useState(products);
+  const [showCreateProduct, setShowCreateProduct] = useState(false);
   const activeProducts =
-    products.filter(
+    catalogProducts.filter(
       (product) => product.active && product.type === "SEALED"
     );
 
@@ -1567,7 +1688,7 @@ function AddOrderLineModal({
   let conversionError: string | null = null;
   try {
     inventoryPreview = resolveOrderInventory(
-      products, Number(form.purchasedProductId), Number(form.quantityPurchased)
+      catalogProducts, Number(form.purchasedProductId), Number(form.quantityPurchased)
     );
   } catch (error) {
     conversionError = error instanceof Error ? error.message : "Invalid conversion.";
@@ -1681,29 +1802,22 @@ function AddOrderLineModal({
           label="Purchased Product"
           hint="The product exactly as it was purchased."
         >
-          <select
-            value={
-              form.purchasedProductId
-            }
-            onChange={(event) =>
-              updateForm(
-                "purchasedProductId", event.target.value
-              )
-            }
-            style={inputStyle}
-          >
-            {activeProducts.map(
-              (product) => (
-                <option
-                  key={product.id}
-                  value={product.id}
-                >
-                  {product.itemId} —{" "}
-                  {product.name}
+          <div className="orders-product-select-row">
+            <select
+              value={form.purchasedProductId}
+              onChange={(event) => updateForm("purchasedProductId", event.target.value)}
+              style={inputStyle}
+            >
+              {activeProducts.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.itemId} — {product.name}
                 </option>
-              )
-            )}
-          </select>
+              ))}
+            </select>
+            <button type="button" className="secondary-button" onClick={() => setShowCreateProduct(true)}>
+              + Create New Product
+            </button>
+          </div>
         </FormField>
 
         <div style={twoColumnStyle}>
@@ -1762,6 +1876,23 @@ function AddOrderLineModal({
           submitLabel={line ? "Save Changes" : "Add Product"}
         />
       </form>
+      {showCreateProduct && (
+        <ProductModal
+          mode="add"
+          products={catalogProducts}
+          onClose={() => setShowCreateProduct(false)}
+          onSaved={async (createdProduct) => {
+            const response = await fetch("/api/products");
+            if (!response.ok) {
+              throw new Error("Product was created, but the product list could not be refreshed.");
+            }
+            const refreshedProducts = await response.json() as Product[];
+            setCatalogProducts(refreshedProducts);
+            updateForm("purchasedProductId", String(createdProduct.id));
+            setShowCreateProduct(false);
+          }}
+        />
+      )}
     </ModalShell>
   );
 }

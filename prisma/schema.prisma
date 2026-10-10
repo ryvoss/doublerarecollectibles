@@ -15,6 +15,9 @@ model Product {
   id                Int             @id @default(autoincrement())
   itemId            String          @unique
   name              String
+  displayName       String?
+  shortDescription  String?
+  imageKey          String?
   type              ProductType
   unitType          ProductUnitType @default(BOX)
   parentProductId   Int?
@@ -22,6 +25,12 @@ model Product {
   sellable          Boolean         @default(true)
   active            Boolean         @default(true)
   expectedSalePrice Decimal?        @db.Decimal(10, 2)
+  publicVisible     Boolean         @default(false)
+  publicPrice       Decimal?        @db.Decimal(10, 2)
+  featured          Boolean         @default(false)
+  packsPerBox       Int?
+  packDisplayName   String?
+  defaultPackPrice  Decimal?        @db.Decimal(10, 2)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -33,6 +42,11 @@ model Product {
 
   inventoryBatches InventoryBatch[]
   saleLines        SaleLine[]
+
+  packPoolsAsSource PackPool[]         @relation("PackPoolSource")
+  showPackSnapshots ShowPackSnapshot[] @relation("ShowPackSnapshotSource")
+
+  @@index([publicVisible, active, sellable])
 }
 
 enum ProductType {
@@ -44,6 +58,47 @@ enum ProductUnitType {
   CASE
   BOX
   ITEM
+}
+
+// ---------------------------------------------------------
+// PUBLIC SITE CONTENT
+// ---------------------------------------------------------
+
+model SiteSettings {
+  id                   Int      @id @default(1)
+  businessName         String
+  tagline              String
+  heroTitle            String
+  heroSubtitle         String
+  primaryCtaLabel      String
+  secondaryCtaLabel    String
+  featuredSectionTitle String
+  buySellTradeTitle    String
+  buySellTradeText     String
+  inventoryPageTitle   String
+  inventoryIntroText   String
+  showsPageTitle       String
+  showsIntroText       String
+  contactPageTitle     String
+  contactText          String
+  instagramUrl         String
+  contactEmail         String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model SiteAsset {
+  id        Int           @id @default(autoincrement())
+  type      SiteAssetType @unique
+  imageKey  String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+}
+
+enum SiteAssetType {
+  PRIMARY_LOGO
+  FAVICON
+  HERO_IMAGE
 }
 
 // ---------------------------------------------------------
@@ -106,13 +161,119 @@ model InventoryBatch {
   landedCost        Decimal  @db.Decimal(10, 2)
   landedUnitCost    Decimal  @db.Decimal(14, 6)
   quantitySold      Int      @default(0)
+  quantityConverted Int      @default(0)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   orderLine       OrderLine @relation(fields: [orderLineId], references: [id])
   sellableProduct Product   @relation(fields: [sellableProductId], references: [id])
 
-  saleAllocations SaleAllocation[]
+  saleAllocations     SaleAllocation[]
+  packPoolAllocations PackPoolSourceAllocation[]
+}
+
+// ---------------------------------------------------------
+// PACK INVENTORY
+// ---------------------------------------------------------
+
+model PackPool {
+  id                 Int      @id @default(autoincrement())
+  sourceBoxProductId Int
+  packDisplayName    String
+  showVisitId        Int?
+  boxesConsumed      Int
+  packsCreated       Int
+  packsRemaining     Int
+  totalCostBasis     Decimal  @db.Decimal(14, 2)
+  remainingCostBasis Decimal  @db.Decimal(14, 2)
+  costPerPack        Decimal  @db.Decimal(18, 6)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  sourceBoxProduct  Product                    @relation("PackPoolSource", fields: [sourceBoxProductId], references: [id])
+  showVisit         ShowVisit?                 @relation(fields: [showVisitId], references: [id])
+  sourceAllocations PackPoolSourceAllocation[]
+  showAllocations   ShowPackPoolAllocation[]
+
+  @@index([sourceBoxProductId, createdAt])
+  @@index([showVisitId])
+}
+
+model PackPoolSourceAllocation {
+  id               Int      @id @default(autoincrement())
+  packPoolId       Int
+  inventoryBatchId Int
+  quantityBoxes    Int
+  unitCost         Decimal  @db.Decimal(14, 6)
+  totalCost        Decimal  @db.Decimal(14, 2)
+  createdAt        DateTime @default(now())
+
+  packPool       PackPool       @relation(fields: [packPoolId], references: [id])
+  inventoryBatch InventoryBatch @relation(fields: [inventoryBatchId], references: [id])
+
+  @@unique([packPoolId, inventoryBatchId])
+  @@index([inventoryBatchId])
+}
+
+model ShowPackSnapshot {
+  id                   Int       @id @default(autoincrement())
+  showVisitId          Int
+  sourceBoxProductId   Int
+  packDisplayName      String
+  startingPacks        Int
+  addedPacks           Int       @default(0)
+  giveaways            Int       @default(0)
+  damaged              Int       @default(0)
+  endingPacks          Int?
+  packsSold            Int?
+  declaredValuePerPack Decimal   @db.Decimal(10, 2)
+  startingCostBasis    Decimal   @db.Decimal(14, 2)
+  startingCostPerPack  Decimal   @db.Decimal(18, 6)
+  addedCostBasis       Decimal   @default(0) @db.Decimal(14, 2)
+  declaredSalesValue   Decimal?  @db.Decimal(14, 2)
+  estimatedCogs        Decimal?  @db.Decimal(14, 2)
+  giveawayCostBasis    Decimal?  @db.Decimal(14, 2)
+  damagedCostBasis     Decimal?  @db.Decimal(14, 2)
+  actualRevenue        Decimal?  @db.Decimal(14, 2)
+  actualCashRevenue    Decimal?  @db.Decimal(14, 2)
+  actualDigitalRevenue Decimal?  @db.Decimal(14, 2)
+  actualGrossProfit    Decimal?  @db.Decimal(14, 2)
+  actualGrossMargin    Decimal?  @db.Decimal(12, 6)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  finalizedAt          DateTime?
+
+  showVisit   ShowVisit                @relation(fields: [showVisitId], references: [id])
+  sourceBoxProduct Product             @relation("ShowPackSnapshotSource", fields: [sourceBoxProductId], references: [id])
+  allocations ShowPackPoolAllocation[]
+  fundEntries FundEntry[]
+
+  @@unique([showVisitId, sourceBoxProductId])
+  @@index([sourceBoxProductId])
+}
+
+model ShowPackPoolAllocation {
+  id                 Int                    @id @default(autoincrement())
+  showPackSnapshotId Int
+  packPoolId         Int
+  type               ShowPackAllocationType
+  quantityAllocated  Int
+  costBasisAllocated Decimal                @db.Decimal(14, 2)
+  quantityConsumed   Int                    @default(0)
+  costBasisConsumed  Decimal                @default(0) @db.Decimal(14, 2)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  showPackSnapshot ShowPackSnapshot @relation(fields: [showPackSnapshotId], references: [id])
+  packPool         PackPool         @relation(fields: [packPoolId], references: [id])
+
+  @@index([showPackSnapshotId, createdAt])
+  @@index([packPoolId])
+}
+
+enum ShowPackAllocationType {
+  STARTING
+  ADDED
 }
 
 // ---------------------------------------------------------
@@ -206,8 +367,10 @@ model ShowVisit {
 
   show Show @relation(fields: [showId], references: [id])
 
-  sales       Sale[]
-  fundEntries FundEntry[]
+  sales         Sale[]
+  fundEntries   FundEntry[]
+  packPools     PackPool[]
+  packSnapshots ShowPackSnapshot[]
 
   @@unique([showId, visitDate])
   @@index([status])
@@ -224,25 +387,28 @@ enum ShowVisitStatus {
 // ---------------------------------------------------------
 
 model FundEntry {
-  id              Int           @id @default(autoincrement())
-  source          FundSource
-  location        FundLocation?
-  type            FundEntryType
-  amount          Decimal       @db.Decimal(14, 2)
-  transactionDate DateTime
-  saleId          Int?          @unique
-  orderId         Int?          @unique
-  showVisitId     Int?
-  note            String?
-  createdAt       DateTime      @default(now())
+  id                 Int           @id @default(autoincrement())
+  source             FundSource
+  location           FundLocation?
+  type               FundEntryType
+  amount             Decimal       @db.Decimal(14, 2)
+  transactionDate    DateTime
+  saleId             Int?          @unique
+  orderId            Int?          @unique
+  showVisitId        Int?
+  showPackSnapshotId Int?
+  note               String?
+  createdAt          DateTime      @default(now())
 
-  sale      Sale?      @relation(fields: [saleId], references: [id])
-  order     Order?     @relation(fields: [orderId], references: [id])
-  showVisit ShowVisit? @relation(fields: [showVisitId], references: [id])
+  sale             Sale?             @relation(fields: [saleId], references: [id])
+  order            Order?            @relation(fields: [orderId], references: [id])
+  showVisit        ShowVisit?        @relation(fields: [showVisitId], references: [id])
+  showPackSnapshot ShowPackSnapshot? @relation(fields: [showPackSnapshotId], references: [id])
 
   @@index([source, transactionDate])
   @@index([source, location])
   @@index([showVisitId])
+  @@index([showPackSnapshotId])
 }
 
 enum FundSource {
@@ -260,6 +426,7 @@ enum FundEntryType {
   SEALED_SALE
   ORDER_PURCHASE
   SINGLES_SHOW_GAIN
+  PACK_SHOW_REVENUE
   PERSONAL_CONTRIBUTION
   MANUAL_ADJUSTMENT
 }
@@ -294,4 +461,24 @@ model WhatIfScenarioLine {
 
   @@unique([scenarioId, productId])
   @@index([scenarioId])
+}
+
+// Read-only historical reporting records derived from authoritative business
+// tables. One row is maintained per calendar day.
+model BusinessPositionSnapshot {
+  id                           Int      @id @default(autoincrement())
+  snapshotDate                 DateTime @unique @db.Date
+  snapshotAt                   DateTime @default(now())
+  totalBusinessFunds           Decimal  @db.Decimal(14, 2)
+  sealedFunds                  Decimal  @db.Decimal(14, 2)
+  singlesFunds                 Decimal  @db.Decimal(14, 2)
+  sealedInventoryCost          Decimal  @db.Decimal(14, 2)
+  singlesInventoryValue        Decimal? @db.Decimal(14, 2)
+  totalBusinessValue           Decimal? @db.Decimal(14, 2)
+  sealedExpectedRetail         Decimal  @db.Decimal(14, 2)
+  expectedPricingComplete      Boolean?
+  missingExpectedPriceProducts Int?
+  missingExpectedPriceUnits    Int?
+
+  @@index([snapshotDate])
 }

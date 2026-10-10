@@ -1,8 +1,14 @@
 import { Router } from "express";
+import type { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
 import { createShowProductPerformanceHandler } from "../reporting/showProductPerformance";
+import { aggregatePackPerformance, emptyPackPerformanceSummary, loadPackPerformance } from "../reporting/packPerformance";
+import { listAvailablePackInventory, planReservationsForSourceBox } from "../services/showPackInventory";
+import { persistShowPackFinalizations } from "../services/showPackFinalization";
+import { calculateShowPackResult, planShowPackConsumption, ShowPackTrackingError } from "../../shared/showPackTracking";
 
 const router = Router();
+class ShowPackRequestError extends Error {}
 
 router.get("/visits/:visitId/product-performance", createShowProductPerformanceHandler(prisma, "visit"));
 router.get("/:showId/product-performance", createShowProductPerformanceHandler(prisma, "show"));
@@ -115,6 +121,120 @@ router.get("/active-visit", async (_req, res) => {
           ? error.message
           : String(error),
     });
+  }
+});
+
+// ---------------------------------------------------------
+// SHOW PACK INVENTORY
+// ---------------------------------------------------------
+
+const packSnapshotInclude = {
+  sourceBoxProduct: { select: { id: true, itemId: true, name: true, defaultPackPrice: true } },
+  allocations: {
+    include: { packPool: { select: { id: true, sourceBoxProductId: true, createdAt: true } } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  },
+} satisfies Prisma.ShowPackSnapshotInclude;
+
+router.get("/packs/available", async (_req, res) => {
+  try {
+    res.json(await listAvailablePackInventory(prisma));
+  } catch (error) {
+    console.error("Failed to load available Show packs:", error);
+    res.status(500).json({ error: "Available pack inventory could not be loaded." });
+  }
+});
+
+router.get("/visits/:visitId/pack-snapshots", async (req, res) => {
+  try {
+    const visitId = Number(req.params.visitId);
+    if (!Number.isSafeInteger(visitId) || visitId <= 0) return res.status(400).json({ error: "Invalid show visit ID" });
+    const visit = await prisma.showVisit.findUnique({ where: { id: visitId }, select: { id: true } });
+    if (!visit) return res.status(404).json({ error: "Show visit not found" });
+    const snapshots = await prisma.showPackSnapshot.findMany({
+      where: { showVisitId: visitId },
+      include: packSnapshotInclude,
+      orderBy: [{ packDisplayName: "asc" }, { id: "asc" }],
+    });
+    res.json(snapshots);
+  } catch (error) {
+    console.error("Failed to load Show pack snapshots:", error);
+    res.status(500).json({ error: "Show pack snapshots could not be loaded." });
+  }
+});
+
+router.patch("/visits/:visitId/pack-snapshots/:snapshotId/adjustments", async (req, res) => {
+  try {
+    const visitId = Number(req.params.visitId);
+    const snapshotId = Number(req.params.snapshotId);
+    const giveaways = req.body?.giveaways;
+    const damaged = req.body?.damaged;
+    if (!Number.isSafeInteger(visitId) || visitId <= 0 || !Number.isSafeInteger(snapshotId) || snapshotId <= 0 ||
+        !Number.isSafeInteger(giveaways) || giveaways < 0 || !Number.isSafeInteger(damaged) || damaged < 0) {
+      return res.status(400).json({ error: "Giveaways and damaged packs must be non-negative whole numbers." });
+    }
+    const snapshot = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(86420932)`;
+      const current = await tx.showPackSnapshot.findFirst({
+        where: { id: snapshotId, showVisitId: visitId, showVisit: { status: "ACTIVE" }, finalizedAt: null },
+      });
+      if (!current) throw new ShowPackRequestError("Pack adjustments can only be changed during the active Show.");
+      if (giveaways + damaged > current.startingPacks + current.addedPacks) {
+        throw new ShowPackRequestError("Giveaways and damaged packs cannot exceed packs allocated to the Show.");
+      }
+      return tx.showPackSnapshot.update({
+        where: { id: snapshotId },
+        data: { giveaways, damaged },
+        include: packSnapshotInclude,
+      });
+    });
+    res.json(snapshot);
+  } catch (error) {
+    if (error instanceof ShowPackRequestError) return res.status(409).json({ error: error.message });
+    console.error("Failed to update Show pack adjustments:", error);
+    res.status(500).json({ error: "Pack adjustments could not be saved." });
+  }
+});
+
+router.post("/visits/:visitId/pack-snapshots/:snapshotId/add-existing", async (req, res) => {
+  try {
+    const visitId = Number(req.params.visitId);
+    const snapshotId = Number(req.params.snapshotId);
+    const quantity = req.body?.quantity;
+    if (!Number.isSafeInteger(visitId) || visitId <= 0 || !Number.isSafeInteger(snapshotId) || snapshotId <= 0 ||
+        !Number.isSafeInteger(quantity) || quantity <= 0) {
+      return res.status(400).json({ error: "Pack quantity must be a positive whole number." });
+    }
+    const snapshot = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(86420932)`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(86420933, ${snapshotId})`;
+      const current = await tx.showPackSnapshot.findFirst({
+        where: { id: snapshotId, showVisitId: visitId, showVisit: { status: "ACTIVE" }, finalizedAt: null },
+      });
+      if (!current) throw new ShowPackRequestError("Packs can only be added during the active Show.");
+      const plan = await planReservationsForSourceBox(tx, current.sourceBoxProductId, quantity);
+      await tx.showPackPoolAllocation.createMany({
+        data: plan.reservations.map(item => ({
+          showPackSnapshotId: current.id,
+          packPoolId: item.packPoolId,
+          type: "ADDED" as const,
+          quantityAllocated: item.quantity,
+          costBasisAllocated: item.costBasis,
+        })),
+      });
+      return tx.showPackSnapshot.update({
+        where: { id: current.id },
+        data: { addedPacks: { increment: plan.quantity }, addedCostBasis: { increment: plan.costBasis } },
+        include: packSnapshotInclude,
+      });
+    }, { isolationLevel: "Serializable" });
+    res.json(snapshot);
+  } catch (error) {
+    if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error("Failed to add existing packs to Show:", error);
+    res.status(409).json({ error: "Pack inventory changed while packs were being added. Refresh and try again." });
   }
 });
 
@@ -362,6 +482,13 @@ router.get(
             "Show visit not found",
         });
       }
+
+      const loadedPackPerformance = visit.status === "FINALIZED"
+        ? await loadPackPerformance(prisma, { visitId })
+        : null;
+      const packPerformance = loadedPackPerformance
+        ? { summary: loadedPackPerformance.summary, products: loadedPackPerformance.products }
+        : { summary: emptyPackPerformanceSummary(), products: [] };
 
       // -----------------------------------------------------
       // STARTING POSITION
@@ -727,6 +854,8 @@ router.get(
               sealedGrossMargin.toFixed(6)
             ),
         },
+
+        pack: packPerformance,
       });
     } catch (error) {
       console.error(
@@ -841,7 +970,26 @@ router.patch(
         startingSinglesValue,
         startingCash,
         startingDigital,
+        packSnapshots,
       } = req.body;
+
+      const requestedPackSnapshots: Array<{ sourceBoxProductId: number; startingPacks: number; declaredValuePerPack: number }> = [];
+      if (packSnapshots !== undefined) {
+        if (!Array.isArray(packSnapshots)) return res.status(400).json({ error: "Pack snapshots must be an array." });
+        const seenSourceBoxes = new Set<number>();
+        for (const item of packSnapshots) {
+          const sourceBoxProductId = item?.sourceBoxProductId;
+          const startingPacks = item?.startingPacks;
+          const declaredValuePerPack = item?.declaredValuePerPack;
+          if (!Number.isSafeInteger(sourceBoxProductId) || sourceBoxProductId <= 0 || !Number.isSafeInteger(startingPacks) || startingPacks <= 0 ||
+              typeof declaredValuePerPack !== "number" ||
+              !Number.isFinite(declaredValuePerPack) || declaredValuePerPack < 0 || declaredValuePerPack > 99999999.99 || seenSourceBoxes.has(sourceBoxProductId)) {
+            return res.status(400).json({ error: "Each selected Pack inventory source needs a unique Box, a positive starting quantity, and a valid non-negative declared value." });
+          }
+          seenSourceBoxes.add(sourceBoxProductId);
+          requestedPackSnapshots.push({ sourceBoxProductId, startingPacks, declaredValuePerPack });
+        }
+      }
 
       if (
         !Number.isInteger(visitId) ||
@@ -1025,6 +1173,17 @@ router.patch(
               };
             }
 
+            const packPlans = [];
+            for (const requested of requestedPackSnapshots) {
+              const sourceBoxProduct = await tx.product.findFirst({
+                where: { id: requested.sourceBoxProductId, active: true, sellable: true, type: "SEALED", unitType: "BOX" },
+                select: { id: true, name: true, packDisplayName: true },
+              });
+              if (!sourceBoxProduct?.packDisplayName) throw new ShowPackRequestError("A selected Pack inventory source is no longer a configured, active sellable Box.");
+              const plan = await planReservationsForSourceBox(tx, requested.sourceBoxProductId, requested.startingPacks);
+              packPlans.push({ requested, sourceBoxProduct, plan });
+            }
+
             const startedAt =
               new Date();
 
@@ -1063,6 +1222,29 @@ router.patch(
                 kind:
                   "STATUS_CHANGED" as const,
               };
+            }
+
+            for (const { requested, sourceBoxProduct, plan } of packPlans) {
+              const snapshot = await tx.showPackSnapshot.create({
+                data: {
+                  showVisitId: visitId,
+                  sourceBoxProductId: requested.sourceBoxProductId,
+                  packDisplayName: sourceBoxProduct.packDisplayName!,
+                  startingPacks: plan.quantity,
+                  declaredValuePerPack: requested.declaredValuePerPack.toFixed(2),
+                  startingCostBasis: plan.costBasis,
+                  startingCostPerPack: (Number(plan.costBasis) / plan.quantity).toFixed(6),
+                },
+              });
+              await tx.showPackPoolAllocation.createMany({
+                data: plan.reservations.map(item => ({
+                  showPackSnapshotId: snapshot.id,
+                  packPoolId: item.packPoolId,
+                  type: "STARTING" as const,
+                  quantityAllocated: item.quantity,
+                  costBasisAllocated: item.costBasis,
+                })),
+              });
             }
 
             const activeVisit =
@@ -1177,6 +1359,9 @@ router.patch(
 
       res.json(result.visit);
     } catch (error) {
+      if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
+        return res.status(400).json({ error: error.message });
+      }
       console.error(
         "Error beginning show visit:",
         error
@@ -1210,7 +1395,13 @@ router.patch(
         endingSinglesValue,
         endingCash,
         endingDigital,
+        packSnapshots,
       } = req.body;
+
+      if (packSnapshots !== undefined && !Array.isArray(packSnapshots)) {
+        return res.status(400).json({ error: "Pack ending snapshots must be an array." });
+      }
+      const submittedPackSnapshots = Array.isArray(packSnapshots) ? packSnapshots : [];
 
       if (
         !Number.isInteger(visitId) ||
@@ -1280,6 +1471,17 @@ router.patch(
                       id: "asc",
                     },
                   },
+                  packSnapshots: {
+                    include: {
+                      sourceBoxProduct: { select: { name: true } },
+                      allocations: {
+                        include: { packPool: true },
+                        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                      },
+                      fundEntries: { where: { type: "PACK_SHOW_REVENUE" } },
+                    },
+                    orderBy: { id: "asc" },
+                  },
                 },
               });
 
@@ -1324,6 +1526,44 @@ router.patch(
                   "EXISTING_GAIN" as const,
               };
             }
+
+            if (submittedPackSnapshots.length !== visit.packSnapshots.length) {
+              throw new ShowPackRequestError("Provide ending values for every Pack inventory row tracked by this Show.");
+            }
+            const submittedIds = new Set<number>();
+            const packFinalizations = visit.packSnapshots.map(snapshot => {
+              const submitted = submittedPackSnapshots.find(item => item?.snapshotId === snapshot.id);
+              if (!submitted || submittedIds.has(snapshot.id)) {
+                throw new ShowPackRequestError(`Ending Pack values are missing for ${snapshot.packDisplayName}.`);
+              }
+              submittedIds.add(snapshot.id);
+              if (snapshot.finalizedAt || snapshot.fundEntries.length > 0) {
+                throw new ShowPackRequestError(`${snapshot.packDisplayName} is already finalized or has Pack revenue entries.`);
+              }
+              const endingPacks = submitted.endingPacks;
+              const actualRevenue = submitted.actualRevenue === null ? null : submitted.actualRevenue;
+              const result = calculateShowPackResult({
+                startingPacks: snapshot.startingPacks,
+                addedPacks: snapshot.addedPacks,
+                endingPacks,
+                giveaways: snapshot.giveaways,
+                damaged: snapshot.damaged,
+                declaredValuePerPack: Number(snapshot.declaredValuePerPack),
+                actualRevenue,
+                actualCashRevenue: actualRevenue === null ? null : submitted.actualCashRevenue,
+                actualDigitalRevenue: actualRevenue === null ? null : submitted.actualDigitalRevenue,
+              });
+              const consumption = planShowPackConsumption(snapshot.allocations.map(allocation => ({
+                id: allocation.id,
+                packPoolId: allocation.packPoolId,
+                createdAt: allocation.packPool.createdAt,
+                quantityAllocated: allocation.quantityAllocated,
+                costBasisAllocated: Number(allocation.costBasisAllocated),
+                quantityConsumed: allocation.quantityConsumed,
+                costBasisConsumed: Number(allocation.costBasisConsumed),
+              })), { sold: result.packsSold, giveaways: snapshot.giveaways, damaged: snapshot.damaged });
+              return { snapshot, submitted, result, consumption };
+            });
 
             const singlesEntries =
               await tx.fundEntry.findMany({
@@ -1436,6 +1676,27 @@ router.patch(
                   "STATUS_CHANGED" as const,
               };
             }
+
+            await persistShowPackFinalizations(
+              tx,
+              { id: visit.id, visitDate: visit.visitDate, showName: visit.show.name },
+              finalizedAt,
+              packFinalizations.map(finalization => ({
+                snapshotId: finalization.snapshot.id,
+                packDisplayName: finalization.snapshot.packDisplayName,
+                endingPacks: finalization.submitted.endingPacks,
+                packsSold: finalization.result.packsSold,
+                declaredSalesValue: finalization.result.declaredSalesValue,
+                estimatedCogs: finalization.consumption.estimatedCogs,
+                giveawayCostBasis: finalization.consumption.giveawayCostBasis,
+                damagedCostBasis: finalization.consumption.damagedCostBasis,
+                actualRevenue: finalization.result.actualRevenue,
+                actualCashRevenue: finalization.result.actualCashRevenue,
+                actualDigitalRevenue: finalization.result.actualDigitalRevenue,
+                allocationUpdates: finalization.consumption.allocationUpdates,
+                poolUpdates: finalization.consumption.poolUpdates,
+              })),
+            );
 
             // Keep two explicit location rows, including $0.00 reconciliations.
             // That makes every finalized Show auditable as a Cash snapshot
@@ -1600,6 +1861,9 @@ router.patch(
           result.reconciliation,
       });
     } catch (error) {
+      if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
+        return res.status(400).json({ error: error.message });
+      }
       console.error(
         "Error finalizing show visit:",
         error
@@ -1677,6 +1941,19 @@ router.get(
             "Show not found",
         });
       }
+
+      const loadedPackPerformance = await loadPackPerformance(prisma, { showId });
+      const packPerformance = {
+        summary: loadedPackPerformance.summary,
+        products: loadedPackPerformance.products,
+      };
+      const packPerformanceByVisit = new Map(show.visits.map((visit) => [
+        visit.id,
+        aggregatePackPerformance(
+          loadedPackPerformance.snapshots.filter((snapshot) => snapshot.showVisitId === visit.id),
+          loadedPackPerformance.pools,
+        ).summary,
+      ]));
 
       // -----------------------------------------------------
       // OVERALL TOTALS
@@ -2181,6 +2458,8 @@ router.get(
             ),
         },
 
+        pack: packPerformance,
+
         averages: {
           revenuePerVisit:
             Number(
@@ -2248,7 +2527,10 @@ router.get(
         },
 
         visits:
-          visitPerformance,
+          visitPerformance.map((visit) => ({
+            ...visit,
+            pack: packPerformanceByVisit.get(visit.visitId) ?? emptyPackPerformanceSummary(),
+          })),
       });
     } catch (error) {
       console.error(

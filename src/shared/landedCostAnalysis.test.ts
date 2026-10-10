@@ -37,3 +37,20 @@ test("stored view uses recorded line and unit costs exactly", () => {
   assert.equal(result.lines[0].landedCost, 11);
   assert.equal(result.lines[0].landedUnitCost, 3.666667);
 });
+
+test("official value allocation matches combined additional-cost rounding", () => {
+  const result = analyzeLandedCosts({
+    shippingCost: 0.01,
+    tariffCost: 0.01,
+    otherCost: 0,
+    adjustment: 0,
+    lines: [
+      { id: 1, productCost: 1, sellableQuantity: 1, landedCost: null, landedUnitCost: null },
+      { id: 2, productCost: 1, sellableQuantity: 1, landedCost: null, landedUnitCost: null },
+      { id: 3, productCost: 1, sellableQuantity: 1, landedCost: null, landedUnitCost: null },
+    ],
+  }, "VALUE");
+  assert.deepEqual(result.lines.map(line => line.landedCost), [1.01, 1.01, 1]);
+  assert.equal(result.calculatedTotal, 3.02);
+  assert.equal(result.reconciliationDifference, 0);
+});

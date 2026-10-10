@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { allocatedBatchCost, remainingBatchCost, remainingBatchQuantity } from "../services/inventoryCost";
 
 const router = Router();
 
@@ -18,8 +19,10 @@ router.get("/", async (_req, res) => {
         inventoryBatches: {
           include: {
             saleAllocations: true,
+            packPoolAllocations: true,
           },
         },
+        packPoolsAsSource: true,
       },
       orderBy: {
         name: "asc",
@@ -29,28 +32,20 @@ router.get("/", async (_req, res) => {
     const inventory = products.map((product) => {
       let unitsReceived = 0;
       let unitsSold = 0;
+      let unitsConvertedOut = 0;
       let unitsOnHand = 0;
       let inventoryValue = 0;
 
       for (const batch of product.inventoryBatches) {
-        const quantityRemaining =
-          batch.quantityReceived - batch.quantitySold;
+        const quantityRemaining = remainingBatchQuantity(batch);
 
-        // Total cost already recognized as COGS from this batch.
-        const allocatedCost =
-          batch.saleAllocations.reduce(
-            (total, allocation) =>
-              total + Number(allocation.totalCost),
-            0
-          );
-
-        // Remaining inventory value is based on the exact historical
-        // landed cost minus COGS already allocated from the batch.
-        const batchRemainingValue =
-          Number(batch.landedCost) - allocatedCost;
+        // Remaining value subtracts both recognized COGS and cost basis
+        // transferred into pack inventory.
+        const batchRemainingValue = remainingBatchCost(batch);
 
         unitsReceived += batch.quantityReceived;
         unitsSold += batch.quantitySold;
+        unitsConvertedOut += batch.quantityConverted;
         unitsOnHand += quantityRemaining;
         inventoryValue += batchRemainingValue;
       }
@@ -79,6 +74,7 @@ router.get("/", async (_req, res) => {
 
         unitsReceived,
         unitsSold,
+        unitsConvertedOut,
         unitsOnHand,
 
         inventoryValue: Number(
@@ -100,6 +96,11 @@ router.get("/", async (_req, res) => {
         ),
 
         batchCount: product.inventoryBatches.length,
+        packPoolCount: product.packPoolsAsSource.length,
+        unitType: product.unitType,
+        packsPerBox: product.packsPerBox,
+        packDisplayName: product.packDisplayName,
+        defaultPackPrice: product.defaultPackPrice === null ? null : Number(product.defaultPackPrice),
       };
     });
 
@@ -139,6 +140,7 @@ router.get("/:productId", async (req, res) => {
         inventoryBatches: {
           include: {
             saleAllocations: true,
+            packPoolAllocations: true,
 
             orderLine: {
               include: {
@@ -146,6 +148,9 @@ router.get("/:productId", async (req, res) => {
               },
             },
           },
+        },
+        packPoolsAsSource: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         },
       },
     });
@@ -175,27 +180,22 @@ router.get("/:productId", async (req, res) => {
 
     let unitsReceived = 0;
     let unitsSold = 0;
+    let unitsConvertedOut = 0;
     let unitsOnHand = 0;
     let inventoryValue = 0;
 
     const batches = product.inventoryBatches.map((batch) => {
-      const quantityRemaining =
-        batch.quantityReceived - batch.quantitySold;
+      const quantityRemaining = remainingBatchQuantity(batch);
 
-      // Total cost already recognized as COGS from this batch.
-      const allocatedCost =
-        batch.saleAllocations.reduce(
-          (total, allocation) =>
-            total + Number(allocation.totalCost),
-          0
-        );
+      // Cost removed through either a sale or a Box-to-Pack transfer.
+      const allocatedCost = allocatedBatchCost(batch);
 
       // Exact historical cost still remaining in inventory.
-      const remainingValue =
-        Number(batch.landedCost) - allocatedCost;
+      const remainingValue = remainingBatchCost(batch);
 
       unitsReceived += batch.quantityReceived;
       unitsSold += batch.quantitySold;
+      unitsConvertedOut += batch.quantityConverted;
       unitsOnHand += quantityRemaining;
       inventoryValue += remainingValue;
 
@@ -208,6 +208,7 @@ router.get("/:productId", async (req, res) => {
 
         quantityReceived: batch.quantityReceived,
         quantitySold: batch.quantitySold,
+        quantityConverted: batch.quantityConverted,
         quantityRemaining,
 
         landedCost: Number(batch.landedCost),
@@ -224,6 +225,18 @@ router.get("/:productId", async (req, res) => {
         createdAt: batch.createdAt,
       };
     });
+
+    const packPools = product.packPoolsAsSource.map(pool => ({
+        packPoolId: pool.id,
+        packDisplayName: pool.packDisplayName,
+        boxesConsumed: pool.boxesConsumed,
+        packsCreated: pool.packsCreated,
+        packsRemaining: pool.packsRemaining,
+        totalCostBasis: Number(pool.totalCostBasis),
+        remainingCostBasis: Number(pool.remainingCostBasis),
+        costPerPack: Number(pool.costPerPack),
+        createdAt: pool.createdAt,
+      }));
 
     const expectedSalePrice =
       product.expectedSalePrice !== null
@@ -253,6 +266,7 @@ router.get("/:productId", async (req, res) => {
       summary: {
         unitsReceived,
         unitsSold,
+        unitsConvertedOut,
         unitsOnHand,
 
         inventoryValue: Number(
@@ -272,9 +286,11 @@ router.get("/:productId", async (req, res) => {
         ),
 
         batchCount: batches.length,
+        packPoolCount: packPools.length,
       },
 
       batches,
+      packPools,
     });
   } catch (error) {
     console.error(

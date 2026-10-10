@@ -1,8 +1,45 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { calculateBusinessPosition, captureBusinessPositionSnapshot } from "../services/businessPosition";
+import { aggregatePackPerformance, emptyPackPerformanceSummary, loadPackPerformance } from "../reporting/packPerformance";
 
 const router = Router();
 const cents = (value: number) => Math.round(value * 100) / 100;
+
+router.get("/business-position", async (_req, res) => {
+  try { res.json(await calculateBusinessPosition()); }
+  catch (error) { console.error("Failed to calculate business position:", error); res.status(500).json({ error: "Failed to calculate business position." }); }
+});
+
+router.get("/business-position-snapshots", async (req, res) => {
+  try {
+    const interval = req.query.interval ?? "weekly";
+    if (interval !== "weekly" && interval !== "monthly") { res.status(400).json({ error: "interval must be weekly or monthly." }); return; }
+    await captureBusinessPositionSnapshot();
+    const snapshots = await prisma.businessPositionSnapshot.findMany({ orderBy: { snapshotDate: "asc" } });
+    const grouped = new Map<string, typeof snapshots[number]>();
+    for (const snapshot of snapshots) {
+      const date = new Date(snapshot.snapshotDate);
+      let period: string;
+      if (interval === "monthly") period = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+      else {
+        const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+        monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+        period = monday.toISOString().slice(0, 10);
+      }
+      grouped.set(period, snapshot);
+    }
+    res.json([...grouped.entries()].map(([period, snapshot]) => ({
+      period, snapshotDate: snapshot.snapshotDate, snapshotAt: snapshot.snapshotAt,
+      totalBusinessFunds: Number(snapshot.totalBusinessFunds), sealedFunds: Number(snapshot.sealedFunds), singlesFunds: Number(snapshot.singlesFunds),
+      sealedInventoryCost: Number(snapshot.sealedInventoryCost), singlesInventoryValue: snapshot.singlesInventoryValue === null ? null : Number(snapshot.singlesInventoryValue),
+      totalBusinessValue: snapshot.totalBusinessValue === null ? null : Number(snapshot.totalBusinessValue), sealedExpectedRetail: Number(snapshot.sealedExpectedRetail),
+      expectedPricingComplete: snapshot.expectedPricingComplete,
+      missingExpectedPriceProducts: snapshot.missingExpectedPriceProducts,
+      missingExpectedPriceUnits: snapshot.missingExpectedPriceUnits,
+    })));
+  } catch (error) { console.error("Failed to load business position snapshots:", error); res.status(500).json({ error: "Failed to load business position snapshots." }); }
+});
 
 router.get("/performance", async (req, res) => {
   try {
@@ -17,10 +54,12 @@ router.get("/performance", async (req, res) => {
       res.status(400).json({ error: "Invalid report filters." });
       return;
     }
-    const [sales, shows] = await Promise.all([
+    const reportFrom = start ? new Date(`${start}T00:00:00.000Z`) : undefined;
+    const reportToExclusive = end ? new Date(Date.parse(`${end}T00:00:00.000Z`) + 86400000) : undefined;
+    const [sales, shows, packPerformance] = await Promise.all([
       prisma.sale.findMany({
         where: {
-          saleDate: { ...(start ? { gte: new Date(`${start}T00:00:00.000Z`) } : {}), ...(end ? { lt: new Date(Date.parse(`${end}T00:00:00.000Z`) + 86400000) } : {}) },
+          saleDate: { ...(reportFrom ? { gte: reportFrom } : {}), ...(reportToExclusive ? { lt: reportToExclusive } : {}) },
           ...(show ? { showVisit: { showId: show } } : showOnly ? { showVisitId: { not: null } } : {}),
           ...(product ? { lines: { some: { productId: product } } } : {}),
         },
@@ -28,6 +67,12 @@ router.get("/performance", async (req, res) => {
         orderBy: [{ saleDate: "asc" }, { id: "asc" }],
       }),
       prisma.show.findMany({ include: { visits: { orderBy: { visitDate: "asc" } } }, orderBy: { name: "asc" } }),
+      loadPackPerformance(prisma, {
+        ...(show ? { showId: show } : {}),
+        ...(product ? { productId: product } : {}),
+        ...(reportFrom ? { from: reportFrom } : {}),
+        ...(reportToExclusive ? { toExclusive: reportToExclusive } : {}),
+      }),
     ]);
     const filteredSales = sales.map(sale => ({ ...sale, lines: sale.lines.filter(line => !product || line.productId === product) })).filter(sale => sale.lines.length > 0);
     const totals = { revenue: 0, cogs: 0, grossProfit: 0, unitsSold: 0, saleCount: filteredSales.length, grossMargin: 0 };
@@ -74,9 +119,44 @@ router.get("/performance", async (req, res) => {
     totals.revenue = cents(totals.revenue); totals.cogs = cents(totals.cogs); totals.grossProfit = cents(totals.grossProfit); totals.grossMargin = totals.revenue ? totals.grossProfit / totals.revenue : 0;
     const products = [...productMap.values()].map(row => ({ ...row, revenue: cents(row.revenue), cogs: cents(row.cogs), grossProfit: cents(row.grossProfit), grossMargin: row.revenue ? row.grossProfit / row.revenue : 0 })).sort((a, b) => b.revenue - a.revenue);
     const trends = [...trendMap.values()].map(row => ({ ...row, revenue: cents(row.revenue), cogs: cents(row.cogs), grossProfit: cents(row.grossProfit) }));
-    const showRows = [...showMap.values()].map(row => ({ ...row, revenue: cents(row.revenue), cogs: cents(row.cogs), grossProfit: cents(row.grossProfit), grossMargin: row.revenue ? row.grossProfit / row.revenue : 0 })).sort((a, b) => b.revenue - a.revenue);
-    const visits = [...visitMap.values()].map(row => ({ ...row, revenue: cents(row.revenue), cogs: cents(row.cogs), grossProfit: cents(row.grossProfit), grossMargin: row.revenue ? row.grossProfit / row.revenue : 0 })).sort((a, b) => b.date.localeCompare(a.date));
-    res.json({ totals, products, trends, shows: showRows, visits });
+    const packByShow = new Map<number, ReturnType<typeof emptyPackPerformanceSummary>>();
+    const packByVisit = new Map<number, ReturnType<typeof emptyPackPerformanceSummary>>();
+    for (const row of showMap.values()) {
+      packByShow.set(row.showId, aggregatePackPerformance(
+        packPerformance.snapshots.filter(snapshot => snapshot.showVisit.showId === row.showId),
+        packPerformance.pools,
+      ).summary);
+    }
+    for (const row of visitMap.values()) {
+      packByVisit.set(row.visitId, aggregatePackPerformance(
+        packPerformance.snapshots.filter(snapshot => snapshot.showVisitId === row.visitId),
+        packPerformance.pools,
+      ).summary);
+    }
+    const showRows = [...showMap.values()].map(row => ({
+      ...row,
+      revenue: cents(row.revenue),
+      cogs: cents(row.cogs),
+      grossProfit: cents(row.grossProfit),
+      grossMargin: row.revenue ? row.grossProfit / row.revenue : 0,
+      pack: packByShow.get(row.showId) ?? emptyPackPerformanceSummary(),
+    })).sort((a, b) => b.revenue - a.revenue);
+    const visits = [...visitMap.values()].map(row => ({
+      ...row,
+      revenue: cents(row.revenue),
+      cogs: cents(row.cogs),
+      grossProfit: cents(row.grossProfit),
+      grossMargin: row.revenue ? row.grossProfit / row.revenue : 0,
+      pack: packByVisit.get(row.visitId) ?? emptyPackPerformanceSummary(),
+    })).sort((a, b) => b.date.localeCompare(a.date));
+    res.json({
+      totals,
+      products,
+      trends,
+      shows: showRows,
+      visits,
+      pack: { summary: packPerformance.summary, products: packPerformance.products },
+    });
   } catch (error) {
     console.error("Failed to load reports:", error);
     res.status(500).json({ error: "Failed to load reports." });

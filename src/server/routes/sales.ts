@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { simulateFifoConsumption } from "../../shared/fifoSimulation";
+import { allocatedBatchCost } from "../services/inventoryCost";
 
 const router = Router();
 class FinalizedVisitError extends Error {}
@@ -272,6 +273,7 @@ router.post("/", async (req, res) => {
           },
           include: {
             saleAllocations: true,
+            packPoolAllocations: true,
 
             orderLine: {
               include: {
@@ -294,12 +296,10 @@ router.post("/", async (req, res) => {
           orderDate: batch.orderLine.order.orderDate,
           quantityReceived: batch.quantityReceived,
           quantitySold: batch.quantitySold,
+          quantityConverted: batch.quantityConverted,
           landedCost: Number(batch.landedCost),
           landedUnitCost: Number(batch.landedUnitCost),
-          previouslyAllocatedCost: batch.saleAllocations.reduce(
-            (total, allocation) => total + Number(allocation.totalCost),
-            0
-          ),
+          previouslyAllocatedCost: allocatedBatchCost(batch),
         })),
         line.quantity
       );

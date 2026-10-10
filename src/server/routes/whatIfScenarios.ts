@@ -72,7 +72,7 @@ async function validateCurrentInventory(lines: ScenarioLineInput[]): Promise<str
       return `${product.name} is not currently available sealed inventory.`;
     }
     const available = product.inventoryBatches.reduce(
-      (total, batch) => total + batch.quantityReceived - batch.quantitySold,
+      (total, batch) => total + batch.quantityReceived - batch.quantitySold - batch.quantityConverted,
       0
     );
     if (line.quantity > available) {
@@ -96,6 +96,7 @@ router.get("/inventory", async (_req, res) => {
         inventoryBatches: {
           include: {
             saleAllocations: true,
+            packPoolAllocations: true,
             orderLine: { include: { order: true } },
           },
         },
@@ -108,15 +109,16 @@ router.get("/inventory", async (_req, res) => {
         orderDate: batch.orderLine.order.orderDate,
         quantityReceived: batch.quantityReceived,
         quantitySold: batch.quantitySold,
+        quantityConverted: batch.quantityConverted,
         landedCost: Number(batch.landedCost),
         landedUnitCost: Number(batch.landedUnitCost),
-        previouslyAllocatedCost: batch.saleAllocations.reduce(
+        previouslyAllocatedCost: [...batch.saleAllocations, ...batch.packPoolAllocations].reduce(
           (total, allocation) => total + Number(allocation.totalCost),
           0
         ),
       }));
       const availableQuantity = batches.reduce(
-        (total, batch) => total + batch.quantityReceived - batch.quantitySold,
+        (total, batch) => total + batch.quantityReceived - batch.quantitySold - batch.quantityConverted,
         0
       );
       const inventoryCost = batches.reduce(

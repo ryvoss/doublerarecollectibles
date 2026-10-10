@@ -45,6 +45,61 @@
 .report-table td:first-child { max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
 .report-table td small { display: block; margin-top: 3px; color: var(--text-muted); }
 .report-badge { padding: 4px 7px; border: 1px solid var(--border-strong); border-radius: 5px; color: var(--text-muted); font-size: 10px; }
+.business-health { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.business-health-heading { padding: 17px 19px; border-bottom: 1px solid var(--border); background: linear-gradient(105deg, #1c2a23, var(--surface) 60%); }
+.business-health-heading span { color: #94ac9e; font-size: 9px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.business-health-heading h3 { margin: 5px 0 4px; color: var(--text); font-size: 17px; }
+.business-health-heading p, .business-health-block header p { margin: 0; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
+.business-health-sections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.business-health-block { min-width: 0; padding: 16px 18px; border-left: 1px solid var(--border); }
+.business-health-block:first-child { border-left: 0; }
+.business-health-block.is-opportunity { background: #1d231f; }
+.business-health-block header { min-height: 48px; padding-bottom: 11px; border-bottom: 1px solid var(--border); }
+.business-health-block h4 { margin: 0 0 4px; color: #dce5df; font-size: 12px; text-transform: uppercase; letter-spacing: .035em; }
+.business-health-values { display: grid; }
+.business-health-values > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: baseline; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.business-health-values > div:last-child { border-bottom: 0; }
+.business-health-values span { color: var(--text-muted); font-size: 10px; }
+.business-health-values strong { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; }
+.business-health-values small { grid-column: 1 / -1; color: #707d76; font-size: 9px; }
+.business-health-values .is-total strong { color: #b7d9c3; font-size: 17px; }
+.business-health-values .is-unavailable strong { color: #d4bd7b; font-size: 11px; }
+.business-health-block.is-opportunity .business-health-values > div:nth-child(n+3) strong { color: #a7cdb5; }
+.business-health-page { display: grid; gap: 16px; }
+.business-health-current, .business-health-opportunity { overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+.business-health-current-metrics, .business-health-opportunity-grid, .business-health-change-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.health-metric { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 16px; border-left: 1px solid var(--border); }
+.health-metric:first-child { border-left: 0; }
+.health-metric > span { color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: .035em; text-transform: uppercase; }
+.health-metric > strong { color: var(--text); font-size: 19px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.health-metric > small { color: #748078; font-size: 9px; line-height: 1.4; }
+.health-metric.is-primary { background: #1b2921; }
+.health-metric.is-primary > strong { color: #b8dac4; font-size: 23px; }
+.business-health-opportunity { border-color: #454f48; background: #1d231f; }
+.business-health-opportunity > header { padding: 15px 18px; border-bottom: 1px solid var(--border); }
+.business-health-opportunity > header span { color: #95aa9d; font-size: 9px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.business-health-opportunity > header h3 { margin: 4px 0; color: var(--text); font-size: 14px; }
+.business-health-opportunity > header p { margin: 0; color: var(--text-muted); font-size: 10px; }
+.business-health-history { overflow: hidden; }
+.business-health-history-header { align-items: center; }
+.business-health-interval { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface-input); }
+.business-health-interval button { padding: 7px 12px; border-radius: 5px; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 11px; font-weight: 650; }
+.business-health-interval button.is-active { background: #304038; color: #edf4f0; box-shadow: inset 0 0 0 1px #53685d; }
+.business-health-change-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--border); }
+.business-health-change-grid .health-metric { padding-block: 13px; }
+.business-health-change-grid .health-metric > strong { font-size: 16px; }
+.business-value-chart { padding: 16px 18px 12px; overflow-x: auto; }
+.business-value-chart svg { display: block; width: 100%; min-width: 680px; height: auto; }
+.business-value-legend { display: flex; flex-wrap: wrap; gap: 12px 20px; margin-bottom: 8px; color: var(--text-muted); font-size: 10px; }
+.business-value-legend span::before { content: ""; display: inline-block; width: 16px; height: 2px; margin: 0 6px 3px 0; background: currentColor; }
+.business-value-legend .is-total { color: #a9d4b8; }.business-value-legend .is-potential { color: #7d917f; }.business-value-legend .is-funds { color: #829bc0; }.business-value-legend .is-sealed { color: #c4a469; }.business-value-legend .is-singles { color: #a985b8; }
+.chart-grid { stroke: #303832; stroke-width: 1; }
+.chart-axis-label { fill: #718078; font-size: 10px; }
+.chart-line { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart-line.is-total { stroke: #9bc9ad; stroke-width: 3; }.chart-line.is-potential { stroke: #7d917f; stroke-dasharray: 7 5; }.chart-line.is-funds { stroke: #829bc0; }.chart-line.is-sealed { stroke: #c4a469; }.chart-line.is-singles { stroke: #a985b8; }
+.chart-point { fill: #bce0c8; stroke: #25362c; stroke-width: 2; }
+.chart-point.is-potential { fill: #8a9e8c; stroke: #273128; }
+.business-value-chart > p { margin: 4px 0 0; color: var(--text-muted); font-size: 10px; }
 .what-if-page { display: grid; gap: 20px; }
 .what-if-header { display: flex; align-items: end; justify-content: space-between; gap: 18px; padding: 8px 0 2px; }
 .what-if-header h2 { margin: 8px 0 5px; color: var(--text); font-size: 22px; letter-spacing: -.025em; }
@@ -148,11 +203,27 @@
 .what-if-modal-footer > div { display: flex; gap: 9px; }
 .danger-button { padding: 9px 13px; border: 1px solid #754349; border-radius: 7px; background: #372126; color: #e5a6ab; cursor: pointer; font-size: 12px; font-weight: 650; }
 .danger-button:disabled { cursor: not-allowed; opacity: .55; }
+/* Pack reporting remains visually separate from sealed SaleLine reporting. */
+.pack-report-block { overflow: hidden; border: 1px solid #5d5035; border-radius: 10px; background: #1d1d19; }
+.pack-report-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 16px 18px; border-bottom: 1px solid #4d4431; background: linear-gradient(110deg, #29251a, #1d211e 64%); }
+.pack-report-heading > div > span { color: #c6aa69; font-size: 9px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+.pack-report-heading h3 { margin: 4px 0; color: var(--text); font-size: 16px; }
+.pack-report-heading p { margin: 0; color: var(--text-muted); font-size: 10px; }
+.pack-report-metrics { margin: 0; padding: 14px; }
+.pack-report-metrics .metric-card { border-color: #494333; background: #20221e; }
+.pack-revenue-mode { display: inline-flex; align-items: center; white-space: nowrap; }
+.pack-revenue-mode.is-actual { border-color: #426e50; background: #203326; color: #b7ddc2; }
+.pack-revenue-mode.is-mixed { border-color: #77643a; background: #302a1d; color: #dec686; }
+.pack-revenue-mode.is-declared_only { border-color: #5b5c59; background: #272926; color: #b5b8b4; }
 @media (max-width: 1100px) { .report-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 1050px) { .business-health-sections { grid-template-columns: minmax(0, 1fr); } .business-health-block { border-top: 1px solid var(--border); border-left: 0; } .business-health-block:first-child { border-top: 0; } }
+@media (max-width: 1050px) { .business-health-current-metrics, .business-health-opportunity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .health-metric { border-top: 1px solid var(--border); } }
 @media (max-width: 1180px) { .what-if-line { grid-template-columns: minmax(180px, 1fr) 126px 145px auto; } .what-if-line-metrics { grid-column: 1 / -1; } }
 @media (max-width: 760px) { .report-two { grid-template-columns: minmax(0, 1fr); } .report-bar-row { grid-template-columns: minmax(80px, 1fr) minmax(60px, 1fr) auto; } }
+@media (max-width: 650px) { .business-health-current-metrics, .business-health-opportunity-grid, .business-health-change-grid { grid-template-columns: minmax(0, 1fr); } .business-health-history-header { align-items: stretch; } .business-health-interval { align-self: flex-start; } }
 @media (max-width: 760px) { .what-if-scenario-fields { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 900px) { .what-if-scenario-card { grid-template-columns: minmax(160px, 1fr) minmax(130px, .7fr) auto auto; } .what-if-preview-metrics { display: none; } .what-if-results { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .what-if-header { align-items: stretch; flex-direction: column; } .what-if-header > .primary-button { align-self: flex-start; } .what-if-scenario-card { grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; } .what-if-scenario-source { display: none; } .what-if-modal-backdrop { padding: 0; } .what-if-modal { height: 100dvh; max-height: 100dvh; border-radius: 0; } .what-if-modal-header, .what-if-modal-body, .what-if-modal-footer { padding-inline: 16px; } .what-if-workspace-toolbar { align-items: stretch; flex-direction: column; } .what-if-modal-footer { align-items: stretch; flex-direction: column-reverse; } .what-if-modal-footer > div { justify-content: stretch; } .what-if-modal-footer button { flex: 1; } }
 @media (max-width: 700px) { .what-if-product-picker { align-items: stretch; flex-direction: column; } .what-if-line { grid-template-columns: 1fr 1fr; } .what-if-line-product, .what-if-line-metrics { grid-column: 1 / -1; } .what-if-remove-line { justify-self: start; } .what-if-inventory-impact { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .report-metrics { grid-template-columns: minmax(0, 1fr); } .report-filters label, .report-filters select, .report-filters input { width: 100%; max-width: none; } .what-if-workspace-header { align-items: stretch; } .what-if-workspace-header .primary-button { width: 100%; } }
+@media (max-width: 620px) { .pack-report-heading { align-items: flex-start; flex-direction: column; } }
