@@ -4,14 +4,14 @@ This repository is prepared for one Railway Node service and one Railway Postgre
 
 ## Required environment
 
-- `DATABASE_URL`: the PostgreSQL connection URL supplied by Railway.
+- `DATABASE_URL=${{Postgres.DATABASE_URL}}`: reference the private connection URL from the Railway Postgres service. Replace `Postgres` only if the database service has a different Railway service name.
+- `DIRECT_DATABASE_URL=${{Postgres.DATABASE_URL}}`: use the same Railway Postgres reference. The application supports a distinct direct URL when a provider supplies one, but Railway's standard Postgres service uses the same URL for both.
 - `APP_ENV=REAL`: enables the real-business database guard. The server refuses test-named databases in this mode.
 - `NODE_ENV=production`: enables static frontend serving and production error behavior.
 - `PORT`: supplied automatically by Railway. Do not set a fixed Railway port.
 
 Optional database configuration:
 
-- `DIRECT_DATABASE_URL`: use only when a provider supplies a separate direct connection for migrations. If both URLs include a database name, they must name the same database. The direct URL is also retained for compatibility with the existing local Prisma development listener.
 - `SHADOW_DATABASE_URL`: development-only for `prisma migrate dev`; it is not needed by production deployment migrations.
 
 Image configuration:
@@ -29,7 +29,16 @@ When both forms are present, the `S3_*` name takes precedence. `S3_REGION`/`REGI
 - Build: `npm run build`
 - Pre-deploy migration: `npm run db:migrate:deploy`
 - Start: `npm run start`
-- Health check path: `/api/health`
+- Health check: `GET /api/health`
+
+These commands are committed in `railway.json`. Railway automatically runs them in this order for each deployment:
+
+1. Build the application with `npm run build`.
+2. Run `npm run db:migrate:deploy` in Railway's deployment environment, where the Postgres private hostname is reachable.
+3. Start the application with `npm run start` only after migration succeeds.
+4. Verify the new deployment through `/api/health` before considering it healthy.
+
+No Railway CLI command, local database connection, copied password, or SSH tunnel is required. Commit and push `railway.json`, then trigger or redeploy the app service normally. If the pre-deploy migration exits nonzero or times out, Railway fails the deployment and does not start that release against an unmigrated schema. A five-minute health-check timeout is configured; set a separate Pre-deploy Timeout in Railway's service settings if a migration timeout is desired.
 
 `npm run build` generates the Prisma client, type-checks the app, builds the Vite frontend into `dist`, and bundles the Express server into `dist-server/server.js`. `npm run start` runs compiled JavaScript and does not require the `tsx` development runtime.
 
@@ -37,11 +46,23 @@ The pre-deploy command uses `prisma migrate deploy`, which applies the committed
 
 ## PostgreSQL and data safety
 
-Attach a standard Railway PostgreSQL service and provide its connection URL as `DATABASE_URL`. The runtime and Prisma migration configuration both accept a normal PostgreSQL URL. Existing database identity checks remain active for application startup and Prisma commands.
+Attach a standard Railway PostgreSQL service and configure both database variables as Railway references:
+
+```text
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+DIRECT_DATABASE_URL=${{Postgres.DATABASE_URL}}
+APP_ENV=REAL
+NODE_ENV=production
+```
+
+Do not copy the resolved password or private hostname into the repository. Railway resolves the references inside its network. The runtime and Prisma migration configuration both accept the standard PostgreSQL URL, and the existing database identity checks remain active for application startup and Prisma commands.
+
+Local development remains unchanged: local `.env` and `.env.test` files provide their existing URLs, are ignored by Git, and are not used by Railway. `DIRECT_DATABASE_URL` remains preferred locally for compatibility with the existing Prisma development listener.
 
 Never run these against production:
 
 - `prisma migrate dev`
+- `prisma migrate reset`
 - `npm run test:setup`
 - `npm run test:reset`
 - `scripts/reset-business-data.ts`
