@@ -7,6 +7,7 @@ import {
 } from "../../shared/publicSite";
 import { prisma } from "../prisma";
 import { productImageStorage } from "./productImageStorage";
+import { toPublicSiteSettings } from "./publicContracts";
 
 export async function getPublicSiteConfiguration(): Promise<PublicSiteConfiguration> {
   const [settingsRecord, assetRecords] = await Promise.all([
@@ -15,7 +16,7 @@ export async function getPublicSiteConfiguration(): Promise<PublicSiteConfigurat
   ]);
 
   const settings: PublicSiteSettings = settingsRecord
-    ? {
+    ? toPublicSiteSettings({
         businessName: settingsRecord.businessName,
         tagline: settingsRecord.tagline,
         heroTitle: settingsRecord.heroTitle,
@@ -33,7 +34,7 @@ export async function getPublicSiteConfiguration(): Promise<PublicSiteConfigurat
         contactText: settingsRecord.contactText,
         instagramUrl: settingsRecord.instagramUrl,
         contactEmail: settingsRecord.contactEmail,
-      }
+      })
     : { ...PUBLIC_SITE_DEFAULTS };
 
   const imageUrlFor = (type: SiteAssetType) =>

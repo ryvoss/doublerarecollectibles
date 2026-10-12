@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { inputStyle } from "./uiStyles";
 import {
   useCallback,
@@ -417,7 +418,7 @@ export default function ActiveShowPanel() {
         setLoading(true);
         setError(null);
 
-        const response = await fetch(
+        const response = await adminFetch(
           "/api/shows/active-visit"
         );
 
@@ -462,7 +463,7 @@ export default function ActiveShowPanel() {
 
   async function loadShows() {
     try {
-      const response = await fetch(
+      const response = await adminFetch(
         "/api/shows"
       );
 
@@ -503,11 +504,11 @@ export default function ActiveShowPanel() {
         performanceResponse,
         visitResponse,
       ] = await Promise.all([
-        fetch(
+        adminFetch(
           `/api/shows/visits/${visitId}/performance`
         ),
 
-        fetch(
+        adminFetch(
           `/api/shows/visits/${visitId}`
         ),
       ]);
@@ -926,7 +927,7 @@ function StartVisitModal({
     async function loadPacks() {
       try {
         setPacksLoading(true);
-        const response = await fetch("/api/shows/packs/available");
+        const response = await adminFetch("/api/shows/packs/available");
         if (!response.ok) throw new Error(await readApiError(response, "Pack inventory could not be loaded."));
         const items = (await response.json()) as AvailablePackProduct[];
         if (!cancelled) {
@@ -958,7 +959,7 @@ function StartVisitModal({
       try {
         setFundsLoading(true);
 
-        const response = await fetch(
+        const response = await adminFetch(
           "/api/funds/summary"
         );
 
@@ -1289,7 +1290,7 @@ function StartVisitModal({
         // The dashboard Start Visit action creates the
         // calendar visit first...
         const createResponse =
-          await fetch(
+          await adminFetch(
             `/api/shows/${showId}/visits`,
             {
               method: "POST",
@@ -1323,7 +1324,7 @@ function StartVisitModal({
       // ...then immediately begins it using the
       // starting Singles snapshot entered above.
       const beginResponse =
-        await fetch(
+        await adminFetch(
           `/api/shows/visits/${visitId}/begin`,
           {
             method: "PATCH",
@@ -1886,7 +1887,7 @@ function ActiveVisitModal({
   const loadPackSnapshots = useCallback(async () => {
     try {
       setPacksLoading(true);
-      const response = await fetch(`/api/shows/visits/${visit.id}/pack-snapshots`);
+      const response = await adminFetch(`/api/shows/visits/${visit.id}/pack-snapshots`);
       if (!response.ok) throw new Error(await readApiError(response, "Show pack tracking could not be loaded."));
       const snapshots = (await response.json()) as ShowPackSnapshot[];
       setPackSnapshots(snapshots);
@@ -1906,7 +1907,7 @@ function ActiveVisitModal({
   const loadInventory = useCallback(async () => {
     try {
       setInventoryLoading(true);
-      const response = await fetch("/api/inventory");
+      const response = await adminFetch("/api/inventory");
       if (!response.ok) throw new Error(await readApiError(response, "Inventory could not be loaded."));
       const data = (await response.json()) as ShowInventoryItem[];
       setInventory(data.filter(item => item.productType === "SEALED" && item.unitsOnHand > 0));
@@ -1945,7 +1946,7 @@ function ActiveVisitModal({
   async function savePackAdjustments(snapshot: ShowPackSnapshot, giveaways: number, damaged: number) {
     try {
       setError(null);
-      const response = await fetch(`/api/shows/visits/${visit.id}/pack-snapshots/${snapshot.id}/adjustments`, {
+      const response = await adminFetch(`/api/shows/visits/${visit.id}/pack-snapshots/${snapshot.id}/adjustments`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ giveaways, damaged }),
@@ -2054,7 +2055,7 @@ function ActiveVisitModal({
       setError(null);
 
       const response =
-        await fetch(
+        await adminFetch(
           `/api/shows/visits/${visit.id}/finalize`,
           {
             method: "PATCH",
@@ -2483,12 +2484,12 @@ function PackActionModal({ visitId, snapshot, type, onClose, onComplete }: {
       try {
         setLoading(true);
         if (type === "ADD") {
-          const response = await fetch("/api/shows/packs/available");
+          const response = await adminFetch("/api/shows/packs/available");
           if (!response.ok) throw new Error(await readApiError(response, "Available packs could not be loaded."));
           const products = (await response.json()) as AvailablePackProduct[];
           if (!cancelled) setAvailable(products.find(item => item.sourceBoxProductId === snapshot.sourceBoxProductId)?.availablePacks ?? 0);
         } else {
-          const inventoryResponse = await fetch("/api/inventory");
+          const inventoryResponse = await adminFetch("/api/inventory");
           if (!inventoryResponse.ok) throw new Error("Source Box inventory could not be loaded.");
           const inventory = (await inventoryResponse.json()) as ShowInventoryItem[];
           if (!cancelled) setAvailableBoxes(inventory.find(row => row.productId === snapshot.sourceBoxProductId)?.unitsOnHand ?? 0);
@@ -2509,8 +2510,8 @@ function PackActionModal({ visitId, snapshot, type, onClose, onComplete }: {
     try {
       setSaving(true); setError(null);
       const response = type === "ADD"
-        ? await fetch(`/api/shows/visits/${visitId}/pack-snapshots/${snapshot.id}/add-existing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: amount }) })
-        : await fetch("/api/pack-pools/break-down", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceBoxProductId: snapshot.sourceBoxProductId, quantityBoxes: amount, showVisitId: visitId }) });
+        ? await adminFetch(`/api/shows/visits/${visitId}/pack-snapshots/${snapshot.id}/add-existing`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quantity: amount }) })
+        : await adminFetch("/api/pack-pools/break-down", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceBoxProductId: snapshot.sourceBoxProductId, quantityBoxes: amount, showVisitId: visitId }) });
       if (!response.ok) throw new Error(await readApiError(response, type === "ADD" ? "Packs could not be added." : "Box could not be broken down."));
       await onComplete(type === "ADD" ? `${amount} packs added to ${snapshot.packDisplayName}.` : `${amount} box${amount === 1 ? "" : "es"} converted and added to ${snapshot.packDisplayName}.`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Pack action could not be completed."); setSaving(false); }
@@ -2578,7 +2579,7 @@ function QuickShowSaleModal({
     let cancelled = false;
     async function loadDetail() {
       try {
-        const response = await fetch(`/api/inventory/${item.productId}`);
+        const response = await adminFetch(`/api/inventory/${item.productId}`);
         if (!response.ok) throw new Error(await readApiError(response, "Inventory cost could not be loaded."));
         const data = (await response.json()) as InventoryDetail;
         if (!cancelled) setDetail(data);
@@ -2619,7 +2620,7 @@ function QuickShowSaleModal({
     try {
       setSaving(true);
       setError(null);
-      const response = await fetch("/api/sales", {
+      const response = await adminFetch("/api/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

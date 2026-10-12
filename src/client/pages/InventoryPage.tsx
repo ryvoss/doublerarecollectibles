@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { controlStyle } from "../components/uiStyles";
 import { Fragment, useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -94,8 +95,8 @@ export default function InventoryPage() {
       setError(null);
       try {
         const [inventoryResponse, packResponse] = await Promise.all([
-          fetch("/api/inventory", {signal: controller.signal}),
-          fetch("/api/pack-pools/inventory", {signal: controller.signal}),
+          adminFetch("/api/inventory", {signal: controller.signal}),
+          adminFetch("/api/pack-pools/inventory", {signal: controller.signal}),
         ]);
         if (!inventoryResponse.ok || !packResponse.ok) throw new Error("Inventory could not be loaded.");
         const [data, packData] = await Promise.all([
@@ -123,7 +124,7 @@ export default function InventoryPage() {
       setDetail(null);
       setDetailError(null);
       try {
-        const response = await fetch(`/api/inventory/${selectedId}`, {signal: controller.signal});
+        const response = await adminFetch(`/api/inventory/${selectedId}`, {signal: controller.signal});
         if (!response.ok) throw new Error("Inventory batches could not be loaded.");
         const data: InventoryDetail = await response.json();
         if (!controller.signal.aborted) setDetail(data);
@@ -338,7 +339,7 @@ function PackBreakdownModal({item, onClose, onComplete}: {
       try {
         setPreviewing(true);
         setError(null);
-        const response = await fetch("/api/pack-pools/break-down-preview", {
+        const response = await adminFetch("/api/pack-pools/break-down-preview", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
           body: JSON.stringify({
@@ -373,7 +374,7 @@ function PackBreakdownModal({item, onClose, onComplete}: {
     try {
       setSaving(true);
       setError(null);
-      const response = await fetch("/api/pack-pools/break-down", {
+      const response = await adminFetch("/api/pack-pools/break-down", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         // No Show Visit is sent: this creates normal prep inventory.

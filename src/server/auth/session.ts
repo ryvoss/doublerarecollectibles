@@ -8,6 +8,7 @@ import {
   sessionCookieOptions,
   sessionSecret,
 } from "./config";
+import { logServerError } from "../security/logging";
 
 const PgSessionStore = connectPgSimple(session);
 
@@ -22,7 +23,7 @@ export function createAdminSessionMiddleware(production: boolean) {
     createTableIfMissing: false,
     ttl: SESSION_TTL_SECONDS,
     pruneSessionInterval: 15 * 60,
-    errorLog: (error) => console.error("Admin session store error:", error),
+    errorLog: (error) => logServerError("Admin session store error", error),
   });
 
   return session({

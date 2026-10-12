@@ -1,3 +1,4 @@
+import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import type { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
@@ -65,7 +66,7 @@ router.get("/", async (_req, res) => {
 
     res.json(shows);
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving shows:",
       error
     );
@@ -74,10 +75,7 @@ router.get("/", async (_req, res) => {
       error:
         "Failed to retrieve shows",
 
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -107,7 +105,7 @@ router.get("/active-visit", async (_req, res) => {
       activeVisit,
     });
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving active show visit:",
       error
     );
@@ -116,10 +114,7 @@ router.get("/active-visit", async (_req, res) => {
       error:
         "Failed to retrieve active show visit",
 
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -140,7 +135,7 @@ router.get("/packs/available", async (_req, res) => {
   try {
     res.json(await listAvailablePackInventory(prisma));
   } catch (error) {
-    console.error("Failed to load available Show packs:", error);
+    logServerError("Failed to load available Show packs:", error);
     res.status(500).json({ error: "Available pack inventory could not be loaded." });
   }
 });
@@ -158,7 +153,7 @@ router.get("/visits/:visitId/pack-snapshots", async (req, res) => {
     });
     res.json(snapshots);
   } catch (error) {
-    console.error("Failed to load Show pack snapshots:", error);
+    logServerError("Failed to load Show pack snapshots:", error);
     res.status(500).json({ error: "Show pack snapshots could not be loaded." });
   }
 });
@@ -191,7 +186,7 @@ router.patch("/visits/:visitId/pack-snapshots/:snapshotId/adjustments", async (r
     res.json(snapshot);
   } catch (error) {
     if (error instanceof ShowPackRequestError) return res.status(409).json({ error: error.message });
-    console.error("Failed to update Show pack adjustments:", error);
+    logServerError("Failed to update Show pack adjustments:", error);
     res.status(500).json({ error: "Pack adjustments could not be saved." });
   }
 });
@@ -233,7 +228,7 @@ router.post("/visits/:visitId/pack-snapshots/:snapshotId/add-existing", async (r
     if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
       return res.status(400).json({ error: error.message });
     }
-    console.error("Failed to add existing packs to Show:", error);
+    logServerError("Failed to add existing packs to Show:", error);
     res.status(409).json({ error: "Pack inventory changed while packs were being added. Refresh and try again." });
   }
 });
@@ -417,7 +412,7 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(show);
   } catch (error) {
-    console.error(
+    logServerError(
       "Error creating show:",
       error
     );
@@ -426,10 +421,7 @@ router.post("/", async (req, res) => {
       error:
         "Failed to create show",
 
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -858,7 +850,7 @@ router.get(
         pack: packPerformance,
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Error calculating show visit performance:",
         error
       );
@@ -867,10 +859,7 @@ router.get(
         error:
           "Failed to calculate show visit performance",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -937,7 +926,7 @@ router.get(
 
       res.json(visit);
     } catch (error) {
-      console.error(
+      logServerError(
         "Error retrieving show visit:",
         error
       );
@@ -946,10 +935,7 @@ router.get(
         error:
           "Failed to retrieve show visit",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -1362,7 +1348,7 @@ router.patch(
       if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
         return res.status(400).json({ error: error.message });
       }
-      console.error(
+      logServerError(
         "Error beginning show visit:",
         error
       );
@@ -1371,10 +1357,7 @@ router.patch(
         error:
           "Failed to begin show visit",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -1864,7 +1847,7 @@ router.patch(
       if (error instanceof ShowPackRequestError || error instanceof ShowPackTrackingError) {
         return res.status(400).json({ error: error.message });
       }
-      console.error(
+      logServerError(
         "Error finalizing show visit:",
         error
       );
@@ -1873,10 +1856,7 @@ router.patch(
         error:
           "Failed to finalize show visit",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -2533,7 +2513,7 @@ router.get(
           })),
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Error calculating recurring show performance:",
         error
       );
@@ -2542,10 +2522,7 @@ router.get(
         error:
           "Failed to calculate recurring show performance",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -2596,7 +2573,7 @@ router.get(
 
       res.json(show);
     } catch (error) {
-      console.error(
+      logServerError(
         "Error retrieving show:",
         error
       );
@@ -2605,10 +2582,7 @@ router.get(
         error:
           "Failed to retrieve show",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -2738,7 +2712,7 @@ router.post(
 
       res.status(201).json(visit);
     } catch (error) {
-      console.error(
+      logServerError(
         "Error creating show visit:",
         error
       );
@@ -2747,10 +2721,7 @@ router.post(
         error:
           "Failed to create show visit",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -2808,7 +2779,7 @@ router.get(
 
       res.json(visits);
     } catch (error) {
-      console.error(
+      logServerError(
         "Error retrieving show visits:",
         error
       );
@@ -2817,10 +2788,7 @@ router.get(
         error:
           "Failed to retrieve show visits",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }

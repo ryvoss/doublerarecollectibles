@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import PublicSite from "./client/public/PublicSite";
 import AdminLoginPage from "./client/pages/AdminLoginPage";
+import { clearAdminCsrfToken } from "./client/adminFetch";
 
 const AdminApp = lazy(() => import("./App"));
 
@@ -58,6 +59,7 @@ function RootApp() {
         return;
       }
 
+      clearAdminCsrfToken();
       setAdminAuth("unauthenticated");
       if (pathname !== "/admin/login") {
         window.history.replaceState({}, "", "/admin/login");
@@ -65,6 +67,7 @@ function RootApp() {
       }
     }).catch((error: unknown) => {
       if (controller.signal.aborted) return;
+      clearAdminCsrfToken();
       setAdminAuth("unauthenticated");
       setAuthError(error instanceof Error ? error.message : "Admin authentication is unavailable.");
       if (pathname !== "/admin/login") {

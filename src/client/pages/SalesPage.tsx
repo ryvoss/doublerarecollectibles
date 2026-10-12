@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { controlStyle } from "../components/uiStyles";
 import {
   Fragment,
@@ -258,7 +259,7 @@ export default function SalesPage({
               "inventory",
               "shows",
             ].map((path) =>
-              fetch(`/api/${path}`, {
+              adminFetch(`/api/${path}`, {
                 signal:
                   controller.signal,
               })
@@ -1217,7 +1218,7 @@ function NewSaleForm({
 
     try {
       const response =
-        await fetch(
+        await adminFetch(
           "/api/sales",
           {
             method: "POST",

@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { inputStyle, secondaryButtonStyle } from "./uiStyles";
@@ -206,7 +207,7 @@ export default function ProductModal({
         ? `/api/products/${product?.id}`
         : "/api/products";
 
-      const response = await fetch(
+      const response = await adminFetch(
         endpoint,
         {
           method: isEditing

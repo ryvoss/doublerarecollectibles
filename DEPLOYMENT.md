@@ -9,6 +9,7 @@ This repository is prepared for one Railway Node service and one Railway Postgre
 - `APP_ENV=REAL`: enables the real-business database guard. The server refuses test-named databases in this mode.
 - `NODE_ENV=production`: enables static frontend serving and production error behavior.
 - `SESSION_SECRET`: a cryptographically random secret containing at least 32 characters. Generate this outside the repository and store it as a Railway secret variable. Changing it invalidates all active admin sessions.
+- `APP_ORIGIN`: the exact HTTPS origin used to open the deployed application, such as `https://app.example.com`. Set this explicitly when using a custom domain. When it is omitted, the app uses Railway's injected `RAILWAY_PUBLIC_DOMAIN`; startup fails if neither value is available.
 - `PORT`: supplied automatically by Railway. Do not set a fixed Railway port.
 
 Optional database configuration:
@@ -56,6 +57,7 @@ DIRECT_DATABASE_URL=${{Postgres.DATABASE_URL}}
 APP_ENV=REAL
 NODE_ENV=production
 SESSION_SECRET=<at-least-32-random-characters>
+APP_ORIGIN=https://your-production-domain.example
 ```
 
 Do not copy the resolved password or private hostname into the repository. Railway resolves the references inside its network. The runtime and Prisma migration configuration both accept the standard PostgreSQL URL, and the existing database identity checks remain active for application startup and Prisma commands.
@@ -98,3 +100,11 @@ Redeploy once. After `prisma migrate deploy`, Railway runs `npm run auth:bootstr
 After that deployment succeeds, remove all three `ADMIN_BOOTSTRAP_*` variables and redeploy. With those variables absent, the hook is inert. Do not commit or retain the bootstrap password. For a local database, the same guarded operation can be invoked explicitly with `npm run auth:bootstrap-admin` after supplying the three variables in the process environment.
 
 Public customer endpoints remain under `/api/public/*`. Unknown unauthenticated internal `/api/*` requests return 401; authenticated requests to unknown endpoints return JSON 404 responses and are never rewritten to the React application.
+
+## Web security
+
+Authenticated writes use a session-bound synchronizer CSRF token supplied through `X-CSRF-Token`. The browser fetches it from `GET /api/auth/csrf` after login and keeps it only in memory. Login is the only state-changing auth route that does not require a CSRF token; it still requires an exact allowed `Origin`. All other `POST`, `PUT`, `PATCH`, and `DELETE` requests behind the admin API guard require both the expected origin and a valid token.
+
+Helmet applies an enforced same-origin Content Security Policy, clickjacking protection, MIME sniffing protection, a strict referrer policy, and production HSTS. Admin pages, auth responses, and protected APIs use `Cache-Control: no-store`. JSON request bodies are limited to 256 KB; the existing validated image-upload path retains its separate 8 MB limit. Public images retain immutable public caching.
+
+Before deploying this change, verify `APP_ORIGIN` matches the browser origin exactly when a custom domain is used. After deployment, verify public pages while signed out, log in at `/admin/login`, perform one reversible admin edit, log out, and confirm the browser returns to the login screen. In browser developer tools, confirm protected API responses include `Cache-Control: no-store`, public/admin HTML includes `Content-Security-Policy`, and no CSP violations appear during normal navigation.

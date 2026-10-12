@@ -1,3 +1,4 @@
+import { adminFetch } from "./adminFetch";
 const RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504]);
 
 function wait(milliseconds: number) {
@@ -27,7 +28,7 @@ export async function fetchReportData<T>(url: string, fallbackMessage: string): 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response: Response;
     try {
-      response = await fetch(url, { headers: { Accept: "application/json" } });
+      response = await adminFetch(url, { headers: { Accept: "application/json" } });
     } catch (error) {
       lastError = error;
       if (attempt === attempts - 1) break;

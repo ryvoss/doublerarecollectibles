@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { useEffect, useMemo, useState } from "react";
 import type {
   AdminPublicListingItem,
@@ -80,7 +81,7 @@ export default function PublicListingManager({
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch("/api/products/public-listings", {
+        const response = await adminFetch("/api/products/public-listings", {
           signal: controller.signal,
         });
 
@@ -269,7 +270,7 @@ export default function PublicListingManager({
       setSaving(true);
       setError(null);
       setSuccess(null);
-      const response = await fetch("/api/products/public-listings", {
+      const response = await adminFetch("/api/products/public-listings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ updates }),

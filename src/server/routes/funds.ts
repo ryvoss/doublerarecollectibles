@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import express from "express";
 
 import { prisma } from "../prisma";
@@ -237,7 +238,7 @@ router.get("/summary", async (_req, res) => {
         ).toFixed(2),
     });
   } catch (error) {
-    console.error(
+    logServerError(
       "Failed to load funds summary:",
       error
     );
@@ -325,7 +326,7 @@ router.get("/entries", async (req, res) => {
 
     res.json(entries);
   } catch (error) {
-    console.error(
+    logServerError(
       "Failed to load fund entries:",
       error
     );
@@ -463,7 +464,7 @@ router.post(
 
       res.status(201).json(entry);
     } catch (error) {
-      console.error(
+      logServerError(
         "Failed to create opening balance:",
         error
       );
@@ -670,7 +671,7 @@ router.post(
         entries,
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Failed to create personal contribution:",
         error
       );
@@ -1097,7 +1098,7 @@ router.post(
         return;
       }
 
-      console.error(
+      logServerError(
         "Failed to allocate legacy Singles funds:",
         error
       );
@@ -1285,7 +1286,7 @@ router.post(
 
       res.status(201).json(entry);
     } catch (error) {
-      console.error(
+      logServerError(
         "Failed to record Singles show gain:",
         error
       );
@@ -1485,7 +1486,7 @@ router.post(
         entries,
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Failed to create fund adjustment:",
         error
       );

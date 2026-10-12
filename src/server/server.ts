@@ -4,7 +4,6 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import express from "express";
-import type { ErrorRequestHandler } from "express";
 import { passport } from "./auth/passport";
 import { requireAdmin, requireAdminPage } from "./auth/authorization";
 import { adminSessionPool, createAdminSessionMiddleware } from "./auth/session";
@@ -30,6 +29,19 @@ import {
 } from "./environment";
 import { prisma } from "./prisma";
 import { captureBusinessPositionSnapshot } from "./services/businessPosition";
+import { requireValidCsrf } from "./security/csrf";
+import {
+  allowedApplicationOrigins,
+  authenticatedApiLimiter,
+  createSameOriginWriteProtection,
+  noStore,
+  permissionsPolicy,
+  publicApiLimiter,
+  publicImageLimiter,
+  securityHeaders,
+} from "./security/httpSecurity";
+import { logServerError } from "./security/logging";
+import { safeErrorHandler } from "./security/errorHandler";
 
 const app = express();
 const environment = assertDatabaseEnvironment();
@@ -42,6 +54,9 @@ const frontendIndexPath = path.join(frontendDistPath, "index.html");
 if (!Number.isSafeInteger(port) || port <= 0 || port > 65_535) {
   throw new Error("PORT must be a whole number between 1 and 65535.");
 }
+const originProtection = createSameOriginWriteProtection(
+  allowedApplicationOrigins(production, port),
+);
 
 // ---------------------------------------------------------
 // MIDDLEWARE
@@ -53,7 +68,9 @@ if (production) {
   // A numeric hop count is intentionally narrower than trusting all proxies.
   app.set("trust proxy", 1);
 }
-app.use(express.json());
+app.use(securityHeaders(production));
+app.use(permissionsPolicy);
+app.use(express.json({ limit: "256kb", strict: true }));
 app.use(createAdminSessionMiddleware(production));
 app.use(passport.initialize());
 app.use(passport.session());
@@ -70,7 +87,7 @@ app.use((req, res, next) => {
       .some(prefix => req.path.startsWith(prefix));
   if (capturesPosition) res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      void captureBusinessPositionSnapshot().catch(error => console.error("Post-transaction business position snapshot failed:", error));
+      void captureBusinessPositionSnapshot().catch(error => logServerError("Post-transaction business position snapshot failed", error));
     }
   });
   next();
@@ -79,6 +96,8 @@ app.use((req, res, next) => {
 const authRouter = createAuthRouter({
   adminPassport: passport,
   production,
+  csrfProtection: requireValidCsrf,
+  originProtection,
   onSuccessfulLogin: async (user) => {
     await prisma.adminUser.update({
       where: { id: user.id },
@@ -100,11 +119,18 @@ mountApiRoutes(app, {
   shows: showsRouter,
   site: siteRouter,
   whatIfScenarios: whatIfScenariosRouter,
-}, requireAdmin);
+}, requireAdmin, {
+  authenticatedApiLimiter,
+  csrfProtection: requireValidCsrf,
+  noStore,
+  originProtection,
+  publicApiLimiter,
+  publicImageLimiter,
+});
 
 // In production this redirects before the admin SPA is served. The React gate
 // applies the same behavior during Vite development, where Vite serves HTML.
-app.use("/admin", requireAdminPage);
+app.use("/admin", noStore, requireAdminPage);
 
 if (production) {
   app.use(express.static(frontendDistPath, {
@@ -114,22 +140,12 @@ if (production) {
 
   app.use((req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
-    res.set("Cache-Control", "no-cache");
+    if (!res.hasHeader("Cache-Control")) res.set("Cache-Control", "no-cache");
     return res.sendFile(frontendIndexPath);
   });
 }
 
-const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
-  void _next;
-  console.error(`Unhandled request error for ${req.method} ${req.originalUrl}:`, error);
-  if (res.headersSent) return;
-  if (req.originalUrl.startsWith("/api/")) {
-    res.status(500).json({ error: "Internal server error" });
-    return;
-  }
-  res.status(500).type("text").send("Internal server error");
-};
-app.use(errorHandler);
+app.use(safeErrorHandler);
 
 // ---------------------------------------------------------
 // SERVER
@@ -149,7 +165,7 @@ async function start() {
 
   await captureBusinessPositionSnapshot();
   const snapshotTimer = setInterval(() => {
-    void captureBusinessPositionSnapshot().catch(error => console.error("Scheduled business position snapshot failed:", error));
+    void captureBusinessPositionSnapshot().catch(error => logServerError("Scheduled business position snapshot failed", error));
   }, 60 * 60 * 1000);
   snapshotTimer.unref();
 
@@ -173,8 +189,7 @@ async function start() {
 const entryPath = process.argv[1];
 if (entryPath && import.meta.url === pathToFileURL(path.resolve(entryPath)).href) {
   start().catch(async (error: unknown) => {
-    const message = error instanceof Error ? error.message : "Unknown startup error";
-    console.error(`Server startup failed: ${message}`);
+    logServerError("Server startup failed", error);
     await prisma.$disconnect();
     process.exitCode = 1;
   });

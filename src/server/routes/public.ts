@@ -1,12 +1,10 @@
+import { logServerError } from "../security/logging";
 import { Router } from "express";
-import type {
-  PublicInventoryItem,
-} from "../../shared/publicInventory";
-import { publicAvailabilityForUnits } from "../../shared/publicInventory";
 import { prisma } from "../prisma";
 import { productImageStorage } from "../services/productImageStorage";
 import { getPublicSiteConfiguration } from "../services/siteConfiguration";
 import type { SiteAssetType } from "../../shared/publicSite";
+import { toPublicInventoryItem } from "../services/publicContracts";
 
 const router = Router();
 
@@ -14,7 +12,7 @@ router.get("/site", async (_req, res) => {
   try {
     res.json(await getPublicSiteConfiguration());
   } catch (error) {
-    console.error("Error retrieving public site configuration:", error);
+    logServerError("Error retrieving public site configuration:", error);
     res.status(500).json({ error: "Public site configuration could not be loaded" });
   }
 });
@@ -112,28 +110,14 @@ router.get("/inventory", async (_req, res) => {
       ],
     });
 
-    const inventory: PublicInventoryItem[] = products.map((product) => {
-      const unitsAvailable = product.inventoryBatches.reduce(
-        (total, batch) =>
-          total + batch.quantityReceived - batch.quantitySold - batch.quantityConverted,
-        0,
-      );
-      const displayPrice = product.publicPrice ?? product.expectedSalePrice;
-
-      return {
-        id: product.id,
-        name: product.displayName ?? product.name,
-        shortDescription: product.shortDescription,
-        imageUrl: productImageStorage.getPublicUrl(product.imageKey),
-        displayPrice: displayPrice === null ? null : Number(displayPrice),
-        featured: product.featured,
-        availability: publicAvailabilityForUnits(unitsAvailable),
-      };
-    });
+    const inventory = products.map((product) => toPublicInventoryItem(
+      product,
+      productImageStorage.getPublicUrl(product.imageKey),
+    ));
 
     res.json(inventory);
   } catch (error) {
-    console.error("Error retrieving public inventory:", error);
+    logServerError("Error retrieving public inventory:", error);
     res.status(500).json({
       error: "Public inventory could not be loaded",
     });

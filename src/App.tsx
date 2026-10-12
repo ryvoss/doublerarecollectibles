@@ -1,3 +1,4 @@
+import { adminFetch } from "./client/adminFetch";
 import {
   useEffect,
   useState,
@@ -165,7 +166,7 @@ function App() {
     if (loggingOut) return;
     setLoggingOut(true);
     try {
-      const response = await fetch("/api/auth/logout", { method: "POST" });
+      const response = await adminFetch("/api/auth/logout", { method: "POST" });
       if (!response.ok && response.status !== 401) {
         throw new Error("Logout failed");
       }
@@ -202,8 +203,8 @@ function App() {
 
         const [healthResponse, inventoryResponse] =
           await Promise.all([
-            fetch("/api/health"),
-            fetch("/api/inventory"),
+            adminFetch("/api/health"),
+            adminFetch("/api/inventory"),
           ]);
 
         if (!healthResponse.ok) {
@@ -257,7 +258,7 @@ function App() {
     async function refreshInventorySnapshot() {
       try {
         const inventoryResponse =
-          await fetch("/api/inventory");
+          await adminFetch("/api/inventory");
 
         if (!inventoryResponse.ok) {
           throw new Error(
@@ -686,7 +687,7 @@ function ProductsPage() {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(
+      const response = await adminFetch(
         "/api/products"
       );
 
@@ -753,7 +754,7 @@ function ProductsPage() {
         ? "deactivate"
         : "reactivate";
 
-      const response = await fetch(
+      const response = await adminFetch(
         `/api/products/${product.id}/${action}`,
         {
           method: "PATCH",

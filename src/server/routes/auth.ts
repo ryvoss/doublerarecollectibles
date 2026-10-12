@@ -2,15 +2,23 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { sessionCookieClearOptions, sessionCookieName } from "../auth/config";
 import type { AdminIdentity, AdminPassport } from "../auth/passportFactory";
+import type { RequestHandler } from "express";
+import { requireAdmin } from "../auth/authorization";
+import { generateCsrfToken, revokeCsrfToken } from "../security/csrf";
+import { logServerError } from "../security/logging";
 
 export function createAuthRouter({
   adminPassport,
   onSuccessfulLogin,
   production,
+  csrfProtection,
+  originProtection,
 }: {
   adminPassport: AdminPassport;
   onSuccessfulLogin?: (user: AdminIdentity) => Promise<void>;
   production: boolean;
+  csrfProtection: RequestHandler;
+  originProtection: RequestHandler;
 }) {
   const router = Router();
   const loginLimiter = rateLimit({
@@ -22,7 +30,7 @@ export function createAuthRouter({
     message: { error: "Too many login attempts. Try again later." },
   });
 
-  router.post("/login", loginLimiter, (req, res, next) => {
+  router.post("/login", loginLimiter, originProtection, (req, res, next) => {
     adminPassport.authenticate(
       "local",
       (error: unknown, user: AdminIdentity | false, _info: unknown) => {
@@ -39,7 +47,7 @@ export function createAuthRouter({
               if (saveError) return next(saveError);
               if (onSuccessfulLogin) {
                 await onSuccessfulLogin(user).catch((lastLoginError) => {
-                  console.error("Admin last-login timestamp could not be saved:", lastLoginError);
+                  logServerError("Admin last-login timestamp could not be saved", lastLoginError);
                 });
               }
               return res.json({
@@ -63,7 +71,11 @@ export function createAuthRouter({
     });
   });
 
-  router.post("/logout", (req, res, next) => {
+  router.get("/csrf", requireAdmin, (req, res) => {
+    res.json({ csrfToken: generateCsrfToken(req) });
+  });
+
+  router.post("/logout", requireAdmin, originProtection, csrfProtection, (req, res, next) => {
     const clearCookie = () => {
       res.clearCookie(sessionCookieName(production), sessionCookieClearOptions(production));
       res.status(204).end();
@@ -74,6 +86,7 @@ export function createAuthRouter({
       return;
     }
 
+    revokeCsrfToken(req);
     req.logout((logoutError) => {
       if (logoutError) return next(logoutError);
       req.session.destroy((destroyError) => {

@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { inputStyle, secondaryButtonStyle } from "./uiStyles";
 import {
   useEffect,
@@ -281,7 +282,7 @@ function FundsPanel({
       setError(null);
 
       const response =
-        await fetch(
+        await adminFetch(
           "/api/funds/summary"
         );
 
@@ -321,7 +322,7 @@ function FundsPanel({
       setEntriesError(null);
 
       const response =
-        await fetch(
+        await adminFetch(
           "/api/funds/entries"
         );
 
@@ -1407,7 +1408,7 @@ function AddFundsModal({
       // The backend saves both location entries in one transaction, so
       // Cash and Digital either both succeed or neither is recorded.
       const response =
-        await fetch(endpoint, {
+        await adminFetch(endpoint, {
           method: "POST",
 
           headers: {

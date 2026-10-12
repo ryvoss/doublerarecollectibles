@@ -1,3 +1,4 @@
+import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import type { RequestHandler } from "express";
 import type { Prisma } from "../../generated/prisma/client";
@@ -55,11 +56,11 @@ router.get("/", async (_req, res) => {
 
     res.json(orders);
   } catch (error) {
-    console.error("Error retrieving orders:", error);
+    logServerError("Error retrieving orders:", error);
 
     res.status(500).json({
       error: "Failed to retrieve orders",
-      details: error instanceof Error ? error.message : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -144,11 +145,11 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(order);
   } catch (error) {
-    console.error("Error creating order:", error);
+    logServerError("Error creating order:", error);
 
     res.status(500).json({
       error: "Failed to create order",
-      details: error instanceof Error ? error.message : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -254,11 +255,11 @@ const saveOrderLine: RequestHandler = async (req, res) => {
 
     res.status(lineId === null ? 201 : 200).json(orderLine);
   } catch (error) {
-    console.error("Error adding order line:", error);
+    logServerError("Error adding order line:", error);
 
     res.status(error instanceof DraftOrderError ? 409 : 500).json({
       error: error instanceof DraftOrderError ? error.message : "Failed to save order line",
-      details: error instanceof Error ? error.message : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 };
@@ -541,11 +542,11 @@ router.post("/:orderId/finalize", async (req, res) => {
 
     res.json(finalizedOrder);
   } catch (error) {
-    console.error("Error finalizing order:", error);
+    logServerError("Error finalizing order:", error);
 
     res.status(error instanceof DraftOrderError ? 409 : 500).json({
       error: error instanceof DraftOrderError ? error.message : "Failed to finalize order",
-      details: error instanceof Error ? error.message : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -587,11 +588,11 @@ router.get("/:orderId", async (req, res) => {
 
     res.json(order);
   } catch (error) {
-    console.error("Error retrieving order:", error);
+    logServerError("Error retrieving order:", error);
 
     res.status(500).json({
       error: "Failed to retrieve order",
-      details: error instanceof Error ? error.message : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });

@@ -19,6 +19,14 @@ export function mountApiRoutes(
   app: Application,
   routers: ApiRouters,
   adminGuard: RequestHandler,
+  security: {
+    authenticatedApiLimiter: RequestHandler;
+    csrfProtection: RequestHandler;
+    noStore: RequestHandler;
+    originProtection: RequestHandler;
+    publicApiLimiter: RequestHandler;
+    publicImageLimiter: RequestHandler;
+  },
 ) {
   app.get("/api/health", (_req, res) => {
     res.json({
@@ -28,11 +36,19 @@ export function mountApiRoutes(
   });
 
   // Public and authentication routes must stay above the admin guard.
+  app.use("/api/public/product-images", security.publicImageLimiter);
+  app.use("/api/public/site-assets", security.publicImageLimiter);
+  app.use("/api/public", security.publicApiLimiter);
+  app.use("/api/auth", security.noStore);
   app.use("/api/public", routers.public);
   app.use("/api/auth", routers.auth);
 
   // Every API mounted after this guard is private business functionality.
   app.use("/api", adminGuard);
+  app.use("/api", security.noStore);
+  app.use("/api", security.authenticatedApiLimiter);
+  app.use("/api", security.originProtection);
+  app.use("/api", security.csrfProtection);
   app.use("/api/products", routers.products);
   app.use("/api/orders", routers.orders);
   app.use("/api/inventory", routers.inventory);

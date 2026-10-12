@@ -1,3 +1,4 @@
+import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { allocatedBatchCost, remainingBatchCost, remainingBatchQuantity } from "../services/inventoryCost";
@@ -106,14 +107,11 @@ router.get("/", async (_req, res) => {
 
     res.json(inventory);
   } catch (error) {
-    console.error("Error retrieving inventory:", error);
+    logServerError("Error retrieving inventory:", error);
 
     res.status(500).json({
       error: "Failed to retrieve inventory",
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -293,17 +291,14 @@ router.get("/:productId", async (req, res) => {
       packPools,
     });
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving inventory detail:",
       error
     );
 
     res.status(500).json({
       error: "Failed to retrieve inventory detail",
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });

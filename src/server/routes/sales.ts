@@ -1,3 +1,4 @@
+import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { simulateFifoConsumption } from "../../shared/fifoSimulation";
@@ -591,7 +592,7 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(sale);
   } catch (error) {
-    console.error(
+    logServerError(
       "Error creating sale:",
       error
     );
@@ -621,10 +622,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({
       error: "Failed to create sale",
 
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -664,7 +662,7 @@ router.get("/", async (_req, res) => {
 
     res.json(sales);
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving sales:",
       error
     );
@@ -673,10 +671,7 @@ router.get("/", async (_req, res) => {
       error:
         "Failed to retrieve sales",
 
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -848,7 +843,7 @@ router.get(
         },
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Error retrieving sales summary:",
         error
       );
@@ -857,10 +852,7 @@ router.get(
         error:
           "Failed to retrieve sales summary",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -1068,7 +1060,7 @@ router.get(
           performance,
       });
     } catch (error) {
-      console.error(
+      logServerError(
         "Error retrieving product performance:",
         error
       );
@@ -1077,10 +1069,7 @@ router.get(
         error:
           "Failed to retrieve product performance",
 
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }

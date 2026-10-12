@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import { Router } from "express";
 import type { Prisma } from "../../generated/prisma/client";
 import {
@@ -124,7 +125,7 @@ router.get("/inventory", async (_req, res) => {
   try {
     res.json(await listPackInventory(prisma));
   } catch (error) {
-    console.error("Failed to load pack inventory:", error);
+    logServerError("Failed to load pack inventory:", error);
     res.status(500).json({ error: "Pack inventory could not be loaded." });
   }
 });
@@ -160,7 +161,7 @@ router.post("/break-down-preview", async (req, res) => {
       res.status(error.status).json({ error: error.message, ...error.details });
       return;
     }
-    console.error("Failed to preview Box breakdown:", error);
+    logServerError("Failed to preview Box breakdown:", error);
     res.status(500).json({ error: "Box breakdown preview could not be calculated." });
   }
 });
@@ -176,7 +177,7 @@ router.get("/", async (_req, res) => {
     });
     res.json(pools);
   } catch (error) {
-    console.error("Failed to load pack pools:", error);
+    logServerError("Failed to load pack pools:", error);
     res.status(500).json({ error: "Pack pools could not be loaded." });
   }
 });
@@ -247,7 +248,7 @@ router.post("/break-down", async (req, res) => {
       res.status(error.status).json({ error: error.message, ...error.details });
       return;
     }
-    console.error("Failed to break down Box inventory:", error);
+    logServerError("Failed to break down Box inventory:", error);
     res.status(409).json({ error: "Box inventory changed during breakdown. Review availability and try again." });
   }
 });

@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { calculateBusinessPosition, captureBusinessPositionSnapshot } from "../services/businessPosition";
@@ -8,7 +9,7 @@ const cents = (value: number) => Math.round(value * 100) / 100;
 
 router.get("/business-position", async (_req, res) => {
   try { res.json(await calculateBusinessPosition()); }
-  catch (error) { console.error("Failed to calculate business position:", error); res.status(500).json({ error: "Failed to calculate business position." }); }
+  catch (error) { logServerError("Failed to calculate business position:", error); res.status(500).json({ error: "Failed to calculate business position." }); }
 });
 
 router.get("/business-position-snapshots", async (req, res) => {
@@ -38,7 +39,7 @@ router.get("/business-position-snapshots", async (req, res) => {
       missingExpectedPriceProducts: snapshot.missingExpectedPriceProducts,
       missingExpectedPriceUnits: snapshot.missingExpectedPriceUnits,
     })));
-  } catch (error) { console.error("Failed to load business position snapshots:", error); res.status(500).json({ error: "Failed to load business position snapshots." }); }
+  } catch (error) { logServerError("Failed to load business position snapshots:", error); res.status(500).json({ error: "Failed to load business position snapshots." }); }
 });
 
 router.get("/performance", async (req, res) => {
@@ -158,7 +159,7 @@ router.get("/performance", async (req, res) => {
       pack: { summary: packPerformance.summary, products: packPerformance.products },
     });
   } catch (error) {
-    console.error("Failed to load reports:", error);
+    logServerError("Failed to load reports:", error);
     res.status(500).json({ error: "Failed to load reports." });
   }
 });

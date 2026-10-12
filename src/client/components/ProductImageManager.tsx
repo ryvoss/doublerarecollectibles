@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { useRef, useState, type ChangeEvent } from "react";
 
 const MAX_PRODUCT_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -35,7 +36,7 @@ export default function ProductImageManager({
       setBusy(true);
       setError(null);
       setMessage(null);
-      const response = await fetch(`/api/products/${productId}/image`, {
+      const response = await adminFetch(`/api/products/${productId}/image`, {
         method: "PUT",
         headers: {
           "Content-Type": file.type,
@@ -68,7 +69,7 @@ export default function ProductImageManager({
       setBusy(true);
       setError(null);
       setMessage(null);
-      const response = await fetch(`/api/products/${productId}/image`, { method: "DELETE" });
+      const response = await adminFetch(`/api/products/${productId}/image`, { method: "DELETE" });
       const body = await response.json().catch(() => null) as { error?: string } | null;
       if (!response.ok) {
         throw new Error(body?.error ?? "The product image could not be removed.");

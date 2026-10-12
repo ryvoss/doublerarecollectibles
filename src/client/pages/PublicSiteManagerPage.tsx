@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import {
@@ -39,7 +40,7 @@ export default function PublicSiteManagerPage() {
     async function loadConfiguration() {
       try {
         setLoading(true);
-        const response = await fetch("/api/site", { signal: controller.signal });
+        const response = await adminFetch("/api/site", { signal: controller.signal });
         const body = await response.json().catch(() => null) as PublicSiteConfiguration | { error?: string } | null;
         if (!response.ok || !body || !("settings" in body)) {
           throw new Error(body && "error" in body ? body.error : "Public site settings could not be loaded.");
@@ -75,7 +76,7 @@ export default function PublicSiteManagerPage() {
       setSaving(true);
       setError(null);
       setSuccess(null);
-      const response = await fetch("/api/site/settings", {
+      const response = await adminFetch("/api/site/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings: draft }),
@@ -201,7 +202,7 @@ function SiteAssetEditor({ assetType, description, imageUrl, label, onConfigurat
     }
     try {
       setBusy(true); setError(null);
-      const response = await fetch(`/api/site/assets/${assetType}`, { method: "PUT", headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) }, body: file });
+      const response = await adminFetch(`/api/site/assets/${assetType}`, { method: "PUT", headers: { "Content-Type": file.type, "X-File-Name": encodeURIComponent(file.name) }, body: file });
       const body = await response.json().catch(() => null) as PublicSiteConfiguration | { error?: string } | null;
       if (!response.ok || !body || !("settings" in body)) throw new Error(body && "error" in body ? body.error : "Site asset could not be saved.");
       onConfiguration(body);
@@ -214,7 +215,7 @@ function SiteAssetEditor({ assetType, description, imageUrl, label, onConfigurat
     if (!imageUrl || !window.confirm(`Remove the ${label.toLowerCase()}?`)) return;
     try {
       setBusy(true); setError(null);
-      const response = await fetch(`/api/site/assets/${assetType}`, { method: "DELETE" });
+      const response = await adminFetch(`/api/site/assets/${assetType}`, { method: "DELETE" });
       const body = await response.json().catch(() => null) as PublicSiteConfiguration | { error?: string } | null;
       if (!response.ok || !body || !("settings" in body)) throw new Error(body && "error" in body ? body.error : "Site asset could not be removed.");
       onConfiguration(body);

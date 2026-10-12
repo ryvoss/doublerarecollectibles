@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import { Router } from "express";
 import {
   PUBLIC_SITE_DEFAULTS,
@@ -79,7 +80,7 @@ router.get("/", async (_req, res) => {
   try {
     res.json(await getPublicSiteConfiguration());
   } catch (error) {
-    console.error("Site Manager configuration loading failed:", error);
+    logServerError("Site Manager configuration loading failed:", error);
     res.status(500).json({ error: "Site configuration could not be loaded" });
   }
 });
@@ -96,7 +97,7 @@ router.put("/settings", async (req, res) => {
     });
     res.json(await getPublicSiteConfiguration());
   } catch (error) {
-    console.error("Site settings update failed:", error);
+    logServerError("Site settings update failed:", error);
     res.status(500).json({ error: "Site settings could not be saved" });
   }
 });
@@ -150,7 +151,7 @@ router.put("/assets/:assetType", parseImageBody, async (req, res) => {
     try {
       await productImageStorage.deleteSiteAsset(existing?.imageKey ?? null);
     } catch (cleanupError) {
-      console.error("Old site asset cleanup failed:", cleanupError);
+      logServerError("Old site asset cleanup failed:", cleanupError);
     }
     res.json(await getPublicSiteConfiguration());
   } catch (error) {
@@ -158,7 +159,7 @@ router.put("/assets/:assetType", parseImageBody, async (req, res) => {
     if (error instanceof ProductImageValidationError) {
       return res.status(400).json({ error: error.message });
     }
-    console.error("Site asset upload failed:", error);
+    logServerError("Site asset upload failed:", error);
     return res.status(500).json({ error: "Site asset could not be saved" });
   }
 });
@@ -179,11 +180,11 @@ router.delete("/assets/:assetType", async (req, res) => {
     try {
       await productImageStorage.deleteSiteAsset(existing.imageKey);
     } catch (cleanupError) {
-      console.error("Removed site asset cleanup failed:", cleanupError);
+      logServerError("Removed site asset cleanup failed:", cleanupError);
     }
     return res.json(await getPublicSiteConfiguration());
   } catch (error) {
-    console.error("Site asset removal failed:", error);
+    logServerError("Site asset removal failed:", error);
     return res.status(500).json({ error: "Site asset could not be removed" });
   }
 });

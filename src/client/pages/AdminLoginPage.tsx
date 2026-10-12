@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import "./AdminLoginPage.css";
+import { clearAdminCsrfToken } from "../adminFetch";
 
 type AdminLoginPageProps = {
   initialError?: string | null;
@@ -29,6 +30,7 @@ export default function AdminLoginPage({
         const result = await response.json().catch(() => null) as { error?: string } | null;
         throw new Error(result?.error ?? "Login failed");
       }
+      clearAdminCsrfToken();
       setPassword("");
       onAuthenticated();
     } catch (loginError) {

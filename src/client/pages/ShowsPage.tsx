@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { controlStyle } from "../components/uiStyles";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
@@ -53,7 +54,7 @@ export default function ShowsPage() {
     async function load() {
       setLoading(true); setError(null);
       try {
-        const response = await fetch("/api/shows", {signal: controller.signal});
+        const response = await adminFetch("/api/shows", {signal: controller.signal});
         if (!response.ok) throw new Error("Shows could not be loaded.");
         const data: Show[] = await response.json();
         if (!controller.signal.aborted) setShows(data);
@@ -74,7 +75,7 @@ export default function ShowsPage() {
   async function updateStatus(path: string, body: object, message: string) {
     setWorking(true); setActionError(null); setMessage(null);
     try {
-      const response = await fetch(`/api/shows/${path}`, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+      const response = await adminFetch(`/api/shows/${path}`, {method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error ?? "Could not update show or visit.");
       setMessage(message); setRefresh((value) => value + 1);
@@ -154,7 +155,7 @@ function ShowSummary({showId}: {showId: number}) {
     const controller = new AbortController();
     async function load() {
       try {
-        const response = await fetch(`/api/shows/${showId}/performance`, {signal: controller.signal});
+        const response = await adminFetch(`/api/shows/${showId}/performance`, {signal: controller.signal});
         if (!response.ok) throw new Error("Summary unavailable");
         const result: ShowPerformance = await response.json();
         if (!controller.signal.aborted) setData(result);
@@ -207,7 +208,7 @@ function ShowForm({show, editShow, visit, onCancel, onSaved}: {show?: Show; edit
     submitting.current = true; setSaving(true); setError(null);
     try {
       const endpoint = visit ? `/api/shows/visits/${visit.id}` : editShow ? `/api/shows/${show?.id}` : show ? `/api/shows/${show.id}/visits` : "/api/shows";
-      const response = await fetch(endpoint, {
+      const response = await adminFetch(endpoint, {
         method: visit || editShow ? "PATCH" : "POST", headers: {"Content-Type": "application/json"},
         // Only event metadata is entered here; no Singles or Funds balances.
         body: JSON.stringify(isVisit ? {visitDate: date, notes: notes.trim() || null} : {name: name.trim(), notes: notes.trim() || null}),
@@ -250,8 +251,8 @@ function VisitSales({visitId}: {visitId: number}) {
       setData(null); setError(null);
       try {
         const [detailResponse, performanceResponse] = await Promise.all([
-          fetch(`/api/shows/visits/${visitId}`, {signal: controller.signal}),
-          fetch(`/api/shows/visits/${visitId}/performance`, {signal: controller.signal}),
+          adminFetch(`/api/shows/visits/${visitId}`, {signal: controller.signal}),
+          adminFetch(`/api/shows/visits/${visitId}/performance`, {signal: controller.signal}),
         ]);
         if (!detailResponse.ok || !performanceResponse.ok) throw new Error("Visit sales could not be loaded.");
         const [detail, performance] = await Promise.all([detailResponse.json(), performanceResponse.json()]);

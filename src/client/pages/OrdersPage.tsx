@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { inputStyle, secondaryButtonStyle } from "../components/uiStyles";
 import ProductModal from "../components/ProductModal";
 import { resolveOrderInventory } from "../../shared/orderConversion";
@@ -188,8 +189,8 @@ export default function OrdersPage({
         ordersResponse,
         productsResponse,
       ] = await Promise.all([
-        fetch("/api/orders"),
-        fetch("/api/products"),
+        adminFetch("/api/orders"),
+        adminFetch("/api/products"),
       ]);
 
       if (!ordersResponse.ok) {
@@ -789,7 +790,7 @@ function NewOrderModal({
       setSaving(true);
       setError(null);
 
-      const response = await fetch(
+      const response = await adminFetch(
         order ? `/api/orders/${order.id}` : "/api/orders",
         {
           method: order ? "PATCH" : "POST",
@@ -1031,7 +1032,7 @@ function OrderDetailModal({
     try {
       setWorking(true);
       setError(null);
-      const response = await fetch(`/api/orders/${order.id}/lines/${line.id}`, {method: "DELETE"});
+      const response = await adminFetch(`/api/orders/${order.id}/lines/${line.id}`, {method: "DELETE"});
       if (!response.ok) {
         const body = await response.json().catch(() => null);
         throw new Error(body?.error ?? "Could not remove the product line.");
@@ -1061,7 +1062,7 @@ function OrderDetailModal({
       setWorking(true);
       setError(null);
 
-      const response = await fetch(
+      const response = await adminFetch(
         `/api/orders/${order.id}/finalize`,
         {
           method: "POST",
@@ -1744,7 +1745,7 @@ function AddOrderLineModal({
       setSaving(true);
       setError(null);
 
-      const response = await fetch(
+      const response = await adminFetch(
         line ? `/api/orders/${order.id}/lines/${line.id}` : `/api/orders/${order.id}/lines`,
         {
           method: line ? "PATCH" : "POST",
@@ -1882,7 +1883,7 @@ function AddOrderLineModal({
           products={catalogProducts}
           onClose={() => setShowCreateProduct(false)}
           onSaved={async (createdProduct) => {
-            const response = await fetch("/api/products");
+            const response = await adminFetch("/api/products");
             if (!response.ok) {
               throw new Error("Product was created, but the product list could not be refreshed.");
             }

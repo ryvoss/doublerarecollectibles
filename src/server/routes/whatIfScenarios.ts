@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 
@@ -137,7 +138,7 @@ router.get("/inventory", async (_req, res) => {
     });
     res.json(inventory);
   } catch (error) {
-    console.error("Failed to load What-If inventory:", error);
+    logServerError("Failed to load What-If inventory:", error);
     res.status(500).json({ error: "What-If inventory could not be loaded." });
   }
 });
@@ -150,7 +151,7 @@ router.get("/", async (_req, res) => {
     });
     res.json(scenarios);
   } catch (error) {
-    console.error("Failed to load What-If scenarios:", error);
+    logServerError("Failed to load What-If scenarios:", error);
     res.status(500).json({ error: "What-If scenarios could not be loaded." });
   }
 });
@@ -183,7 +184,7 @@ router.post("/", async (req, res) => {
     });
     res.status(201).json(scenario);
   } catch (error) {
-    console.error("Failed to create What-If scenario:", error);
+    logServerError("Failed to create What-If scenario:", error);
     res.status(500).json({ error: "What-If scenario could not be saved." });
   }
 });
@@ -226,7 +227,7 @@ router.patch("/:scenarioId", async (req, res) => {
     });
     res.json(scenario);
   } catch (error) {
-    console.error("Failed to update What-If scenario:", error);
+    logServerError("Failed to update What-If scenario:", error);
     res.status(500).json({ error: "What-If scenario could not be updated." });
   }
 });
@@ -245,7 +246,7 @@ router.delete("/:scenarioId", async (req, res) => {
     }
     res.status(204).end();
   } catch (error) {
-    console.error("Failed to delete What-If scenario:", error);
+    logServerError("Failed to delete What-If scenario:", error);
     res.status(500).json({ error: "What-If scenario could not be deleted." });
   }
 });

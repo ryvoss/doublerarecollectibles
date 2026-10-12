@@ -1,3 +1,4 @@
+import { logServerError } from "../security/logging";
 import type { RequestHandler } from "express";
 import type { Prisma, PrismaClient } from "../../generated/prisma/client";
 
@@ -147,7 +148,7 @@ export function createShowProductPerformanceHandler(
         ...aggregateShowProductPerformance(lines),
       });
     } catch (error) {
-      console.error("Failed to load show product performance:", error);
+      logServerError("Failed to load show product performance:", error);
       res.status(500).json({ error: "Failed to load show product performance" });
     }
   };

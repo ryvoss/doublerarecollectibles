@@ -1,3 +1,4 @@
+import { adminFetch } from "../adminFetch";
 import { controlStyle } from "../components/uiStyles";
 import { useEffect, useState } from "react";
 
@@ -41,7 +42,7 @@ export default function ProductProfitability({refresh}: {refresh: number}) {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch("/api/sales/product-performance", {signal: controller.signal});
+        const response = await adminFetch("/api/sales/product-performance", {signal: controller.signal});
         if (!response.ok) throw new Error("Product profitability could not be loaded.");
         const result: PerformanceResponse = await response.json();
         if (!controller.signal.aborted) setData(result);

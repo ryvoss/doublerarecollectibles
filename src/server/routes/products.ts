@@ -1,3 +1,4 @@
+import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { CaseProductError, saveCaseProduct } from "../caseProduct";
@@ -140,17 +141,14 @@ router.get("/", async (_req, res) => {
 
     res.json(products.map(adminProductResponse));
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving products:",
       error
     );
 
     res.status(500).json({
       error: "Failed to retrieve products",
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -221,7 +219,7 @@ router.get("/public-listings", async (_req, res) => {
 
     res.json(listings);
   } catch (error) {
-    console.error("Error retrieving public listings:", error);
+    logServerError("Error retrieving public listings:", error);
     res.status(500).json({
       error: "Public listings could not be loaded",
     });
@@ -391,7 +389,7 @@ router.patch("/public-listings", async (req, res) => {
       });
     }
 
-    console.error("Error updating public listings:", error);
+    logServerError("Error updating public listings:", error);
     res.status(500).json({
       error: "Public listings could not be updated",
     });
@@ -452,7 +450,7 @@ router.put(
       try {
         await productImageStorage.deleteProductImage(product.imageKey);
       } catch (cleanupError) {
-        console.error("Old product image cleanup failed:", cleanupError);
+        logServerError("Old product image cleanup failed:", cleanupError);
       }
 
       return res.json({ imageUrl: productImageStorage.getPublicUrl(newImageKey) });
@@ -463,7 +461,7 @@ router.put(
       if (error instanceof ProductImageValidationError) {
         return res.status(400).json({ error: error.message });
       }
-      console.error("Product image upload failed:", error);
+      logServerError("Product image upload failed:", error);
       return res.status(500).json({ error: "Product image could not be saved" });
     }
   },
@@ -492,11 +490,11 @@ router.delete("/:productId/image", async (req, res) => {
     try {
       await productImageStorage.deleteProductImage(product.imageKey);
     } catch (cleanupError) {
-      console.error("Removed product image cleanup failed:", cleanupError);
+      logServerError("Removed product image cleanup failed:", cleanupError);
     }
     return res.json({ imageUrl: null });
   } catch (error) {
-    console.error("Product image removal failed:", error);
+    logServerError("Product image removal failed:", error);
     return res.status(500).json({ error: "Product image could not be removed" });
   }
 });
@@ -532,17 +530,14 @@ router.get("/:productId", async (req, res) => {
 
     res.json(adminProductResponse(product));
   } catch (error) {
-    console.error(
+    logServerError(
       "Error retrieving product:",
       error
     );
 
     res.status(500).json({
       error: "Failed to retrieve product",
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -863,17 +858,14 @@ router.post("/", async (req, res) => {
 
     res.status(201).json(adminProductResponse(product));
   } catch (error) {
-    console.error(
+    logServerError(
       "Error creating product:",
       error
     );
 
     res.status(error instanceof CaseProductError ? 400 : 500).json({
       error: error instanceof CaseProductError ? error.message : "Failed to create product",
-      details:
-        error instanceof Error
-          ? error.message
-          : String(error),
+      ...developmentErrorDetails(error),
     });
   }
 });
@@ -1318,17 +1310,14 @@ router.patch(
 
       res.json(adminProductResponse(product));
     } catch (error) {
-      console.error(
+      logServerError(
         "Error updating product:",
         error
       );
 
       res.status(error instanceof CaseProductError ? 400 : 500).json({
         error: error instanceof CaseProductError ? error.message : "Failed to update product",
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -1384,7 +1373,7 @@ router.patch(
 
       res.json(adminProductResponse(updatedProduct));
     } catch (error) {
-      console.error(
+      logServerError(
         "Error deactivating product:",
         error
       );
@@ -1392,10 +1381,7 @@ router.patch(
       res.status(500).json({
         error:
           "Failed to deactivate product",
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
@@ -1451,7 +1437,7 @@ router.patch(
 
       res.json(adminProductResponse(updatedProduct));
     } catch (error) {
-      console.error(
+      logServerError(
         "Error reactivating product:",
         error
       );
@@ -1459,10 +1445,7 @@ router.patch(
       res.status(500).json({
         error:
           "Failed to reactivate product",
-        details:
-          error instanceof Error
-            ? error.message
-            : String(error),
+        ...developmentErrorDetails(error),
       });
     }
   }
