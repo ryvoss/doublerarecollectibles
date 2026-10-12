@@ -159,6 +159,22 @@ function App() {
 
   const [dashboardError, setDashboardError] =
     useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function logout() {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok && response.status !== 401) {
+        throw new Error("Logout failed");
+      }
+      window.location.assign("/admin/login");
+    } catch (error) {
+      console.error("Admin logout failed:", error);
+      setLoggingOut(false);
+    }
+  }
 
   // Command Center workflows stay on the Command Center.
   // Each quick action mounts the existing page workflow in modal-only mode
@@ -370,6 +386,15 @@ function App() {
             <a className="admin-site-link" href="/">
               Main Site
             </a>
+
+            <button
+              className="admin-site-link admin-logout-button"
+              disabled={loggingOut}
+              onClick={() => void logout()}
+              type="button"
+            >
+              {loggingOut ? "Signing Out…" : "Sign Out"}
+            </button>
 
             <div className="api-status">
               <span

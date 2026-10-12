@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import PublicSite from "./client/public/PublicSite";
+import AdminLoginPage from "./client/pages/AdminLoginPage";
 
 const AdminApp = lazy(() => import("./App"));
 
@@ -15,6 +16,9 @@ function RootApp() {
   const [pathname, setPathname] = useState(() =>
     normalizePath(window.location.pathname),
   );
+  const [adminAuth, setAdminAuth] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const adminPath = pathname === "/admin" || pathname.startsWith("/admin/");
 
   useEffect(() => {
     function handlePopState() {
@@ -26,10 +30,51 @@ function RootApp() {
   }, []);
 
   useEffect(() => {
-    if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    if (adminPath) {
       document.title = "Admin | Double Rare Collectibles";
     }
-  }, [pathname]);
+  }, [adminPath]);
+
+  useEffect(() => {
+    if (!adminPath) return;
+    const controller = new AbortController();
+    setAdminAuth("checking");
+    setAuthError(null);
+
+    void fetch("/api/auth/session", {
+      cache: "no-store",
+      signal: controller.signal,
+    }).then(async (response) => {
+      if (!response.ok) throw new Error("Admin authentication is unavailable.");
+      return response.json() as Promise<{ authenticated: boolean }>;
+    }).then((session) => {
+      if (controller.signal.aborted) return;
+      if (session.authenticated) {
+        setAdminAuth("authenticated");
+        if (pathname === "/admin/login") {
+          window.history.replaceState({}, "", "/admin");
+          setPathname("/admin");
+        }
+        return;
+      }
+
+      setAdminAuth("unauthenticated");
+      if (pathname !== "/admin/login") {
+        window.history.replaceState({}, "", "/admin/login");
+        setPathname("/admin/login");
+      }
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      setAdminAuth("unauthenticated");
+      setAuthError(error instanceof Error ? error.message : "Admin authentication is unavailable.");
+      if (pathname !== "/admin/login") {
+        window.history.replaceState({}, "", "/admin/login");
+        setPathname("/admin/login");
+      }
+    });
+
+    return () => controller.abort();
+  }, [adminPath, pathname]);
 
   function navigate(nextPath: string) {
     const normalizedPath = normalizePath(nextPath);
@@ -45,7 +90,22 @@ function RootApp() {
 
   // Admin page selection remains managed by the established admin shell.
   // Keeping this boundary here prevents public pages from mounting admin data requests.
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+  if (adminPath) {
+    if (adminAuth === "checking") {
+      return <div className="route-loading">Checking admin access…</div>;
+    }
+    if (adminAuth !== "authenticated") {
+      return (
+        <AdminLoginPage
+          initialError={authError}
+          onAuthenticated={() => {
+            setAdminAuth("authenticated");
+            window.history.replaceState({}, "", "/admin");
+            setPathname("/admin");
+          }}
+        />
+      );
+    }
     return (
       <Suspense fallback={<div className="route-loading">Loading Double Rare…</div>}>
         <AdminApp />

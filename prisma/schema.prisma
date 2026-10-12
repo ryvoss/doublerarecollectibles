@@ -8,6 +8,38 @@ datasource db {
 }
 
 // ---------------------------------------------------------
+// ADMIN AUTHENTICATION
+// ---------------------------------------------------------
+
+// Admin credentials and web sessions are operational security records only.
+// They are deliberately independent from all business/accounting models.
+model AdminUser {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique @db.VarChar(100)
+  passwordHash String    @db.Text
+  role         AdminRole @default(ADMIN)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum AdminRole {
+  ADMIN
+}
+
+// connect-pg-simple owns the contents of this table. Declaring it in Prisma
+// keeps the production schema and migration history explicit.
+model AdminSession {
+  sid    String   @id @db.VarChar(255)
+  sess   Json
+  expire DateTime @db.Timestamp(6)
+
+  @@index([expire])
+  @@map("admin_session")
+}
+
+// ---------------------------------------------------------
 // PRODUCTS
 // ---------------------------------------------------------
 

@@ -5,6 +5,9 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import express from "express";
 import type { ErrorRequestHandler } from "express";
+import { passport } from "./auth/passport";
+import { requireAdmin, requireAdminPage } from "./auth/authorization";
+import { adminSessionPool, createAdminSessionMiddleware } from "./auth/session";
 
 import productsRouter from "./routes/products";
 import ordersRouter from "./routes/orders";
@@ -17,6 +20,8 @@ import whatIfScenariosRouter from "./routes/whatIfScenarios";
 import publicRouter from "./routes/public";
 import siteRouter from "./routes/site";
 import packPoolsRouter from "./routes/packPools";
+import { createAuthRouter } from "./routes/auth";
+import { mountApiRoutes } from "./routes/mountApiRoutes";
 import {
   assertDatabaseEnvironment,
   databaseName,
@@ -43,7 +48,15 @@ if (!Number.isSafeInteger(port) || port <= 0 || port > 65_535) {
 // ---------------------------------------------------------
 
 app.disable("x-powered-by");
+if (production) {
+  // Railway terminates TLS at its edge and forwards to one application hop.
+  // A numeric hop count is intentionally narrower than trusting all proxies.
+  app.set("trust proxy", 1);
+}
 app.use(express.json());
+app.use(createAdminSessionMiddleware(production));
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Refresh today's reporting snapshot after successful business mutations.
 // This runs after the response completes and cannot participate in or alter
@@ -63,38 +76,35 @@ app.use((req, res, next) => {
   next();
 });
 
-// ---------------------------------------------------------
-// HEALTH
-// ---------------------------------------------------------
-
-app.get("/api/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    message: "Double Rare Collectibles API is running",
-  });
+const authRouter = createAuthRouter({
+  adminPassport: passport,
+  production,
+  onSuccessfulLogin: async (user) => {
+    await prisma.adminUser.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+  },
 });
 
-// ---------------------------------------------------------
-// ROUTES
-// ---------------------------------------------------------
+mountApiRoutes(app, {
+  auth: authRouter,
+  funds: fundsRouter,
+  inventory: inventoryRouter,
+  orders: ordersRouter,
+  packPools: packPoolsRouter,
+  products: productsRouter,
+  public: publicRouter,
+  reports: reportsRouter,
+  sales: salesRouter,
+  shows: showsRouter,
+  site: siteRouter,
+  whatIfScenarios: whatIfScenariosRouter,
+}, requireAdmin);
 
-app.use("/api/products", productsRouter);
-app.use("/api/orders", ordersRouter);
-app.use("/api/inventory", inventoryRouter);
-app.use("/api/sales", salesRouter);
-app.use("/api/shows", showsRouter);
-app.use("/api/funds", fundsRouter);
-app.use("/api/reports", reportsRouter);
-app.use("/api/what-if-scenarios", whatIfScenariosRouter);
-app.use("/api/site", siteRouter);
-app.use("/api/public", publicRouter);
-app.use("/api/pack-pools", packPoolsRouter);
-
-// Keep API failures inside the JSON API boundary. This must be registered
-// before the production React history fallback.
-app.use("/api", (_req, res) => {
-  res.status(404).json({ error: "API endpoint not found" });
-});
+// In production this redirects before the admin SPA is served. The React gate
+// applies the same behavior during Vite development, where Vite serves HTML.
+app.use("/admin", requireAdminPage);
 
 if (production) {
   app.use(express.static(frontendDistPath, {
@@ -150,7 +160,10 @@ async function start() {
   const shutdown = (signal: string) => {
     console.log(`${signal} received; shutting down.`);
     server.close(() => {
-      void prisma.$disconnect().finally(() => process.exit(0));
+      void Promise.all([
+        prisma.$disconnect(),
+        adminSessionPool.end(),
+      ]).finally(() => process.exit(0));
     });
   };
   process.once("SIGTERM", () => shutdown("SIGTERM"));

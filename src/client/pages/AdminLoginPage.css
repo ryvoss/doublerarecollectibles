@@ -1,0 +1,175 @@
+.admin-login-page {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  overflow: hidden;
+  padding: 28px 20px;
+  background: #090a0d;
+  color: #f7f4ed;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.admin-login-glow {
+  position: absolute;
+  inset: -20% auto auto 50%;
+  width: min(760px, 100vw);
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(214, 178, 94, 0.12), transparent 68%);
+  pointer-events: none;
+}
+
+.admin-login-card {
+  position: relative;
+  width: min(100%, 430px);
+  padding: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: rgba(18, 19, 23, 0.96);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.38);
+}
+
+.admin-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.admin-login-brand > span {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid rgba(214, 178, 94, 0.5);
+  border-radius: 12px;
+  color: #f0d58e;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.admin-login-brand div {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-login-brand strong {
+  font-size: 14px;
+}
+
+.admin-login-brand small {
+  color: #929398;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-login-heading {
+  margin: 42px 0 28px;
+}
+
+.admin-login-heading p {
+  margin: 0 0 8px;
+  color: #d6b25e;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.admin-login-heading h1 {
+  margin: 0 0 9px;
+  font-size: clamp(26px, 7vw, 34px);
+  line-height: 1.1;
+}
+
+.admin-login-heading span {
+  color: #a6a4a0;
+  line-height: 1.55;
+}
+
+.admin-login-card form,
+.admin-login-card label {
+  display: grid;
+}
+
+.admin-login-card form {
+  gap: 18px;
+}
+
+.admin-login-card label {
+  gap: 8px;
+  color: #d4d3cf;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-login-card input {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid #34353c;
+  border-radius: 10px;
+  outline: none;
+  padding: 0 13px;
+  background: #0d0e12;
+  color: #f7f4ed;
+  font: inherit;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.admin-login-card input:focus {
+  border-color: #d6b25e;
+  box-shadow: 0 0 0 3px rgba(214, 178, 94, 0.12);
+}
+
+.admin-login-error {
+  border: 1px solid rgba(239, 101, 101, 0.3);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: rgba(125, 30, 30, 0.18);
+  color: #ffadad;
+  font-size: 12px;
+}
+
+.admin-login-card button {
+  min-height: 49px;
+  border: 0;
+  border-radius: 10px;
+  background: #d6b25e;
+  color: #15130e;
+  cursor: pointer;
+  font: 800 13px/1 Inter, ui-sans-serif, system-ui, sans-serif;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.admin-login-card button:hover:not(:disabled) {
+  background: #e3c570;
+  transform: translateY(-1px);
+}
+
+.admin-login-card button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.admin-login-return {
+  display: block;
+  margin-top: 22px;
+  color: #929398;
+  font-size: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+
+.admin-login-return:hover {
+  color: #f0d58e;
+}
+
+@media (max-width: 520px) {
+  .admin-login-card {
+    padding: 24px 20px;
+    border-radius: 16px;
+  }
+}

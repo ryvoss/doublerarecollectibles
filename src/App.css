@@ -388,6 +388,16 @@ button {
   color: #eef5f1;
 }
 
+.admin-logout-button {
+  cursor: pointer;
+  font: inherit;
+}
+
+.admin-logout-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .admin-site-link:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
