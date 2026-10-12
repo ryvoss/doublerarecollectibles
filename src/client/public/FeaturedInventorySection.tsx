@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { PublicInventoryItem } from "../../shared/publicInventory";
 import type { PublicSiteSettings } from "../../shared/publicSite";
 import {
@@ -18,6 +18,7 @@ export default function FeaturedInventorySection({
   const [loaded, setLoaded] = useState(false);
   const [selectedProduct, setSelectedProduct] =
     useState<PublicInventoryItem | null>(null);
+  const interestTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -41,7 +42,7 @@ export default function FeaturedInventorySection({
         setFeaturedProducts(
           (data as PublicInventoryItem[]).filter(
             (product) => product.featured,
-          ),
+          ).slice(0, 3),
         );
       } catch (error) {
         if (!controller.signal.aborted) {
@@ -64,6 +65,26 @@ export default function FeaturedInventorySection({
     return null;
   }
 
+  function handleInventoryLink(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    onNavigate("/inventory");
+  }
+
+  function closeInterestModal() {
+    setSelectedProduct(null);
+    window.setTimeout(() => interestTriggerRef.current?.focus(), 0);
+  }
+
   return (
     <section className="public-section public-featured-inventory">
       <div className="public-container">
@@ -73,21 +94,26 @@ export default function FeaturedInventorySection({
             <h2>{settings.featuredSectionTitle}</h2>
             <p>A closer look at products currently featured by {settings.businessName}.</p>
           </div>
-          <button
+          <a
             className="public-text-link public-featured-inventory__all"
-            type="button"
-            onClick={() => onNavigate("/inventory")}
+            href="/inventory"
+            onClick={handleInventoryLink}
           >
-            Explore all inventory <span aria-hidden="true">&rarr;</span>
-          </button>
+            View all inventory <span aria-hidden="true">&rarr;</span>
+          </a>
         </div>
 
         <div className="public-catalog-grid" aria-label={settings.featuredSectionTitle}>
           {featuredProducts.map((product) => (
             <PublicInventoryCard
               key={product.id}
+              headingLevel="h3"
               product={product}
-              onInterested={() => setSelectedProduct(product)}
+              showFeaturedLabel={false}
+              onInterested={(trigger) => {
+                interestTriggerRef.current = trigger;
+                setSelectedProduct(product);
+              }}
             />
           ))}
         </div>
@@ -99,7 +125,7 @@ export default function FeaturedInventorySection({
           businessName={settings.businessName}
           contactEmail={settings.contactEmail}
           instagramUrl={settings.instagramUrl}
-          onClose={() => setSelectedProduct(null)}
+          onClose={closeInterestModal}
         />
       )}
     </section>

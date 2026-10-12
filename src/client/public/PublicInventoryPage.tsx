@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   PublicInventoryAvailability,
   PublicInventoryItem,
@@ -79,6 +80,7 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
     useState<AvailabilityFilter>("ALL");
   const [selectedProduct, setSelectedProduct] =
     useState<PublicInventoryItem | null>(null);
+  const interestTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -144,6 +146,19 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
   function clearFilters() {
     setSearch("");
     setAvailability("ALL");
+  }
+
+  function openInterestModal(
+    product: PublicInventoryItem,
+    trigger: HTMLButtonElement,
+  ) {
+    interestTriggerRef.current = trigger;
+    setSelectedProduct(product);
+  }
+
+  function closeInterestModal() {
+    setSelectedProduct(null);
+    window.setTimeout(() => interestTriggerRef.current?.focus(), 0);
   }
 
   return (
@@ -259,7 +274,7 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
               <PublicInventoryCard
                 key={product.id}
                 product={product}
-                onInterested={() => setSelectedProduct(product)}
+                onInterested={(trigger) => openInterestModal(product, trigger)}
               />
             ))}
           </div>
@@ -272,7 +287,7 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
           businessName={settings.businessName}
           contactEmail={settings.contactEmail}
           instagramUrl={settings.instagramUrl}
-          onClose={() => setSelectedProduct(null)}
+          onClose={closeInterestModal}
         />
       )}
     </section>
@@ -280,13 +295,18 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
 }
 
 export function PublicInventoryCard({
+  headingLevel = "h2",
   product,
   onInterested,
+  showFeaturedLabel = true,
 }: {
+  headingLevel?: "h2" | "h3";
   product: PublicInventoryItem;
-  onInterested: () => void;
+  onInterested: (trigger: HTMLButtonElement) => void;
+  showFeaturedLabel?: boolean;
 }) {
   const soldOut = product.availability === "SOLD_OUT";
+  const Heading = headingLevel;
 
   return (
     <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}`}>
@@ -298,7 +318,7 @@ export function PublicInventoryCard({
             <span>DR</span>
           </div>
         )}
-        {product.featured && (
+        {showFeaturedLabel && product.featured && (
           <span className="public-featured-label">Featured</span>
         )}
       </div>
@@ -312,7 +332,7 @@ export function PublicInventoryCard({
             {displayPrice(product.displayPrice)}
           </span>
         </div>
-        <h2>{product.name}</h2>
+        <Heading>{product.name}</Heading>
         {product.shortDescription && (
           <p className="public-catalog-card__description">
             {product.shortDescription}
@@ -321,7 +341,7 @@ export function PublicInventoryCard({
         <button
           className="public-catalog-card__action"
           type="button"
-          onClick={onInterested}
+          onClick={(event) => onInterested(event.currentTarget)}
         >
           I&apos;m Interested
           <ArrowIcon />
@@ -359,20 +379,59 @@ export function PublicInventoryInterestModal({
   product: PublicInventoryItem;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
+    const publicSite = document.querySelector<HTMLElement>(".public-site");
+    const hadInertAttribute = publicSite?.hasAttribute("inert") ?? false;
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusable = Array.from(
+        dialogRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     }
 
     document.body.style.overflow = "hidden";
+    publicSite?.setAttribute("inert", "");
     window.addEventListener("keydown", handleKeyDown);
+    closeButtonRef.current?.focus();
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      if (!hadInertAttribute) {
+        publicSite?.removeAttribute("inert");
+      }
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [onClose]);
@@ -391,7 +450,7 @@ export function PublicInventoryInterestModal({
   ].join("\n");
   const emailHref = `mailto:${contactEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
 
-  return (
+  return createPortal(
     <div
       className="public-interest-backdrop"
       role="presentation"
@@ -402,17 +461,25 @@ export function PublicInventoryInterestModal({
       }}
     >
       <div
+        ref={dialogRef}
         className="public-interest-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="public-interest-title"
+        aria-describedby="public-interest-description"
+        tabIndex={-1}
       >
         <div className="public-interest-modal__header">
           <div>
             <p className="public-kicker">Product inquiry</p>
             <h2 id="public-interest-title">I&apos;m interested</h2>
           </div>
-          <button type="button" onClick={onClose} aria-label="Close inquiry" autoFocus>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label="Close inquiry"
+          >
             &times;
           </button>
         </div>
@@ -441,7 +508,7 @@ export function PublicInventoryInterestModal({
 
         <div className="public-interest-modal__copy">
           <h3>How would you like to connect?</h3>
-          <p>
+          <p id="public-interest-description">
             Choose the option that works best for you. We will confirm current
             availability when we respond.
           </p>
@@ -474,6 +541,7 @@ export function PublicInventoryInterestModal({
           Keep browsing
         </button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

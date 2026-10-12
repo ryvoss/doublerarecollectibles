@@ -1,11 +1,12 @@
 import {
   useEffect,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
 } from "react";
-import PublicInventoryPage from "./PublicInventoryPage";
 import FeaturedInventorySection from "./FeaturedInventorySection";
+import PublicInventoryPage from "./PublicInventoryPage";
 import {
   EMPTY_PUBLIC_SITE_ASSETS,
   PUBLIC_SITE_DEFAULTS,
@@ -33,14 +34,15 @@ const publicNavigation = [
   { href: "/contact", label: "Contact" },
 ];
 
-const knownPublicPaths = new Set(["/", "/inventory", "/shows", "/buy-sell-trade", "/contact"]);
+const knownPublicPaths = new Set([
+  "/",
+  "/inventory",
+  "/shows",
+  "/buy-sell-trade",
+  "/contact",
+]);
 
-function PublicLink({
-  children,
-  className,
-  href,
-  onNavigate,
-}: PublicLinkProps) {
+function PublicLink({ children, className, href, onNavigate }: PublicLinkProps) {
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     if (
       event.button !== 0 ||
@@ -81,15 +83,35 @@ function InstagramIcon() {
   );
 }
 
-function PublicBrandMark({ businessName, logoUrl }: { businessName: string; logoUrl: string | null }) {
-  return <span className={`public-brand__mark${logoUrl ? " has-image" : ""}`}>
-    {logoUrl ? <img src={logoUrl} alt={`${businessName} logo`} /> : "DR"}
-  </span>;
+function PublicBrandMark({
+  businessName,
+  compact = false,
+  logoUrl,
+}: {
+  businessName: string;
+  compact?: boolean;
+  logoUrl: string | null;
+}) {
+  if (compact) {
+    return (
+      <span className="public-brand__mark public-brand__mark--compact" aria-hidden="true">
+        DR
+      </span>
+    );
+  }
+
+  return (
+    <span className={`public-brand__mark${logoUrl ? " has-image" : ""}`}>
+      {logoUrl ? <img src={logoUrl} alt={`${businessName} logo`} /> : "DR"}
+    </span>
+  );
 }
 
 function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [compactHeader, setCompactHeader] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const mobileNavigationRef = useRef<HTMLElement>(null);
   const [siteConfiguration, setSiteConfiguration] = useState<PublicSiteConfiguration>({
     settings: { ...PUBLIC_SITE_DEFAULTS },
     assets: { ...EMPTY_PUBLIC_SITE_ASSETS },
@@ -98,16 +120,25 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
 
   useEffect(() => {
     const controller = new AbortController();
+
     async function loadSiteConfiguration() {
       try {
-        const response = await fetch("/api/public/site", { signal: controller.signal });
+        const response = await fetch("/api/public/site", {
+          signal: controller.signal,
+        });
         if (!response.ok) return;
-        const body = await response.json() as PublicSiteConfiguration;
-        if (!controller.signal.aborted && body?.settings && body?.assets) setSiteConfiguration(body);
+
+        const body = (await response.json()) as PublicSiteConfiguration;
+        if (!controller.signal.aborted && body?.settings && body?.assets) {
+          setSiteConfiguration(body);
+        }
       } catch (error) {
-        if (!controller.signal.aborted) console.error("Public site configuration loading failed:", error);
+        if (!controller.signal.aborted) {
+          console.error("Public site configuration loading failed:", error);
+        }
       }
     }
+
     void loadSiteConfiguration();
     return () => controller.abort();
   }, []);
@@ -122,8 +153,13 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           : pathname === "/buy-sell-trade"
             ? "Buy / Sell / Trade"
             : "";
-    document.title = pageLabel ? `${pageLabel} | ${settings.businessName}` : settings.businessName;
-    document.querySelector('meta[name="description"]')?.setAttribute("content", settings.heroSubtitle);
+
+    document.title = pageLabel
+      ? `${pageLabel} | ${settings.businessName}`
+      : settings.businessName;
+    document
+      .querySelector('meta[name="description"]')
+      ?.setAttribute("content", settings.heroSubtitle);
     setMenuOpen(false);
     window.scrollTo({ top: 0 });
   }, [pathname, settings]);
@@ -132,6 +168,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
     const selector = 'link[data-public-site-favicon="true"]';
     document.querySelector(selector)?.remove();
     if (!assets.faviconUrl) return;
+
     const favicon = document.createElement("link");
     favicon.rel = "icon";
     favicon.href = assets.faviconUrl;
@@ -145,34 +182,39 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
       setCompactHeader(window.scrollY > 28);
     }
 
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    mobileNavigationRef.current
+      ?.querySelector<HTMLAnchorElement>("a")
+      ?.focus();
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setMenuOpen(false);
+        menuButtonRef.current?.focus();
       }
     }
 
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, []);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [menuOpen]);
 
   return (
     <div className="public-site">
-      <header
-        className={`public-header${compactHeader ? " public-header--compact" : ""}`}
-      >
+      <header className={`public-header${compactHeader ? " public-header--compact" : ""}`}>
         <div className="public-header__inner">
-          <PublicLink
-            className="public-brand"
-            href="/"
-            onNavigate={onNavigate}
-          >
-            <PublicBrandMark businessName={settings.businessName} logoUrl={assets.primaryLogoUrl} />
+          <PublicLink className="public-brand" href="/" onNavigate={onNavigate}>
+            <PublicBrandMark
+              businessName={settings.businessName}
+              compact
+              logoUrl={assets.primaryLogoUrl}
+            />
             <span className="public-brand__copy">
               <strong>{settings.businessName}</strong>
               <span>{settings.tagline}</span>
@@ -193,14 +235,6 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           </nav>
 
           <div className="public-header__actions">
-            <PublicLink
-              className="public-shell-switch public-shell-switch--header"
-              href="/admin"
-              onNavigate={onNavigate}
-            >
-              Admin
-            </PublicLink>
-
             <a
               className="public-instagram-link public-instagram-link--header"
               href={settings.instagramUrl}
@@ -213,6 +247,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
             </a>
 
             <button
+              ref={menuButtonRef}
               className="public-menu-button"
               type="button"
               aria-controls="public-mobile-navigation"
@@ -227,136 +262,115 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           </div>
         </div>
 
-        <nav
-          id="public-mobile-navigation"
-          className={`public-navigation public-navigation--mobile${menuOpen ? " is-open" : ""}`}
-          aria-label="Mobile navigation"
-        >
-          {publicNavigation.map((item) => (
-            <PublicLink
-              key={item.href}
-              className={pathname === item.href ? "is-active" : undefined}
-              href={item.href}
-              onNavigate={onNavigate}
+        {menuOpen && (
+          <nav
+            ref={mobileNavigationRef}
+            id="public-mobile-navigation"
+            className="public-navigation public-navigation--mobile"
+            aria-label="Mobile navigation"
+          >
+            {publicNavigation.map((item) => (
+              <PublicLink
+                key={item.href}
+                className={pathname === item.href ? "is-active" : undefined}
+                href={item.href}
+                onNavigate={onNavigate}
+              >
+                <span>{item.label}</span>
+                <ArrowIcon />
+              </PublicLink>
+            ))}
+            <a
+              className="public-navigation__instagram"
+              href={settings.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
             >
-              <span>{item.label}</span>
-              <ArrowIcon />
-            </PublicLink>
-          ))}
-
-          <a
-            className="public-navigation__instagram"
-            href={settings.instagramUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <InstagramIcon />
-            Instagram
-          </a>
-
-          <PublicLink
-            className="public-navigation__admin"
-            href="/admin"
-            onNavigate={onNavigate}
-          >
-            <span>Admin</span>
-            <ArrowIcon />
-          </PublicLink>
-        </nav>
+              <InstagramIcon />
+              Instagram
+            </a>
+          </nav>
+        )}
       </header>
 
       <main>
-        {pathname === "/" && <HomePage onNavigate={onNavigate} settings={settings} heroImageUrl={assets.heroImageUrl} />}
-        {pathname === "/inventory" && <PublicInventoryPage settings={settings} />}
-        {pathname === "/shows" && (
-          <PlaceholderPage
-            eyebrow="Meet us in person"
-            title={settings.showsPageTitle}
-            description={settings.showsIntroText}
-            detail="Dates, locations, and event details will appear here."
+        {pathname === "/" && (
+          <HomePage
+            heroImageUrl={assets.heroImageUrl}
+            onNavigate={onNavigate}
+            settings={settings}
           />
         )}
-        {pathname === "/buy-sell-trade" && <BuySellTradePage onNavigate={onNavigate} settings={settings} />}
+        {pathname === "/inventory" && <PublicInventoryPage settings={settings} />}
+        {pathname === "/shows" && (
+          <ShowsPage onNavigate={onNavigate} settings={settings} />
+        )}
+        {pathname === "/buy-sell-trade" && (
+          <BuySellTradePage onNavigate={onNavigate} settings={settings} />
+        )}
         {pathname === "/contact" && <ContactPage settings={settings} />}
         {!knownPublicPaths.has(pathname) && <NotFoundPage onNavigate={onNavigate} />}
       </main>
 
-      <PublicFooter onNavigate={onNavigate} settings={settings} logoUrl={assets.primaryLogoUrl} />
+      <PublicFooter
+        logoUrl={assets.primaryLogoUrl}
+        onNavigate={onNavigate}
+        settings={settings}
+      />
     </div>
   );
 }
 
-function HomePage({ heroImageUrl, onNavigate, settings }: Pick<PublicSiteProps, "onNavigate"> & { heroImageUrl: string | null; settings: PublicSiteSettings }) {
+function HomePage({
+  heroImageUrl,
+  onNavigate,
+  settings,
+}: Pick<PublicSiteProps, "onNavigate"> & {
+  heroImageUrl: string | null;
+  settings: PublicSiteSettings;
+}) {
   return (
     <>
       <section className="public-hero">
-        {heroImageUrl && <img className="public-hero__image" src={heroImageUrl} alt="" />}
-        <div className="public-hero__glow" />
-        <div className="public-container public-hero__content">
-          <p className="public-kicker">{settings.tagline}</p>
-          <h1>{settings.heroTitle}</h1>
-          <p className="public-hero__lead">{settings.heroSubtitle}</p>
-          <div className="public-hero__actions">
+        <div className="public-container public-hero__layout">
+          <div className="public-hero__content">
+            <p className="public-kicker">{settings.tagline}</p>
+            <h1>{settings.heroTitle}</h1>
+            <p className="public-hero__lead">{settings.heroSubtitle}</p>
             <PublicLink
-              className="public-button public-button--primary"
+              className="public-button public-button--primary public-hero__cta"
               href="/inventory"
               onNavigate={onNavigate}
             >
               {settings.primaryCtaLabel}
               <ArrowIcon />
             </PublicLink>
-            <PublicLink
-              className="public-button public-button--secondary"
-              href="/shows"
-              onNavigate={onNavigate}
-            >
-              {settings.secondaryCtaLabel}
-            </PublicLink>
           </div>
-          <div className="public-hero__promise" aria-label={`${settings.businessName} service values`}>
-            <span>Authentic products</span>
-            <span>Collector focused</span>
-            <span>Local show service</span>
+
+          <div className="public-hero__visual" aria-hidden="true">
+            {heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}
           </div>
         </div>
-        <div className="public-hero__monogram" aria-hidden="true">DR</div>
+        <div
+          className="public-container public-hero__promise"
+          aria-label={`${settings.businessName} service highlights`}
+        >
+          <span>Sealed inventory</span>
+          <span>Local card shows</span>
+          <span>Buy, sell, and trade</span>
+        </div>
       </section>
 
       <FeaturedInventorySection onNavigate={onNavigate} settings={settings} />
 
       <section className="public-section public-section--muted">
-        <div className="public-container public-show-feature">
-          <div className="public-show-feature__date" aria-hidden="true">
-            <span>Next</span>
-            <strong>SHOW</strong>
-          </div>
-          <div className="public-show-feature__copy">
-            <p className="public-kicker">See {settings.businessName} in person</p>
-            <h2>Our next show is on the way.</h2>
-            <p>
-              Stop by to browse sealed inventory, talk Pokémon, or bring in a
-              collection you would like us to evaluate.
-            </p>
-          </div>
-          <PublicLink
-            className="public-button public-button--secondary"
-            href="/shows"
-            onNavigate={onNavigate}
-          >
-            View show schedule
-            <ArrowIcon />
-          </PublicLink>
-        </div>
-      </section>
-
-      <section className="public-section">
-        <div className="public-container public-split-feature">
-          <div>
+        <div className="public-container public-bst-preview">
+          <div className="public-bst-preview__copy">
             <p className="public-kicker">Your collection, your next move</p>
             <h2>{settings.buySellTradeTitle}</h2>
             <p>{settings.buySellTradeText}</p>
             <PublicLink
-              className="public-button public-button--primary"
+              className="public-button public-button--secondary"
               href="/buy-sell-trade"
               onNavigate={onNavigate}
             >
@@ -364,29 +378,37 @@ function HomePage({ heroImageUrl, onNavigate, settings }: Pick<PublicSiteProps, 
               <ArrowIcon />
             </PublicLink>
           </div>
-          <div className="public-service-grid">
-            {[
-              ["Buy", "Explore sealed Pokémon products selected for collectors."],
-              ["Sell", "Tell us what you have and what you are looking to sell."],
-              ["Trade", "Turn part of your collection into something new."],
-            ].map(([title, copy]) => (
-              <article key={title}>
-                <span>{title.slice(0, 1)}</span>
-                <div>
-                  <h3>{title}</h3>
-                  <p>{copy}</p>
-                </div>
-              </article>
-            ))}
-          </div>
+          <ol className="public-bst-preview__steps">
+            <li>
+              <span>01</span>
+              <div>
+                <strong>Browse what is available</strong>
+                <p>Start with the current public inventory.</p>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <strong>Share your collection details</strong>
+                <p>Send clear photos and what you want to sell or trade.</p>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <strong>Connect directly</strong>
+                <p>Talk through the next step by Instagram or email.</p>
+              </div>
+            </li>
+          </ol>
         </div>
       </section>
 
       <section className="public-contact-band">
         <div className="public-container">
           <div>
-            <p className="public-kicker">Stay connected</p>
-            <h2>See what’s new at {settings.businessName}.</h2>
+            <p className="public-kicker">Have a product or collection question?</p>
+            <h2>Talk directly with {settings.businessName}.</h2>
           </div>
           <div className="public-contact-band__actions">
             <a
@@ -396,7 +418,51 @@ function HomePage({ heroImageUrl, onNavigate, settings }: Pick<PublicSiteProps, 
               rel="noreferrer"
             >
               <InstagramIcon />
-              Follow on Instagram
+              Message on Instagram
+            </a>
+            <PublicLink
+              className="public-button public-button--secondary"
+              href="/contact"
+              onNavigate={onNavigate}
+            >
+              Contact options
+            </PublicLink>
+          </div>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function ShowsPage({
+  onNavigate,
+  settings,
+}: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings }) {
+  return (
+    <section className="public-inner-page public-shows-page">
+      <div className="public-container">
+        <p className="public-kicker">Meet us in person</p>
+        <h1>{settings.showsPageTitle}</h1>
+        <p className="public-inner-page__lead">{settings.showsIntroText}</p>
+
+        <div className="public-empty-state">
+          <span aria-hidden="true">DR</span>
+          <div>
+            <h2>No public show dates are posted right now.</h2>
+            <p>
+              Follow us on Instagram for current event updates, or contact us
+              before making plans to visit.
+            </p>
+          </div>
+          <div className="public-empty-state__actions">
+            <a
+              className="public-button public-button--primary"
+              href={settings.instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <InstagramIcon />
+              Check Instagram
             </a>
             <PublicLink
               className="public-button public-button--secondary"
@@ -407,69 +473,75 @@ function HomePage({ heroImageUrl, onNavigate, settings }: Pick<PublicSiteProps, 
             </PublicLink>
           </div>
         </div>
-      </section>
-    </>
-  );
-}
-
-function PlaceholderPage({
-  description,
-  detail,
-  eyebrow,
-  title,
-}: {
-  description: string;
-  detail: string;
-  eyebrow: string;
-  title: string;
-}) {
-  return (
-    <section className="public-inner-page">
-      <div className="public-container">
-        <p className="public-kicker">{eyebrow}</p>
-        <h1>{title}</h1>
-        <p className="public-inner-page__lead">{description}</p>
-        <div className="public-coming-soon">
-          <span>Coming soon</span>
-          <h2>We’re building this part of the experience.</h2>
-          <p>{detail}</p>
-        </div>
       </div>
     </section>
   );
 }
 
-function BuySellTradePage({ onNavigate, settings }: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings }) {
+function BuySellTradePage({
+  onNavigate,
+  settings,
+}: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings }) {
   return (
     <section className="public-inner-page">
       <div className="public-container">
         <p className="public-kicker">Collector to collector</p>
-        <h1>Buy / Sell / Trade</h1>
-        <p className="public-inner-page__lead">
-          Whether you are starting a collection or making room for the next one,
-          {settings.businessName} is ready to help.
-        </p>
-        <div className="public-info-grid">
-          {[
-            ["Buy", "Browse a curated selection of sealed Pokémon products."],
-            ["Sell", "Share the details of your collection for a straightforward conversation."],
-            ["Trade", "Bring your collection to a show and explore your options in person."],
-          ].map(([title, copy], index) => (
-            <article key={title}>
-              <span>0{index + 1}</span>
-              <h2>{title}</h2>
-              <p>{copy}</p>
-            </article>
-          ))}
+        <h1>{settings.buySellTradeTitle}</h1>
+        <p className="public-inner-page__lead">{settings.buySellTradeText}</p>
+
+        <div className="public-bst-detail">
+          <div className="public-bst-detail__bring">
+            <p className="public-kicker">Start with the details</p>
+            <h2>Tell us what you have in mind.</h2>
+            <ul>
+              <li>Sealed products you want to sell or trade</li>
+              <li>Clear photos and a short collection summary</li>
+              <li>Products you are looking for from our inventory</li>
+            </ul>
+          </div>
+
+          <ol className="public-bst-detail__process">
+            <li>
+              <span>01</span>
+              <div>
+                <h2>Send the details</h2>
+                <p>Use Instagram or email to share the product or collection information.</p>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <h2>Talk through the options</h2>
+                <p>We will confirm what is available and discuss a practical next step.</p>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <h2>Connect in person</h2>
+                <p>When it makes sense, arrange to meet at a card show or agreed location.</p>
+              </div>
+            </li>
+          </ol>
         </div>
-        <PublicLink
-          className="public-button public-button--primary"
-          href="/contact"
-          onNavigate={onNavigate}
-        >
-          Start a conversation
-          <ArrowIcon />
-        </PublicLink>
+
+        <div className="public-page-actions">
+          <PublicLink
+            className="public-button public-button--primary"
+            href="/contact"
+            onNavigate={onNavigate}
+          >
+            Start a conversation
+            <ArrowIcon />
+          </PublicLink>
+          <PublicLink
+            className="public-button public-button--secondary"
+            href="/inventory"
+            onNavigate={onNavigate}
+          >
+            Browse inventory
+          </PublicLink>
+        </div>
       </div>
     </section>
   );
@@ -477,36 +549,39 @@ function BuySellTradePage({ onNavigate, settings }: Pick<PublicSiteProps, "onNav
 
 function ContactPage({ settings }: { settings: PublicSiteSettings }) {
   return (
-    <section className="public-inner-page">
-      <div className="public-container public-contact-page">
-        <div>
-          <p className="public-kicker">Let’s talk Pokémon</p>
-          <h1>{settings.contactPageTitle}</h1>
-          <p className="public-inner-page__lead">{settings.contactText}</p>
+    <section className="public-inner-page public-contact-page">
+      <div className="public-container">
+        <p className="public-kicker">Let’s talk collectibles</p>
+        <h1>{settings.contactPageTitle}</h1>
+        <p className="public-inner-page__lead">{settings.contactText}</p>
+
+        <div className="public-contact-list">
+          <a
+            className="public-contact-card"
+            href={settings.instagramUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            <InstagramIcon />
+            <div>
+              <span>Instagram</span>
+              <strong>Message {settings.businessName}</strong>
+              <p>Ask about products, collections, or current show plans.</p>
+            </div>
+            <ArrowIcon />
+          </a>
+          {settings.contactEmail && (
+            <a className="public-contact-card" href={`mailto:${settings.contactEmail}`}>
+              <span className="public-contact-card__email" aria-hidden="true">@</span>
+              <div>
+                <span>Email</span>
+                <strong>{settings.contactEmail}</strong>
+                <p>Send a product or collection question directly.</p>
+              </div>
+              <ArrowIcon />
+            </a>
+          )}
         </div>
-        <a
-          className="public-contact-card"
-          href={settings.instagramUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          <InstagramIcon />
-          <div>
-            <span>Social</span>
-            <strong>Message us on Instagram</strong>
-            <p>Follow new arrivals, show updates, and collection highlights.</p>
-          </div>
-          <ArrowIcon />
-        </a>
-        {settings.contactEmail && <a className="public-contact-card" href={`mailto:${settings.contactEmail}`}>
-          <span className="public-contact-card__email" aria-hidden="true">@</span>
-          <div>
-            <span>Email</span>
-            <strong>{settings.contactEmail}</strong>
-            <p>Send a product or collection question directly.</p>
-          </div>
-          <ArrowIcon />
-        </a>}
       </div>
     </section>
   );
@@ -530,7 +605,14 @@ function NotFoundPage({ onNavigate }: Pick<PublicSiteProps, "onNavigate">) {
   );
 }
 
-function PublicFooter({ logoUrl, onNavigate, settings }: Pick<PublicSiteProps, "onNavigate"> & { logoUrl: string | null; settings: PublicSiteSettings }) {
+function PublicFooter({
+  logoUrl,
+  onNavigate,
+  settings,
+}: Pick<PublicSiteProps, "onNavigate"> & {
+  logoUrl: string | null;
+  settings: PublicSiteSettings;
+}) {
   return (
     <footer className="public-footer">
       <div className="public-container public-footer__inner">
@@ -550,7 +632,7 @@ function PublicFooter({ logoUrl, onNavigate, settings }: Pick<PublicSiteProps, "
         </nav>
         <p className="public-footer__legal">
           Pokémon and related names are trademarks of their respective owners.
-          {settings.businessName} is an independent retailer.
+          {` ${settings.businessName}`} is an independent retailer.
         </p>
       </div>
     </footer>
