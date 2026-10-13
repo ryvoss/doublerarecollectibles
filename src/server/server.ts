@@ -20,6 +20,7 @@ import publicRouter from "./routes/public";
 import siteRouter from "./routes/site";
 import packPoolsRouter from "./routes/packPools";
 import { createAuthRouter } from "./routes/auth";
+import { createPublicContactRouter } from "./routes/contact";
 import { mountApiRoutes } from "./routes/mountApiRoutes";
 import {
   assertDatabaseEnvironment,
@@ -29,10 +30,12 @@ import {
 } from "./environment";
 import { prisma } from "./prisma";
 import { captureBusinessPositionSnapshot } from "./services/businessPosition";
+import { createResendContactEmailService } from "./services/contactEmail";
 import { requireValidCsrf } from "./security/csrf";
 import {
   allowedApplicationOrigins,
   authenticatedApiLimiter,
+  contactSubmissionLimiter,
   createSameOriginWriteProtection,
   noStore,
   permissionsPolicy,
@@ -105,9 +108,11 @@ const authRouter = createAuthRouter({
     });
   },
 });
+const contactRouter = createPublicContactRouter(createResendContactEmailService());
 
 mountApiRoutes(app, {
   auth: authRouter,
+  contact: contactRouter,
   funds: fundsRouter,
   inventory: inventoryRouter,
   orders: ordersRouter,
@@ -121,6 +126,7 @@ mountApiRoutes(app, {
   whatIfScenarios: whatIfScenariosRouter,
 }, requireAdmin, {
   authenticatedApiLimiter,
+  contactSubmissionLimiter,
   csrfProtection: requireValidCsrf,
   noStore,
   originProtection,

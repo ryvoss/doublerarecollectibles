@@ -13,6 +13,7 @@ import { mountApiRoutes } from "../routes/mountApiRoutes";
 import { requireValidCsrf } from "../security/csrf";
 import {
   authenticatedApiLimiter,
+  contactSubmissionLimiter,
   createSameOriginWriteProtection,
   noStore,
   permissionsPolicy,
@@ -90,6 +91,7 @@ mountApiRoutes(app, {
     csrfProtection: requireValidCsrf,
     originProtection,
   }),
+  contact: Router(),
   funds: readableRouter("/summary"),
   inventory: readableRouter(),
   orders: readableRouter(),
@@ -103,6 +105,7 @@ mountApiRoutes(app, {
   whatIfScenarios: readableRouter(),
 }, requireAdmin, {
   authenticatedApiLimiter,
+  contactSubmissionLimiter,
   csrfProtection: requireValidCsrf,
   noStore,
   originProtection,

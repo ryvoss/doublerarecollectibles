@@ -94,6 +94,18 @@ export const permissionsPolicy: RequestHandler = (_req, res, next) => {
 
 const rateLimitResponse = { error: "Too many requests. Try again later." };
 
+export function createContactSubmissionLimiter() {
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 5,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: rateLimitResponse,
+  });
+}
+
+export const contactSubmissionLimiter = createContactSubmissionLimiter();
+
 export const authenticatedApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 1_500,

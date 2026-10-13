@@ -13,7 +13,7 @@
     "test:setup": "node scripts/test-setup.mjs",
     "test:reset": "node --env-file=.env.test scripts/test-reset.mjs",
     "test:unit": "node --import tsx --test --test-isolation=none --test-concurrency=1 src/shared/*.test.ts src/server/reporting/*.test.ts src/server/services/*.test.ts",
-    "test:auth": "node --import tsx --test --test-isolation=none --test-concurrency=1 src/server/auth/*.test.ts",
+    "test:auth": "node --import tsx --test --test-isolation=none --test-concurrency=1 src/server/auth/*.test.ts src/server/routes/*.test.ts",
     "test": "npm run test:unit && npm run test:auth",
     "build": "prisma generate --config prisma7.config.ts && tsc -b && vite build && npm run build:server",
     "build:server": "esbuild src/server/server.ts scripts/bootstrap-admin.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outdir=dist-server --entry-names=[name]",
@@ -42,7 +42,8 @@
     "pg": "^8.23.0",
     "prisma": "^7.10.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "resend": "^6.32.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

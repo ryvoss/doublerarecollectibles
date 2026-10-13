@@ -2,6 +2,7 @@ import type { Application, RequestHandler, Router } from "express";
 
 export type ApiRouters = {
   auth: Router;
+  contact: Router;
   funds: Router;
   inventory: Router;
   orders: Router;
@@ -21,6 +22,7 @@ export function mountApiRoutes(
   adminGuard: RequestHandler,
   security: {
     authenticatedApiLimiter: RequestHandler;
+    contactSubmissionLimiter: RequestHandler;
     csrfProtection: RequestHandler;
     noStore: RequestHandler;
     originProtection: RequestHandler;
@@ -39,6 +41,10 @@ export function mountApiRoutes(
   app.use("/api/public/product-images", security.publicImageLimiter);
   app.use("/api/public/site-assets", security.publicImageLimiter);
   app.use("/api/public", security.publicApiLimiter);
+  app.use("/api/public/contact", security.contactSubmissionLimiter);
+  app.use("/api/public/contact", security.noStore);
+  app.use("/api/public/contact", security.originProtection);
+  app.use("/api/public/contact", routers.contact);
   app.use("/api/auth", security.noStore);
   app.use("/api/public", routers.public);
   app.use("/api/auth", routers.auth);
