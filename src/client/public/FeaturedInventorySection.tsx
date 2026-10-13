@@ -5,15 +5,18 @@ import {
   openProductContact,
   type ContactOpenHandler,
 } from "./ContactOptions";
-import { PublicInventoryCard } from "./PublicInventoryPage";
+import { PublicInventoryCard } from "./PublicInventoryCard";
+import type { ProductDetailOpenHandler } from "./ProductDetailModal";
 
 export default function FeaturedInventorySection({
   onContact,
   onNavigate,
+  onProductOpen,
   settings,
 }: {
   onContact: ContactOpenHandler;
   onNavigate: (path: string) => void;
+  onProductOpen: ProductDetailOpenHandler;
   settings: PublicSiteSettings;
 }) {
   const [featuredProducts, setFeaturedProducts] =
@@ -105,6 +108,7 @@ export default function FeaturedInventorySection({
               headingLevel="h3"
               product={product}
               showFeaturedLabel={false}
+              onOpen={(trigger) => onProductOpen(trigger, product)}
               onInterested={(trigger) =>
                 openProductContact(onContact, product, trigger)
               }

@@ -204,6 +204,7 @@
 }
 
 .public-catalog-card {
+  position: relative;
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -213,6 +214,25 @@
   background: var(--public-surface);
   box-shadow: 0 16px 38px rgba(0, 0, 0, 0.13);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.public-catalog-card__open {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.public-catalog-card:has(.public-catalog-card__open:focus-visible) {
+  outline: 3px solid rgba(241, 210, 127, 0.95);
+  outline-offset: 3px;
+}
+
+.public-catalog-card__open:focus-visible {
+  outline: 0;
 }
 
 .public-catalog-card:hover {
@@ -393,6 +413,8 @@
 }
 
 .public-catalog-card__action {
+  position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -49,9 +49,10 @@ export function mountApiRoutes(
   app.use("/api/public", routers.public);
   app.use("/api/auth", routers.auth);
 
-  // Every API mounted after this guard is private business functionality.
-  app.use("/api", adminGuard);
+  // Every API below is private business functionality. Apply no-store first
+  // so authentication failures cannot be cached either.
   app.use("/api", security.noStore);
+  app.use("/api", adminGuard);
   app.use("/api", security.authenticatedApiLimiter);
   app.use("/api", security.originProtection);
   app.use("/api", security.csrfProtection);

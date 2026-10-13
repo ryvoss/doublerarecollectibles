@@ -155,12 +155,16 @@ test("every internal router rejects unauthenticated requests", async () => {
     "/api/funds/summary", "/api/reports/business-position", "/api/what-if-scenarios",
     "/api/site", "/api/pack-pools",
   ];
-  for (const path of paths) await request(app).get(path).expect(401);
+  for (const path of paths) {
+    const response = await request(app).get(path).expect(401);
+    assert.match(response.headers["cache-control"], /no-store/);
+  }
 });
 
 test("unauthenticated writes cannot reach business handlers or mutate data", async () => {
   const beforeCount = productMutationCount;
-  await request(app).post("/api/products").send({}).expect(401);
+  const response = await request(app).post("/api/products").send({}).expect(401);
+  assert.match(response.headers["cache-control"], /no-store/);
   assert.equal(productMutationCount, beforeCount);
 });
 

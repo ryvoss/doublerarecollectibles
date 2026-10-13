@@ -10,11 +10,18 @@ import {
   ContactExperience,
   ContactOptionsModal,
   HeaderContactAction,
+  contactProductContext,
   type ContactOpenHandler,
   type ContactProductContext,
 } from "./ContactOptions";
 import FeaturedInventorySection from "./FeaturedInventorySection";
 import PublicInventoryPage from "./PublicInventoryPage";
+import {
+  ProductDetailModal,
+  restoreProductDetailFocus,
+  type ProductDetailOpenHandler,
+} from "./ProductDetailModal";
+import type { PublicInventoryItem } from "../../shared/publicInventory";
 import {
   EMPTY_PUBLIC_SITE_ASSETS,
   PUBLIC_SITE_DEFAULTS,
@@ -22,6 +29,7 @@ import {
   type PublicSiteSettings,
 } from "../../shared/publicSite";
 import "./ContactOptions.css";
+import "./ProductDetailModal.css";
 import "./PublicSite.css";
 
 type PublicSiteProps = {
@@ -103,8 +111,8 @@ function PublicBrandMark({
 }) {
   if (compact) {
     return (
-      <span className="public-brand__mark public-brand__mark--compact" aria-hidden="true">
-        DR
+      <span className={`public-brand__mark public-brand__mark--compact${logoUrl ? " has-image" : ""}`}>
+        {logoUrl ? <img src={logoUrl} alt={`${businessName} logo`} /> : "DR"}
       </span>
     );
   }
@@ -121,7 +129,9 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const [compactHeader, setCompactHeader] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [contactProduct, setContactProduct] = useState<ContactProductContext>();
+  const [detailProduct, setDetailProduct] = useState<PublicInventoryItem>();
   const contactTriggerRef = useRef<HTMLElement | null>(null);
+  const detailTriggerRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationRef = useRef<HTMLElement>(null);
   const [siteConfiguration, setSiteConfiguration] = useState<PublicSiteConfiguration>({
@@ -230,6 +240,25 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
     window.setTimeout(() => contactTriggerRef.current?.focus(), 0);
   }, []);
 
+  const openProductDetail: ProductDetailOpenHandler = useCallback((trigger, product) => {
+    detailTriggerRef.current = trigger;
+    setDetailProduct(product);
+  }, []);
+
+  const closeProductDetail = useCallback(() => {
+    setDetailProduct(undefined);
+    restoreProductDetailFocus(detailTriggerRef.current);
+  }, []);
+
+  const contactFromProductDetail = useCallback((
+    trigger: HTMLButtonElement,
+    product: PublicInventoryItem,
+  ) => {
+    const returnFocusTarget = detailTriggerRef.current ?? trigger;
+    setDetailProduct(undefined);
+    openContact(returnFocusTarget, contactProductContext(product));
+  }, [openContact]);
+
   return (
     <div className="public-site">
       <header className={`public-header${compactHeader ? " public-header--compact" : ""}`}>
@@ -306,11 +335,16 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
             heroImageUrl={assets.heroImageUrl}
             onContact={openContact}
             onNavigate={onNavigate}
+            onProductOpen={openProductDetail}
             settings={settings}
           />
         )}
         {pathname === "/inventory" && (
-          <PublicInventoryPage onContact={openContact} settings={settings} />
+          <PublicInventoryPage
+            onContact={openContact}
+            onProductOpen={openProductDetail}
+            settings={settings}
+          />
         )}
         {pathname === "/shows" && (
           <ShowsPage onNavigate={onNavigate} settings={settings} />
@@ -334,6 +368,13 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           settings={settings}
         />
       )}
+      {detailProduct && (
+        <ProductDetailModal
+          product={detailProduct}
+          onClose={closeProductDetail}
+          onInterested={contactFromProductDetail}
+        />
+      )}
     </div>
   );
 }
@@ -342,10 +383,12 @@ function HomePage({
   heroImageUrl,
   onContact,
   onNavigate,
+  onProductOpen,
   settings,
 }: Pick<PublicSiteProps, "onNavigate"> & {
   heroImageUrl: string | null;
   onContact: ContactOpenHandler;
+  onProductOpen: ProductDetailOpenHandler;
   settings: PublicSiteSettings;
 }) {
   return (
@@ -383,6 +426,7 @@ function HomePage({
       <FeaturedInventorySection
         onContact={onContact}
         onNavigate={onNavigate}
+        onProductOpen={onProductOpen}
         settings={settings}
       />
 

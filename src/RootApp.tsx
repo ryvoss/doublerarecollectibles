@@ -1,7 +1,10 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import PublicSite from "./client/public/PublicSite";
 import AdminLoginPage from "./client/pages/AdminLoginPage";
-import { clearAdminCsrfToken } from "./client/adminFetch";
+import {
+  ADMIN_AUTH_LOST_EVENT,
+  clearAdminCsrfToken,
+} from "./client/adminFetch";
 
 const AdminApp = lazy(() => import("./App"));
 
@@ -18,6 +21,7 @@ function RootApp() {
     normalizePath(window.location.pathname),
   );
   const [adminAuth, setAdminAuth] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [adminAuthInvalidated, setAdminAuthInvalidated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const adminPath = pathname === "/admin" || pathname.startsWith("/admin/");
 
@@ -31,13 +35,29 @@ function RootApp() {
   }, []);
 
   useEffect(() => {
+    function handleAdminAuthLost() {
+      clearAdminCsrfToken();
+      setAdminAuthInvalidated(true);
+      setAdminAuth("unauthenticated");
+      setAuthError(null);
+      if (window.location.pathname !== "/admin/login") {
+        window.history.replaceState({}, "", "/admin/login");
+      }
+      setPathname("/admin/login");
+    }
+
+    window.addEventListener(ADMIN_AUTH_LOST_EVENT, handleAdminAuthLost);
+    return () => window.removeEventListener(ADMIN_AUTH_LOST_EVENT, handleAdminAuthLost);
+  }, []);
+
+  useEffect(() => {
     if (adminPath) {
       document.title = "Admin | Double Rare Collectibles";
     }
   }, [adminPath]);
 
   useEffect(() => {
-    if (!adminPath) return;
+    if (!adminPath || adminAuthInvalidated) return;
     const controller = new AbortController();
     setAdminAuth("checking");
     setAuthError(null);
@@ -77,7 +97,7 @@ function RootApp() {
     });
 
     return () => controller.abort();
-  }, [adminPath, pathname]);
+  }, [adminAuthInvalidated, adminPath, pathname]);
 
   function navigate(nextPath: string) {
     const normalizedPath = normalizePath(nextPath);
@@ -102,6 +122,7 @@ function RootApp() {
         <AdminLoginPage
           initialError={authError}
           onAuthenticated={() => {
+            setAdminAuthInvalidated(false);
             setAdminAuth("authenticated");
             window.history.replaceState({}, "", "/admin");
             setPathname("/admin");

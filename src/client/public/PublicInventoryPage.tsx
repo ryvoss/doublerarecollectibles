@@ -8,15 +8,13 @@ import {
   openProductContact,
   type ContactOpenHandler,
 } from "./ContactOptions";
+import {
+  type ProductDetailOpenHandler,
+} from "./ProductDetailModal";
+import { PublicInventoryCard } from "./PublicInventoryCard";
 import "./PublicInventoryPage.css";
 
 type AvailabilityFilter = "ALL" | PublicInventoryAvailability;
-
-const availabilityLabels: Record<PublicInventoryAvailability, string> = {
-  IN_STOCK: "In Stock",
-  LOW_STOCK: "Low Stock",
-  SOLD_OUT: "Sold Out",
-};
 
 const availabilityFilters: Array<{
   value: AvailabilityFilter;
@@ -28,15 +26,6 @@ const availabilityFilters: Array<{
   { value: "SOLD_OUT", label: "Sold Out" },
 ];
 
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
-function displayPrice(price: number | null) {
-  return price === null ? "Contact for price" : currencyFormatter.format(price);
-}
-
 function SearchIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -46,19 +35,13 @@ function SearchIcon() {
   );
 }
 
-function ArrowIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20">
-      <path d="M4 10h11M11 5l5 5-5 5" />
-    </svg>
-  );
-}
-
 export default function PublicInventoryPage({
   onContact,
+  onProductOpen,
   settings,
 }: {
   onContact: ContactOpenHandler;
+  onProductOpen: ProductDetailOpenHandler;
   settings: PublicSiteSettings;
 }) {
   const [products, setProducts] = useState<PublicInventoryItem[]>([]);
@@ -248,6 +231,7 @@ export default function PublicInventoryPage({
               <PublicInventoryCard
                 key={product.id}
                 product={product}
+                onOpen={(trigger) => onProductOpen(trigger, product)}
                 onInterested={(trigger) =>
                   openProductContact(onContact, product, trigger)
                 }
@@ -258,63 +242,6 @@ export default function PublicInventoryPage({
       </div>
 
     </section>
-  );
-}
-
-export function PublicInventoryCard({
-  headingLevel = "h2",
-  product,
-  onInterested,
-  showFeaturedLabel = true,
-}: {
-  headingLevel?: "h2" | "h3";
-  product: PublicInventoryItem;
-  onInterested: (trigger: HTMLButtonElement) => void;
-  showFeaturedLabel?: boolean;
-}) {
-  const soldOut = product.availability === "SOLD_OUT";
-  const Heading = headingLevel;
-
-  return (
-    <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}`}>
-      <div className="public-catalog-card__image">
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} loading="lazy" decoding="async" />
-        ) : (
-          <div className="public-product-fallback" aria-hidden="true">
-            <span>DR</span>
-          </div>
-        )}
-        {showFeaturedLabel && product.featured && (
-          <span className="public-featured-label">Featured</span>
-        )}
-      </div>
-
-      <div className="public-catalog-card__body">
-        <div className="public-catalog-card__meta">
-          <span className={`public-stock-badge public-stock-badge--${product.availability.toLowerCase()}`}>
-            {availabilityLabels[product.availability]}
-          </span>
-          <span className="public-catalog-card__price">
-            {displayPrice(product.displayPrice)}
-          </span>
-        </div>
-        <Heading>{product.name}</Heading>
-        {product.shortDescription && (
-          <p className="public-catalog-card__description">
-            {product.shortDescription}
-          </p>
-        )}
-        <button
-          className="public-catalog-card__action"
-          type="button"
-          onClick={(event) => onInterested(event.currentTarget)}
-        >
-          I&apos;m Interested
-          <ArrowIcon />
-        </button>
-      </div>
-    </article>
   );
 }
 
