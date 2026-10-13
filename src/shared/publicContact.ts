@@ -37,7 +37,7 @@ const MESSAGE_CONTROL_CHARACTERS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007
 const EMAIL_LOCAL_CHARACTERS = /^[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+$/;
 const EMAIL_DOMAIN_LABEL = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
 
-function isValidEmail(value: string) {
+export function isValidPublicContactEmail(value: string) {
   if (value.length === 0 || value.length > 254 || HEADER_CONTROL_CHARACTERS.test(value)) return false;
   const atIndex = value.lastIndexOf("@");
   if (atIndex <= 0 || atIndex !== value.indexOf("@")) return false;
@@ -86,7 +86,7 @@ export function validatePublicContactSubmission(input: unknown): PublicContactVa
   if (name.length === 0 || name.length > 100 || HEADER_CONTROL_CHARACTERS.test(name)) {
     errors.name = "Enter your name using 100 characters or fewer.";
   }
-  if (!isValidEmail(email)) {
+  if (!isValidPublicContactEmail(email)) {
     errors.email = "Enter a valid email address.";
   }
   if (!TOPICS.has(topic)) {

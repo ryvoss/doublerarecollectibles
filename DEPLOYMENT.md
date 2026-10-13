@@ -11,7 +11,7 @@ This repository is prepared for one Railway Node service and one Railway Postgre
 - `SESSION_SECRET`: a cryptographically random secret containing at least 32 characters. Generate this outside the repository and store it as a Railway secret variable. Changing it invalidates all active admin sessions.
 - `APP_ORIGIN`: the exact HTTPS origin used to open the deployed application, such as `https://app.example.com`. Set this explicitly when using a custom domain. When it is omitted, the app uses Railway's injected `RAILWAY_PUBLIC_DOMAIN`; startup fails if neither value is available.
 - `RESEND_API_KEY`: server-side Resend API key used only by the public contact endpoint.
-- `CONTACT_FORM_FROM_EMAIL`: From address on the verified Resend sending domain. It may include a display name.
+- `CONTACT_FORM_FROM_EMAIL`: email address on the verified Resend sending domain. The application supplies the `Double Rare Collectibles` display name.
 - `CONTACT_FORM_TO_EMAIL`: private business inbox that receives public contact submissions.
 - `PORT`: supplied automatically by Railway. Do not set a fixed Railway port.
 
@@ -62,7 +62,7 @@ NODE_ENV=production
 SESSION_SECRET=<at-least-32-random-characters>
 APP_ORIGIN=https://your-production-domain.example
 RESEND_API_KEY=<Railway-secret>
-CONTACT_FORM_FROM_EMAIL=Double Rare Website <website@notify.your-domain.example>
+CONTACT_FORM_FROM_EMAIL=website@notify.your-domain.example
 CONTACT_FORM_TO_EMAIL=<business-inbox>
 ```
 

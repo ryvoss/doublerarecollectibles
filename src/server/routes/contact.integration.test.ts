@@ -99,6 +99,19 @@ test("unknown properties are rejected without exposing submitted values", async 
   assert.doesNotMatch(JSON.stringify(response.body), /attacker|secret|recipient|apiKey/i);
 });
 
+test("header control-character injection is rejected before delivery", async () => {
+  const { sent, service } = recordingEmailService();
+  const response = await request(createTestApplication(service))
+    .post("/api/public/contact")
+    .set("Origin", testOrigin)
+    .send({ ...validSubmission, name: "Jane Smith\r\nBcc: attacker@example.com" })
+    .expect(400);
+
+  assert.deepEqual(response.body, { error: "Please check the form and try again." });
+  assert.equal(sent.length, 0);
+  assert.doesNotMatch(JSON.stringify(response.body), /attacker|bcc|jane/i);
+});
+
 test("honeypot submissions receive success without sending email", async () => {
   const { sent, service } = recordingEmailService();
   const response = await request(createTestApplication(service))
