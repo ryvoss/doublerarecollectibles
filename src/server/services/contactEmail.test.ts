@@ -51,28 +51,49 @@ test("Resend delivery uses branded From, named Reply-To, HTML, and text fallback
   assert.equal(payload.from, "Double Rare Collectibles <website@notify.example.com>");
   assert.equal(payload.to, "owner@example.com");
   assert.equal(payload.replyTo, '"Jane Smith" <jane@example.com>');
-  assert.equal(payload.subject, "[Website contact] Product question");
+  assert.equal(payload.subject, "Jane Smith \u2014 Product question");
   assert.equal(payload.text, [
-    "New website contact",
+    "You received a new message from Jane Smith.",
     "",
     "Topic: Product question",
-    "Name: Jane Smith",
     "Email: jane@example.com",
     "",
     "Message:",
     "Is this product still available?",
     "",
-    "Sent from doublerarecollectibles.com",
+    "Sent through doublerarecollectibles.com",
   ].join("\n"));
   assert.match(payload.html, /Double Rare Collectibles/);
-  assert.match(payload.html, /New website contact/);
+  assert.match(payload.html, /You received a new message from <strong>Jane Smith<\/strong>\./);
+  assert.doesNotMatch(payload.html, /New website contact/);
   assert.match(payload.html, /Product question/);
   assert.match(payload.html, /Jane Smith/);
   assert.match(payload.html, /jane@example\.com/);
   assert.match(payload.html, /Is this product still available\?/);
-  assert.match(payload.html, /Sent from doublerarecollectibles\.com/);
+  assert.match(payload.html, /Sent through doublerarecollectibles\.com/);
   assert.equal(Object.hasOwn(payload, "cc"), false);
   assert.equal(Object.hasOwn(payload, "bcc"), false);
+});
+
+test("subjects use the visitor name and allowlisted topic wording", async () => {
+  const subjects = [
+    ["BUYING", "Ryan Voss \u2014 Buying inquiry"],
+    ["SELLING", "Ryan Voss \u2014 Selling inquiry"],
+    ["TRADING", "Ryan Voss \u2014 Trading inquiry"],
+    ["PRODUCT_QUESTION", "Ryan Voss \u2014 Product question"],
+    ["SHOW_EVENT_QUESTION", "Ryan Voss \u2014 Show question"],
+    ["GENERAL", "Ryan Voss \u2014 General inquiry"],
+  ] as const;
+
+  for (const [topic, expectedSubject] of subjects) {
+    const { payload } = await captureEmail({
+      name: "Ryan Voss",
+      email: "ryan@example.com",
+      topic,
+      message: "This is a test inquiry.",
+    });
+    assert.equal(payload.subject, expectedSubject);
+  }
 });
 
 test("visitor values are HTML-escaped before email rendering", async () => {

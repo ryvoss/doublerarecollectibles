@@ -1,8 +1,8 @@
 import { Resend } from "resend";
 import {
   isValidPublicContactEmail,
-  publicContactTopicLabel,
   type PublicContactSubmission,
+  type PublicContactTopic,
 } from "../../shared/publicContact";
 
 export type ContactEmailMessage = Omit<PublicContactSubmission, "companyWebsite">;
@@ -43,6 +43,14 @@ function requiredEnvironmentValue(name: string) {
 
 const HEADER_CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const PUBLIC_SITE_HOST = "doublerarecollectibles.com";
+const EMAIL_TOPIC_COPY: Record<PublicContactTopic, { label: string; subject: string }> = {
+  BUYING: { label: "Buying", subject: "Buying inquiry" },
+  SELLING: { label: "Selling", subject: "Selling inquiry" },
+  TRADING: { label: "Trading", subject: "Trading inquiry" },
+  PRODUCT_QUESTION: { label: "Product question", subject: "Product question" },
+  SHOW_EVENT_QUESTION: { label: "Show question", subject: "Show question" },
+  GENERAL: { label: "General", subject: "General inquiry" },
+};
 
 function configuredEmailAddress(value: string) {
   if (HEADER_CONTROL_CHARACTERS.test(value)) throw new ContactEmailDeliveryError();
@@ -70,22 +78,22 @@ function escapeHtml(value: string) {
 }
 
 function plainTextBody(message: ContactEmailMessage) {
+  const topic = EMAIL_TOPIC_COPY[message.topic];
   return [
-    "New website contact",
+    `You received a new message from ${message.name}.`,
     "",
-    `Topic: ${publicContactTopicLabel(message.topic)}`,
-    `Name: ${message.name}`,
+    `Topic: ${topic.label}`,
     `Email: ${message.email}`,
     "",
     "Message:",
     message.message,
     "",
-    `Sent from ${PUBLIC_SITE_HOST}`,
+    `Sent through ${PUBLIC_SITE_HOST}`,
   ].join("\n");
 }
 
 function htmlBody(message: ContactEmailMessage) {
-  const topic = escapeHtml(publicContactTopicLabel(message.topic));
+  const topic = escapeHtml(EMAIL_TOPIC_COPY[message.topic].label);
   const name = escapeHtml(message.name);
   const email = escapeHtml(message.email);
   const visitorMessage = escapeHtml(message.message).replace(/\r?\n/g, "<br>");
@@ -100,19 +108,19 @@ function htmlBody(message: ContactEmailMessage) {
             <tr>
               <td style="padding:24px 28px;background:#0b0c0f;border-bottom:3px solid #d8b557;">
                 <div style="color:#f0cc72;font-size:13px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;">Double Rare Collectibles</div>
-                <div style="margin-top:8px;color:#ffffff;font-size:24px;font-weight:700;line-height:1.25;">New website contact</div>
+                <div style="margin-top:8px;color:#ffffff;font-size:24px;font-weight:700;line-height:1.25;">Message from ${name}</div>
               </td>
             </tr>
             <tr>
               <td style="padding:28px;">
+                <div style="margin-bottom:24px;color:#292a2d;font-size:16px;line-height:1.6;">You received a new message from <strong>${name}</strong>.</div>
                 <div style="margin-bottom:22px;">
                   <div style="margin-bottom:5px;color:#77766f;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Topic</div>
                   <div style="color:#202124;font-size:16px;font-weight:700;">${topic}</div>
                 </div>
                 <div style="margin-bottom:22px;">
-                  <div style="margin-bottom:5px;color:#77766f;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">From</div>
-                  <div style="color:#202124;font-size:16px;font-weight:700;line-height:1.45;">${name}</div>
-                  <div style="color:#5f6064;font-size:14px;line-height:1.45;">${email}</div>
+                  <div style="margin-bottom:5px;color:#77766f;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Visitor email</div>
+                  <div style="color:#202124;font-size:15px;line-height:1.45;">${email}</div>
                 </div>
                 <div>
                   <div style="margin-bottom:8px;color:#77766f;font-size:11px;font-weight:700;letter-spacing:0.8px;text-transform:uppercase;">Message</div>
@@ -121,7 +129,7 @@ function htmlBody(message: ContactEmailMessage) {
               </td>
             </tr>
             <tr>
-              <td style="padding:16px 28px;background:#f8f8f5;border-top:1px solid #e7e7e1;color:#74756f;font-size:12px;line-height:1.5;">Sent from ${PUBLIC_SITE_HOST}</td>
+              <td style="padding:16px 28px;background:#f8f8f5;border-top:1px solid #e7e7e1;color:#74756f;font-size:12px;line-height:1.5;">Sent through ${PUBLIC_SITE_HOST}</td>
             </tr>
           </table>
         </td>
@@ -151,7 +159,7 @@ export function createResendContactEmailService(
           from: `Double Rare Collectibles <${fromAddress}>`,
           to,
           replyTo: namedMailbox(message.name, message.email),
-          subject: `[Website contact] ${publicContactTopicLabel(message.topic)}`,
+          subject: `${message.name} \u2014 ${EMAIL_TOPIC_COPY[message.topic].subject}`,
           text: plainTextBody(message),
           html: htmlBody(message),
         });
