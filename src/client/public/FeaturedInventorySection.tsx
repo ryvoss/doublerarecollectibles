@@ -1,24 +1,24 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import type { PublicInventoryItem } from "../../shared/publicInventory";
 import type { PublicSiteSettings } from "../../shared/publicSite";
 import {
-  PublicInventoryCard,
-  PublicInventoryInterestModal,
-} from "./PublicInventoryPage";
+  openProductContact,
+  type ContactOpenHandler,
+} from "./ContactOptions";
+import { PublicInventoryCard } from "./PublicInventoryPage";
 
 export default function FeaturedInventorySection({
+  onContact,
   onNavigate,
   settings,
 }: {
+  onContact: ContactOpenHandler;
   onNavigate: (path: string) => void;
   settings: PublicSiteSettings;
 }) {
   const [featuredProducts, setFeaturedProducts] =
     useState<PublicInventoryItem[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [selectedProduct, setSelectedProduct] =
-    useState<PublicInventoryItem | null>(null);
-  const interestTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,11 +80,6 @@ export default function FeaturedInventorySection({
     onNavigate("/inventory");
   }
 
-  function closeInterestModal() {
-    setSelectedProduct(null);
-    window.setTimeout(() => interestTriggerRef.current?.focus(), 0);
-  }
-
   return (
     <section className="public-section public-featured-inventory">
       <div className="public-container">
@@ -110,24 +105,13 @@ export default function FeaturedInventorySection({
               headingLevel="h3"
               product={product}
               showFeaturedLabel={false}
-              onInterested={(trigger) => {
-                interestTriggerRef.current = trigger;
-                setSelectedProduct(product);
-              }}
+              onInterested={(trigger) =>
+                openProductContact(onContact, product, trigger)
+              }
             />
           ))}
         </div>
       </div>
-
-      {selectedProduct && (
-        <PublicInventoryInterestModal
-          product={selectedProduct}
-          businessName={settings.businessName}
-          contactEmail={settings.contactEmail}
-          instagramUrl={settings.instagramUrl}
-          onClose={closeInterestModal}
-        />
-      )}
     </section>
   );
 }

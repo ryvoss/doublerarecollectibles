@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useState } from "react";
 import type {
   PublicInventoryAvailability,
   PublicInventoryItem,
 } from "../../shared/publicInventory";
 import type { PublicSiteSettings } from "../../shared/publicSite";
+import {
+  openProductContact,
+  type ContactOpenHandler,
+} from "./ContactOptions";
 import "./PublicInventoryPage.css";
 
 type AvailabilityFilter = "ALL" | PublicInventoryAvailability;
@@ -43,25 +46,6 @@ function SearchIcon() {
   );
 }
 
-function InstagramIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <rect x="3" y="3" width="18" height="18" rx="5" />
-      <circle cx="12" cy="12" r="4.25" />
-      <circle className="public-instagram-dot" cx="17.4" cy="6.7" r="1" />
-    </svg>
-  );
-}
-
-function EmailIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="m4 7 8 6 8-6" />
-    </svg>
-  );
-}
-
 function ArrowIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 20 20">
@@ -70,7 +54,13 @@ function ArrowIcon() {
   );
 }
 
-export default function PublicInventoryPage({ settings }: { settings: PublicSiteSettings }) {
+export default function PublicInventoryPage({
+  onContact,
+  settings,
+}: {
+  onContact: ContactOpenHandler;
+  settings: PublicSiteSettings;
+}) {
   const [products, setProducts] = useState<PublicInventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +68,6 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
   const [search, setSearch] = useState("");
   const [availability, setAvailability] =
     useState<AvailabilityFilter>("ALL");
-  const [selectedProduct, setSelectedProduct] =
-    useState<PublicInventoryItem | null>(null);
-  const interestTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -146,19 +133,6 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
   function clearFilters() {
     setSearch("");
     setAvailability("ALL");
-  }
-
-  function openInterestModal(
-    product: PublicInventoryItem,
-    trigger: HTMLButtonElement,
-  ) {
-    interestTriggerRef.current = trigger;
-    setSelectedProduct(product);
-  }
-
-  function closeInterestModal() {
-    setSelectedProduct(null);
-    window.setTimeout(() => interestTriggerRef.current?.focus(), 0);
   }
 
   return (
@@ -274,22 +248,15 @@ export default function PublicInventoryPage({ settings }: { settings: PublicSite
               <PublicInventoryCard
                 key={product.id}
                 product={product}
-                onInterested={(trigger) => openInterestModal(product, trigger)}
+                onInterested={(trigger) =>
+                  openProductContact(onContact, product, trigger)
+                }
               />
             ))}
           </div>
         )}
       </div>
 
-      {selectedProduct && (
-        <PublicInventoryInterestModal
-          product={selectedProduct}
-          businessName={settings.businessName}
-          contactEmail={settings.contactEmail}
-          instagramUrl={settings.instagramUrl}
-          onClose={closeInterestModal}
-        />
-      )}
     </section>
   );
 }
@@ -363,185 +330,5 @@ function InventorySkeleton() {
         </div>
       ))}
     </div>
-  );
-}
-
-export function PublicInventoryInterestModal({
-  businessName,
-  contactEmail,
-  instagramUrl,
-  product,
-  onClose,
-}: {
-  businessName: string;
-  contactEmail: string;
-  instagramUrl: string;
-  product: PublicInventoryItem;
-  onClose: () => void;
-}) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    const publicSite = document.querySelector<HTMLElement>(".public-site");
-    const hadInertAttribute = publicSite?.hasAttribute("inert") ?? false;
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusable = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-
-      if (focusable.length === 0) {
-        event.preventDefault();
-        dialogRef.current?.focus();
-        return;
-      }
-
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.body.style.overflow = "hidden";
-    publicSite?.setAttribute("inert", "");
-    window.addEventListener("keydown", handleKeyDown);
-    closeButtonRef.current?.focus();
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      if (!hadInertAttribute) {
-        publicSite?.removeAttribute("inert");
-      }
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose]);
-
-  const availability = availabilityLabels[product.availability];
-  const price = displayPrice(product.displayPrice);
-  const emailSubject = `Interested in ${product.name} - ${businessName}`;
-  const emailBody = [
-    `Hi ${businessName},`,
-    "",
-    `I'm interested in ${product.name}.`,
-    `Listed price: ${price}`,
-    `Availability: ${availability}`,
-    "",
-    "Please let me know the next steps.",
-  ].join("\n");
-  const emailHref = `mailto:${contactEmail}?subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}`;
-
-  return createPortal(
-    <div
-      className="public-interest-backdrop"
-      role="presentation"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      <div
-        ref={dialogRef}
-        className="public-interest-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="public-interest-title"
-        aria-describedby="public-interest-description"
-        tabIndex={-1}
-      >
-        <div className="public-interest-modal__header">
-          <div>
-            <p className="public-kicker">Product inquiry</p>
-            <h2 id="public-interest-title">I&apos;m interested</h2>
-          </div>
-          <button
-            ref={closeButtonRef}
-            type="button"
-            onClick={onClose}
-            aria-label="Close inquiry"
-          >
-            &times;
-          </button>
-        </div>
-
-        <div className="public-interest-product">
-          <div className="public-interest-product__image">
-            {product.imageUrl ? (
-              <img src={product.imageUrl} alt={product.name} />
-            ) : (
-              <span aria-hidden="true">DR</span>
-            )}
-          </div>
-          <div>
-            <span className={`public-stock-badge public-stock-badge--${product.availability.toLowerCase()}`}>
-              {availability}
-            </span>
-            <h3>{product.name}</h3>
-            {product.shortDescription && (
-              <p className="public-interest-product__description">
-                {product.shortDescription}
-              </p>
-            )}
-            <strong>{price}</strong>
-          </div>
-        </div>
-
-        <div className="public-interest-modal__copy">
-          <h3>How would you like to connect?</h3>
-          <p id="public-interest-description">
-            Choose the option that works best for you. We will confirm current
-            availability when we respond.
-          </p>
-        </div>
-
-        <div className="public-interest-options">
-          <a href={instagramUrl} target="_blank" rel="noreferrer">
-            <InstagramIcon />
-            <span>
-              <strong>Instagram</strong>
-              <small>Message {businessName}</small>
-            </span>
-            <ArrowIcon />
-          </a>
-          {contactEmail && <a href={emailHref}>
-            <EmailIcon />
-            <span>
-              <strong>Email</strong>
-              <small>Open a prefilled inquiry</small>
-            </span>
-            <ArrowIcon />
-          </a>}
-        </div>
-
-        <button
-          className="public-interest-modal__close"
-          type="button"
-          onClick={onClose}
-        >
-          Keep browsing
-        </button>
-      </div>
-    </div>,
-    document.body,
   );
 }

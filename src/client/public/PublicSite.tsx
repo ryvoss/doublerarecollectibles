@@ -1,11 +1,18 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
-  type FormEvent,
   type MouseEvent,
   type ReactNode,
 } from "react";
+import {
+  ContactExperience,
+  ContactOptionsModal,
+  HeaderContactAction,
+  type ContactOpenHandler,
+  type ContactProductContext,
+} from "./ContactOptions";
 import FeaturedInventorySection from "./FeaturedInventorySection";
 import PublicInventoryPage from "./PublicInventoryPage";
 import {
@@ -14,12 +21,7 @@ import {
   type PublicSiteConfiguration,
   type PublicSiteSettings,
 } from "../../shared/publicSite";
-import {
-  PUBLIC_CONTACT_TOPIC_OPTIONS,
-  validatePublicContactSubmission,
-  type PublicContactFieldErrors,
-  type PublicContactSubmission,
-} from "../../shared/publicContact";
+import "./ContactOptions.css";
 import "./PublicSite.css";
 
 type PublicSiteProps = {
@@ -48,14 +50,6 @@ const knownPublicPaths = new Set([
   "/buy-sell-trade",
   "/contact",
 ]);
-
-const EMPTY_CONTACT_FORM: PublicContactSubmission = {
-  name: "",
-  email: "",
-  topic: "GENERAL",
-  message: "",
-  companyWebsite: "",
-};
 
 function PublicLink({ children, className, href, onNavigate }: PublicLinkProps) {
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
@@ -125,6 +119,9 @@ function PublicBrandMark({
 function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [compactHeader, setCompactHeader] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactProduct, setContactProduct] = useState<ContactProductContext>();
+  const contactTriggerRef = useRef<HTMLElement | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationRef = useRef<HTMLElement>(null);
   const [siteConfiguration, setSiteConfiguration] = useState<PublicSiteConfiguration>({
@@ -220,6 +217,19 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [menuOpen]);
 
+  const openContact: ContactOpenHandler = useCallback((trigger, product) => {
+    contactTriggerRef.current = trigger;
+    setContactProduct(product);
+    setMenuOpen(false);
+    setContactOpen(true);
+  }, []);
+
+  const closeContact = useCallback(() => {
+    setContactOpen(false);
+    setContactProduct(undefined);
+    window.setTimeout(() => contactTriggerRef.current?.focus(), 0);
+  }, []);
+
   return (
     <div className="public-site">
       <header className={`public-header${compactHeader ? " public-header--compact" : ""}`}>
@@ -250,16 +260,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           </nav>
 
           <div className="public-header__actions">
-            <a
-              className="public-instagram-link public-instagram-link--header"
-              href={settings.instagramUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`${settings.businessName} on Instagram`}
-            >
-              <InstagramIcon />
-              <span>Instagram</span>
-            </a>
+            <HeaderContactAction onOpen={openContact} />
 
             <button
               ref={menuButtonRef}
@@ -295,15 +296,6 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
                 <ArrowIcon />
               </PublicLink>
             ))}
-            <a
-              className="public-navigation__instagram"
-              href={settings.instagramUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <InstagramIcon />
-              Instagram
-            </a>
           </nav>
         )}
       </header>
@@ -312,11 +304,14 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         {pathname === "/" && (
           <HomePage
             heroImageUrl={assets.heroImageUrl}
+            onContact={openContact}
             onNavigate={onNavigate}
             settings={settings}
           />
         )}
-        {pathname === "/inventory" && <PublicInventoryPage settings={settings} />}
+        {pathname === "/inventory" && (
+          <PublicInventoryPage onContact={openContact} settings={settings} />
+        )}
         {pathname === "/shows" && (
           <ShowsPage onNavigate={onNavigate} settings={settings} />
         )}
@@ -332,16 +327,25 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         onNavigate={onNavigate}
         settings={settings}
       />
+      {contactOpen && (
+        <ContactOptionsModal
+          onClose={closeContact}
+          product={contactProduct}
+          settings={settings}
+        />
+      )}
     </div>
   );
 }
 
 function HomePage({
   heroImageUrl,
+  onContact,
   onNavigate,
   settings,
 }: Pick<PublicSiteProps, "onNavigate"> & {
   heroImageUrl: string | null;
+  onContact: ContactOpenHandler;
   settings: PublicSiteSettings;
 }) {
   return (
@@ -376,7 +380,11 @@ function HomePage({
         </div>
       </section>
 
-      <FeaturedInventorySection onNavigate={onNavigate} settings={settings} />
+      <FeaturedInventorySection
+        onContact={onContact}
+        onNavigate={onNavigate}
+        settings={settings}
+      />
 
       <section className="public-section public-section--muted">
         <div className="public-container public-bst-preview">
@@ -426,15 +434,14 @@ function HomePage({
             <h2>Talk directly with {settings.businessName}.</h2>
           </div>
           <div className="public-contact-band__actions">
-            <a
+            <button
               className="public-button public-button--primary"
-              href={settings.instagramUrl}
-              target="_blank"
-              rel="noreferrer"
+              type="button"
+              onClick={(event) => onContact(event.currentTarget)}
             >
-              <InstagramIcon />
-              Message on Instagram
-            </a>
+              Contact us
+              <ArrowIcon />
+            </button>
             <PublicLink
               className="public-button public-button--secondary"
               href="/contact"
@@ -563,212 +570,14 @@ function BuySellTradePage({
 }
 
 function ContactPage({ settings }: { settings: PublicSiteSettings }) {
-  const [form, setForm] = useState<PublicContactSubmission>({ ...EMPTY_CONTACT_FORM });
-  const [fieldErrors, setFieldErrors] = useState<PublicContactFieldErrors>({});
-  const [submission, setSubmission] = useState<{
-    kind: "idle" | "pending" | "success" | "error";
-    message: string;
-  }>({ kind: "idle", message: "" });
-
-  function updateField<K extends keyof PublicContactSubmission>(
-    field: K,
-    value: PublicContactSubmission[K],
-  ) {
-    setForm(current => ({ ...current, [field]: value }));
-    setFieldErrors(current => ({ ...current, [field]: undefined }));
-    if (submission.kind !== "idle") setSubmission({ kind: "idle", message: "" });
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submission.kind === "pending") return;
-    const validation = validatePublicContactSubmission(form);
-    if (validation.kind === "invalid") {
-      setFieldErrors(validation.fieldErrors);
-      setSubmission({ kind: "error", message: "Please check the highlighted fields." });
-      return;
-    }
-
-    setFieldErrors({});
-    setSubmission({ kind: "pending", message: "Sending your message…" });
-    try {
-      const response = await fetch("/api/public/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const body = await response.json() as { message?: string; error?: string };
-      if (!response.ok) {
-        setSubmission({
-          kind: "error",
-          message: body.error ?? "Your message could not be sent right now. Please try again later.",
-        });
-        return;
-      }
-
-      setForm({ ...EMPTY_CONTACT_FORM });
-      setSubmission({
-        kind: "success",
-        message: body.message ?? "Thanks. Your message has been sent.",
-      });
-    } catch {
-      setSubmission({
-        kind: "error",
-        message: "Your message could not be sent right now. Please try again later.",
-      });
-    }
-  }
-
   return (
     <section className="public-inner-page public-contact-page">
       <div className="public-container">
-        <p className="public-kicker">Let’s talk collectibles</p>
+        <p className="public-kicker">Let&apos;s talk collectibles</p>
         <h1>{settings.contactPageTitle}</h1>
         <p className="public-inner-page__lead">{settings.contactText}</p>
 
-        <div className="public-contact-layout">
-          <aside className="public-contact-options" aria-labelledby="contact-options-title">
-            <div>
-              <p className="public-kicker">Direct contact</p>
-              <h2 id="contact-options-title">Other ways to reach us</h2>
-            </div>
-            <div className="public-contact-list">
-              <a
-                className="public-contact-card"
-                href={settings.instagramUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <InstagramIcon />
-                <div>
-                  <span>Instagram</span>
-                  <strong>Message {settings.businessName}</strong>
-                  <p>Ask about products, collections, or current show plans.</p>
-                </div>
-                <ArrowIcon />
-              </a>
-              {settings.contactEmail && (
-                <a className="public-contact-card" href={`mailto:${settings.contactEmail}`}>
-                  <span className="public-contact-card__email" aria-hidden="true">@</span>
-                  <div>
-                    <span>Email</span>
-                    <strong>{settings.contactEmail}</strong>
-                    <p>Send a product or collection question directly.</p>
-                  </div>
-                  <ArrowIcon />
-                </a>
-              )}
-            </div>
-          </aside>
-
-          <form className="public-contact-form" noValidate onSubmit={handleSubmit}>
-            <div className="public-contact-form__heading">
-              <p className="public-kicker">Send a message</p>
-              <h2>What can we help with?</h2>
-              <p>Tell us what you are looking for and we will get back to you.</p>
-            </div>
-
-            <div className="public-contact-form__grid">
-              <div className="public-contact-field">
-                <label htmlFor="contact-name">Name</label>
-                <input
-                  id="contact-name"
-                  name="name"
-                  type="text"
-                  autoComplete="name"
-                  maxLength={100}
-                  value={form.name}
-                  aria-invalid={Boolean(fieldErrors.name)}
-                  aria-describedby={fieldErrors.name ? "contact-name-error" : undefined}
-                  onChange={event => updateField("name", event.target.value)}
-                />
-                {fieldErrors.name && <span id="contact-name-error" className="public-contact-field__error">{fieldErrors.name}</span>}
-              </div>
-
-              <div className="public-contact-field">
-                <label htmlFor="contact-email">Email</label>
-                <input
-                  id="contact-email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  maxLength={254}
-                  value={form.email}
-                  aria-invalid={Boolean(fieldErrors.email)}
-                  aria-describedby={fieldErrors.email ? "contact-email-error" : undefined}
-                  onChange={event => updateField("email", event.target.value)}
-                />
-                {fieldErrors.email && <span id="contact-email-error" className="public-contact-field__error">{fieldErrors.email}</span>}
-              </div>
-
-              <div className="public-contact-field public-contact-field--wide">
-                <label htmlFor="contact-topic">Topic</label>
-                <select
-                  id="contact-topic"
-                  name="topic"
-                  value={form.topic}
-                  aria-invalid={Boolean(fieldErrors.topic)}
-                  aria-describedby={fieldErrors.topic ? "contact-topic-error" : undefined}
-                  onChange={event => updateField("topic", event.target.value as PublicContactSubmission["topic"])}
-                >
-                  {PUBLIC_CONTACT_TOPIC_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-                {fieldErrors.topic && <span id="contact-topic-error" className="public-contact-field__error">{fieldErrors.topic}</span>}
-              </div>
-
-              <div className="public-contact-field public-contact-field--wide">
-                <div className="public-contact-field__label-row">
-                  <label htmlFor="contact-message">Message</label>
-                  <span>{form.message.length.toLocaleString()} / 4,000</span>
-                </div>
-                <textarea
-                  id="contact-message"
-                  name="message"
-                  rows={7}
-                  maxLength={4_000}
-                  value={form.message}
-                  aria-invalid={Boolean(fieldErrors.message)}
-                  aria-describedby={fieldErrors.message ? "contact-message-error" : undefined}
-                  onChange={event => updateField("message", event.target.value)}
-                />
-                {fieldErrors.message && <span id="contact-message-error" className="public-contact-field__error">{fieldErrors.message}</span>}
-              </div>
-
-              <div className="public-contact-honeypot" aria-hidden="true">
-                <label htmlFor="contact-company-website">Company website</label>
-                <input
-                  id="contact-company-website"
-                  name="companyWebsite"
-                  type="text"
-                  tabIndex={-1}
-                  autoComplete="off"
-                  value={form.companyWebsite}
-                  onChange={event => updateField("companyWebsite", event.target.value)}
-                />
-              </div>
-            </div>
-
-            <button
-              className="public-button public-button--primary public-contact-form__submit"
-              type="submit"
-              disabled={submission.kind === "pending"}
-            >
-              {submission.kind === "pending" ? "Sending…" : "Send message"}
-              {submission.kind !== "pending" && <ArrowIcon />}
-            </button>
-
-            <div
-              className={`public-contact-form__status${submission.kind === "error" ? " is-error" : ""}${submission.kind === "success" ? " is-success" : ""}`}
-              aria-live="polite"
-              aria-atomic="true"
-            >
-              {submission.message}
-            </div>
-          </form>
-        </div>
+        <ContactExperience settings={settings} />
       </div>
     </section>
   );
