@@ -6,6 +6,7 @@ import { allocatedBatchCost } from "../services/inventoryCost";
 
 const router = Router();
 class FinalizedVisitError extends Error {}
+class InventoryChangedError extends Error {}
 
 // ---------------------------------------------------------
 // TYPES
@@ -16,6 +17,7 @@ type FifoAllocation = {
   quantity: number;
   unitCost: string;
   totalCost: string;
+  batchUpdatedAt: Date;
 };
 
 type PreparedSaleLine = {
@@ -331,7 +333,11 @@ router.post("/", async (req, res) => {
       // BUILD FIFO ALLOCATIONS
       // ---------------------------------------------------------
 
-      const fifoAllocations: FifoAllocation[] = fifoSimulation.allocations;
+      const batchVersions = new Map(batches.map(batch => [batch.id, batch.updatedAt]));
+      const fifoAllocations: FifoAllocation[] = fifoSimulation.allocations.map(allocation => ({
+        ...allocation,
+        batchUpdatedAt: batchVersions.get(allocation.inventoryBatchId)!,
+      }));
 
       // ---------------------------------------------------------
       // CALCULATE LINE FINANCIALS
@@ -530,10 +536,10 @@ router.post("/", async (req, res) => {
                 },
               });
 
-              await tx.inventoryBatch.update({
+              const consumed = await tx.inventoryBatch.updateMany({
                 where: {
-                  id:
-                    allocation.inventoryBatchId,
+                  id: allocation.inventoryBatchId,
+                  updatedAt: allocation.batchUpdatedAt,
                 },
                 data: {
                   quantitySold: {
@@ -542,6 +548,9 @@ router.post("/", async (req, res) => {
                   },
                 },
               });
+              if (consumed.count !== 1) {
+                throw new InventoryChangedError("Inventory cost or availability changed while the sale was being prepared. Review and try again.");
+              }
             }
           }
 
@@ -618,6 +627,10 @@ router.post("/", async (req, res) => {
       return res.status(409).json({
         error: error.message,
       });
+    }
+
+    if (error instanceof InventoryChangedError) {
+      return res.status(409).json({ error: error.message });
     }
 
     res.status(500).json({

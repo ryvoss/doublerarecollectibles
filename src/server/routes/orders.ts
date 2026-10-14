@@ -6,6 +6,11 @@ import { prisma } from "../prisma";
 import { resolveOrderInventory } from "../../shared/orderConversion";
 import { analyzeLandedCosts } from "../../shared/landedCostAnalysis";
 import {
+  buildOrderCorrectionPreview,
+  hasDownstreamInventoryConsumption,
+  type ProposedOrderCorrection,
+} from "../../shared/orderCorrection";
+import {
   minimumReceivedForConsumption,
   orderReceivingStatus,
   receivingTotals,
@@ -18,16 +23,36 @@ class DraftOrderError extends Error {}
 
 class ReceivingError extends Error {}
 
+class CorrectionError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
 const orderInclude = {
   lines: {
     include: {
       purchasedProduct: true,
       sellableProduct: true,
       inventoryBatches: {
-        include: { receiptEvents: { orderBy: { occurredAt: "asc" as const } } },
+        include: {
+          receiptEvents: { orderBy: { occurredAt: "asc" as const } },
+          saleAllocations: { select: { id: true } },
+          packPoolAllocations: { select: { id: true } },
+        },
       },
     },
     orderBy: { id: "asc" as const },
+  },
+  corrections: {
+    include: {
+      changes: { orderBy: { id: "asc" as const } },
+      fundEntry: true,
+    },
+    orderBy: { createdAt: "asc" as const },
   },
 } as const;
 
@@ -87,6 +112,86 @@ function toCents(value: unknown): number {
 // Example: 2550 becomes 25.50.
 function centsToMoney(value: number): string {
   return (value / 100).toFixed(2);
+}
+
+function parseCorrectionInput(body: unknown, lineIds: number[]) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new CorrectionError("Correction details are required.");
+  }
+  const record = body as Record<string, unknown>;
+  const allowed = new Set(["reason", "notes", "shippingCost", "tariffCost", "otherCost", "adjustment", "lines"]);
+  if (Object.keys(record).some(key => !allowed.has(key))) {
+    throw new CorrectionError("Correction details contain an unsupported field.");
+  }
+  const reason = typeof record.reason === "string" ? record.reason.trim() : "";
+  const notes = typeof record.notes === "string" ? record.notes.trim() : "";
+  if (!reason || reason.length > 200 || notes.length > 2000) {
+    throw new CorrectionError("A correction reason is required and notes must stay within the supported length.");
+  }
+  const parseAmount = (value: unknown, label: string, allowNegative = false) => {
+    if ((typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") {
+      throw new CorrectionError(`${label} must be a valid amount.`);
+    }
+    const amount = Number(value);
+    const amountCents = Math.round(amount * 100);
+    if (!Number.isFinite(amount) || !Number.isSafeInteger(amountCents) || Math.abs(amountCents) > 9_999_999_999 || (!allowNegative && amountCents < 0)) {
+      throw new CorrectionError(`${label} is outside the supported range.`);
+    }
+    return amountCents / 100;
+  };
+  if (!Array.isArray(record.lines) || record.lines.length !== lineIds.length) {
+    throw new CorrectionError("Every finalized order line must be included exactly once.");
+  }
+  const lines = record.lines.map(value => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new CorrectionError("Each corrected line must identify an order line and product cost.");
+    }
+    const line = value as Record<string, unknown>;
+    if (Object.keys(line).some(key => key !== "orderLineId" && key !== "productCost")) {
+      throw new CorrectionError("A corrected line contains an unsupported field.");
+    }
+    const orderLineId = Number(line.orderLineId);
+    if (!Number.isSafeInteger(orderLineId) || !lineIds.includes(orderLineId)) {
+      throw new CorrectionError("A corrected line does not belong to this order.");
+    }
+    const productCost = parseAmount(line.productCost, "Product cost");
+    if (productCost <= 0) throw new CorrectionError("Every product cost must be greater than zero.");
+    return { orderLineId, productCost };
+  });
+  if (new Set(lines.map(line => line.orderLineId)).size !== lineIds.length) {
+    throw new CorrectionError("Every finalized order line must be included exactly once.");
+  }
+  const correction: ProposedOrderCorrection = {
+    shippingCost: parseAmount(record.shippingCost, "Shipping"),
+    tariffCost: parseAmount(record.tariffCost, "Tariffs"),
+    otherCost: parseAmount(record.otherCost, "Other cost"),
+    adjustment: parseAmount(record.adjustment, "Adjustment", true),
+    lines,
+  };
+  return { reason, notes: notes || null, correction };
+}
+
+function assertOrderCanBeCorrected(order: {
+  status: string;
+  lines: Array<{
+    inventoryBatches: Array<{
+      quantitySold: number;
+      quantityConverted: number;
+      saleAllocations: unknown[];
+      packPoolAllocations: unknown[];
+    }>;
+  }>;
+}) {
+  if (order.status !== "FINALIZED") throw new CorrectionError("Only finalized orders can be corrected.", 409);
+  if (order.lines.some(line => line.inventoryBatches.length !== 1)) {
+    throw new CorrectionError("Finalized order inventory is incomplete and cannot use the simple correction workflow.", 409);
+  }
+  if (order.lines.some(line => hasDownstreamInventoryConsumption(line.inventoryBatches[0]))) {
+    throw new CorrectionError(
+      "This order cannot be corrected using the simple correction workflow because inventory from it has already been consumed.",
+      409,
+    );
+  }
 }
 
 // ---------------------------------------------------------
@@ -607,7 +712,12 @@ router.post("/:orderId/mark-in-transit", async (req, res) => {
   try {
     const updated = await prisma.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(9157, ${orderId})`;
-      const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      let order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      if (!order) throw new ReceivingError("Order not found.");
+      for (const productId of [...new Set(order.lines.map(line => line.sellableProductId))].sort((a, b) => a - b)) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(7431, ${productId})`;
+      }
+      order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
       if (!order) throw new ReceivingError("Order not found.");
       if (order.status !== "FINALIZED") throw new ReceivingError("Only finalized orders can be marked On the Way.");
 
@@ -711,6 +821,156 @@ router.post("/:orderId/receive", async (req, res) => {
     logServerError("Error receiving order inventory:", error);
     res.status(error instanceof ReceivingError ? 409 : 500).json({
       error: error instanceof ReceivingError ? error.message : "Inventory receipt could not be saved.",
+    });
+  }
+});
+
+function correctionPreviewForOrder(order: {
+  shippingCost: unknown;
+  tariffCost: unknown;
+  otherCost: unknown;
+  adjustment: unknown;
+  lines: Array<{
+    id: number;
+    productCost: unknown;
+    sellableQuantity: number;
+    landedCost: unknown;
+    landedUnitCost: unknown;
+  }>;
+}, correction: ProposedOrderCorrection) {
+  const preview = buildOrderCorrectionPreview({
+    shippingCost: Number(order.shippingCost),
+    tariffCost: Number(order.tariffCost),
+    otherCost: Number(order.otherCost),
+    adjustment: Number(order.adjustment),
+    lines: order.lines.map(line => ({
+      id: line.id,
+      productCost: Number(line.productCost),
+      sellableQuantity: line.sellableQuantity,
+      landedCost: Number(line.landedCost),
+      landedUnitCost: Number(line.landedUnitCost),
+    })),
+  }, correction);
+  if (preview.newOrderTotal <= 0) throw new CorrectionError("Corrected order total must be greater than zero.");
+  if (!preview.reconciled) throw new CorrectionError("Corrected landed costs did not reconcile to the order total.");
+  return preview;
+}
+
+router.post("/:orderId/correction-preview", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "orderId must be a valid integer" });
+    return;
+  }
+  try {
+    const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
+    if (!order) throw new CorrectionError("Order not found.", 404);
+    assertOrderCanBeCorrected(order);
+    const input = parseCorrectionInput(req.body, order.lines.map(line => line.id));
+    res.json({ ...correctionPreviewForOrder(order, input.correction), reason: input.reason, notes: input.notes });
+  } catch (error) {
+    logServerError("Error previewing finalized order correction:", error);
+    res.status(error instanceof CorrectionError ? error.status : 500).json({
+      error: error instanceof CorrectionError ? error.message : "Order correction could not be previewed.",
+    });
+  }
+});
+
+router.post("/:orderId/corrections", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "orderId must be a valid integer" });
+    return;
+  }
+  try {
+    const corrected = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9158, ${orderId})`;
+      let order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      if (!order) throw new CorrectionError("Order not found.", 404);
+      for (const productId of [...new Set(order.lines.map(line => line.sellableProductId))].sort((a, b) => a - b)) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(7431, ${productId})`;
+      }
+      order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      if (!order) throw new CorrectionError("Order not found.", 404);
+      assertOrderCanBeCorrected(order);
+      const input = parseCorrectionInput(req.body, order.lines.map(line => line.id));
+      const preview = correctionPreviewForOrder(order, input.correction);
+      const proposedByLine = new Map(input.correction.lines.map(line => [line.orderLineId, line.productCost]));
+      const changes: Array<{ orderLineId: number | null; field: string; oldValue: string; newValue: string }> = [];
+      const addChange = (orderLineId: number | null, field: string, oldValue: number, newValue: number, precision = 2) => {
+        const oldFixed = oldValue.toFixed(precision);
+        const newFixed = newValue.toFixed(precision);
+        if (oldFixed !== newFixed) changes.push({ orderLineId, field, oldValue: oldFixed, newValue: newFixed });
+      };
+      addChange(null, "SHIPPING_COST", Number(order.shippingCost), input.correction.shippingCost);
+      addChange(null, "TARIFF_COST", Number(order.tariffCost), input.correction.tariffCost);
+      addChange(null, "OTHER_COST", Number(order.otherCost), input.correction.otherCost);
+      addChange(null, "ADJUSTMENT", Number(order.adjustment), input.correction.adjustment);
+      for (const line of order.lines) {
+        const calculated = preview.lines.find(item => item.orderLineId === line.id)!;
+        addChange(line.id, "PRODUCT_COST", Number(line.productCost), proposedByLine.get(line.id)!);
+        addChange(line.id, "LANDED_COST", Number(line.landedCost), calculated.newLandedCost);
+        addChange(line.id, "LANDED_UNIT_COST", Number(line.landedUnitCost), calculated.newLandedUnitCost, 6);
+      }
+      if (!changes.length) throw new CorrectionError("Change at least one financial value before saving a correction.");
+
+      const audit = await tx.orderCorrection.create({
+        data: {
+          orderId,
+          reason: input.reason,
+          notes: input.notes,
+          oldOrderTotal: preview.oldOrderTotal.toFixed(2),
+          newOrderTotal: preview.newOrderTotal.toFixed(2),
+          fundImpact: preview.fundImpact.toFixed(2),
+          changes: { create: changes },
+        },
+      });
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          shippingCost: input.correction.shippingCost.toFixed(2),
+          tariffCost: input.correction.tariffCost.toFixed(2),
+          otherCost: input.correction.otherCost.toFixed(2),
+          adjustment: input.correction.adjustment.toFixed(2),
+        },
+      });
+      for (const line of order.lines) {
+        const calculated = preview.lines.find(item => item.orderLineId === line.id)!;
+        await tx.orderLine.update({
+          where: { id: line.id },
+          data: {
+            productCost: proposedByLine.get(line.id)!.toFixed(2),
+            landedCost: calculated.newLandedCost.toFixed(2),
+            landedUnitCost: calculated.newLandedUnitCost.toFixed(6),
+          },
+        });
+        await tx.inventoryBatch.update({
+          where: { id: line.inventoryBatches[0].id },
+          data: {
+            landedCost: calculated.newLandedCost.toFixed(2),
+            landedUnitCost: calculated.newLandedUnitCost.toFixed(6),
+          },
+        });
+      }
+      if (Math.round(preview.fundImpact * 100) !== 0) {
+        await tx.fundEntry.create({
+          data: {
+            source: "SEALED",
+            type: "ORDER_CORRECTION",
+            amount: preview.fundImpact.toFixed(2),
+            transactionDate: new Date(),
+            orderCorrectionId: audit.id,
+            note: `Order correction ${order.orderNumber}: ${input.reason}`,
+          },
+        });
+      }
+      return tx.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
+    }, { isolationLevel: "Serializable" });
+    res.json(withReceivingState(corrected));
+  } catch (error) {
+    logServerError("Error correcting finalized order:", error);
+    res.status(error instanceof CorrectionError ? error.status : 500).json({
+      error: error instanceof CorrectionError ? error.message : "Order correction could not be saved.",
     });
   }
 });

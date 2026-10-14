@@ -73,6 +73,16 @@ type InventoryDetail = {
     remainingValue: number;
     onHandValue: number;
     inboundValue: number;
+    correctionCount: number;
+    corrections: Array<{
+      id: number;
+      reason: string;
+      notes: string | null;
+      createdAt: string;
+      oldOrderTotal: number;
+      newOrderTotal: number;
+      changes: Array<{ id: number; field: string; oldValue: number; newValue: number }>;
+    }>;
   }[];
 };
 
@@ -257,6 +267,7 @@ export default function InventoryPage() {
                             <BatchValue label="Inbound Cost" value={money(batch.inboundValue)} />
                             <BatchValue label="Total Owned Cost" value={money(batch.remainingValue)} />
                           </dl>
+                          {batch.correctionCount > 0 && <details className="inventory-correction-history"><summary><span className="orders-corrected-badge">Corrected{batch.correctionCount > 1 ? ` ×${batch.correctionCount}` : ""}</span> View cost history</summary><div>{batch.corrections.map((correction, index) => <article key={correction.id}><strong>Correction #{index + 1} · {correction.reason}</strong><small>{new Date(correction.createdAt).toLocaleDateString()} · Order total {money(correction.oldOrderTotal)} → {money(correction.newOrderTotal)}</small>{correction.changes.map(change => <span key={change.id}>{inventoryCorrectionLabel(change.field)}: {inventoryCorrectionValue(change.field, change.oldValue)} → {inventoryCorrectionValue(change.field, change.newValue)}</span>)}</article>)}</div></details>}
                         </article>)}
                       </div>}
                   </section>
@@ -301,6 +312,14 @@ function Table({headings, children}: {headings: string[]; children: ReactNode}) 
 
 function Cell({children}: {children: ReactNode}) {
   return <td >{children}</td>;
+}
+
+function inventoryCorrectionLabel(field: string) {
+  return ({ SHIPPING_COST: "Shipping", TARIFF_COST: "Tariffs", OTHER_COST: "Other Cost", ADJUSTMENT: "Adjustment", PRODUCT_COST: "Product Cost", LANDED_COST: "Landed Cost", LANDED_UNIT_COST: "Landed Cost / Unit" } as Record<string, string>)[field] ?? field;
+}
+
+function inventoryCorrectionValue(field: string, value: number) {
+  return field === "LANDED_UNIT_COST" ? `$${value.toFixed(6)}` : money(value);
 }
 
 function PackInventorySection({items}: {items: PackInventoryItem[]}) {

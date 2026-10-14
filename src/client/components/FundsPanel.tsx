@@ -30,6 +30,7 @@ type FundEntryType =
   | "OPENING_BALANCE"
   | "SEALED_SALE"
   | "ORDER_PURCHASE"
+  | "ORDER_CORRECTION"
   | "SINGLES_SHOW_GAIN"
   | "PACK_SHOW_REVENUE"
   | "PERSONAL_CONTRIBUTION"
@@ -62,6 +63,11 @@ type FundEntry = {
   order: {
     id: number;
     orderNumber: string;
+  } | null;
+
+  orderCorrection: {
+    id: number;
+    order: { id: number; orderNumber: string };
   } | null;
 
   showVisit: {
@@ -178,6 +184,11 @@ function getEntryLabel(
       return entry.order
         ? `Inventory Order ${entry.order.orderNumber}`
         : "Inventory Order";
+
+    case "ORDER_CORRECTION":
+      return entry.orderCorrection
+        ? `Order Correction · ${entry.orderCorrection.order.orderNumber}`
+        : "Order Correction";
 
     case "SINGLES_SHOW_GAIN":
       return entry.showVisit

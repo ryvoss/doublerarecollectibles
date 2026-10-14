@@ -299,6 +299,13 @@ router.get("/entries", async (req, res) => {
             },
           },
 
+          orderCorrection: {
+            select: {
+              id: true,
+              order: { select: { id: true, orderNumber: true } },
+            },
+          },
+
           showVisit: {
             select: {
               id: true,

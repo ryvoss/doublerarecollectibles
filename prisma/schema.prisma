@@ -155,6 +155,7 @@ model Order {
   lines OrderLine[]
 
   fundEntry FundEntry?
+  corrections OrderCorrection[]
 }
 
 enum OrderStatus {
@@ -180,6 +181,41 @@ model OrderLine {
   sellableProduct  Product @relation("SellableProduct", fields: [sellableProductId], references: [id])
 
   inventoryBatches InventoryBatch[]
+  correctionChanges OrderCorrectionChange[]
+}
+
+// Finalized orders remain locked. Each correction is an immutable record of
+// an explicitly approved financial reconciliation applied to current values.
+model OrderCorrection {
+  id            Int      @id @default(autoincrement())
+  orderId       Int
+  reason        String   @db.VarChar(200)
+  notes         String?  @db.VarChar(2000)
+  oldOrderTotal Decimal  @db.Decimal(14, 2)
+  newOrderTotal Decimal  @db.Decimal(14, 2)
+  fundImpact    Decimal  @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
+
+  order     Order                   @relation(fields: [orderId], references: [id])
+  changes   OrderCorrectionChange[]
+  fundEntry FundEntry?
+
+  @@index([orderId, createdAt])
+}
+
+model OrderCorrectionChange {
+  id                Int      @id @default(autoincrement())
+  orderCorrectionId Int
+  orderLineId       Int?
+  field             String   @db.VarChar(40)
+  oldValue          Decimal  @db.Decimal(18, 6)
+  newValue          Decimal  @db.Decimal(18, 6)
+
+  orderCorrection OrderCorrection @relation(fields: [orderCorrectionId], references: [id])
+  orderLine       OrderLine?      @relation(fields: [orderLineId], references: [id])
+
+  @@index([orderCorrectionId])
+  @@index([orderLineId])
 }
 
 // ---------------------------------------------------------
@@ -449,6 +485,7 @@ model FundEntry {
   transactionDate    DateTime
   saleId             Int?          @unique
   orderId            Int?          @unique
+  orderCorrectionId  Int?          @unique
   showVisitId        Int?
   showPackSnapshotId Int?
   note               String?
@@ -456,6 +493,7 @@ model FundEntry {
 
   sale             Sale?             @relation(fields: [saleId], references: [id])
   order            Order?            @relation(fields: [orderId], references: [id])
+  orderCorrection  OrderCorrection?  @relation(fields: [orderCorrectionId], references: [id])
   showVisit        ShowVisit?        @relation(fields: [showVisitId], references: [id])
   showPackSnapshot ShowPackSnapshot? @relation(fields: [showPackSnapshotId], references: [id])
 
@@ -479,6 +517,7 @@ enum FundEntryType {
   OPENING_BALANCE
   SEALED_SALE
   ORDER_PURCHASE
+  ORDER_CORRECTION
   SINGLES_SHOW_GAIN
   PACK_SHOW_REVENUE
   PERSONAL_CONTRIBUTION

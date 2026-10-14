@@ -61,6 +61,44 @@ type OrderInventoryBatch = {
   }>;
 };
 
+type OrderCorrectionChange = {
+  id: number;
+  orderLineId: number | null;
+  field: string;
+  oldValue: string | number;
+  newValue: string | number;
+};
+
+type OrderCorrection = {
+  id: number;
+  reason: string;
+  notes: string | null;
+  oldOrderTotal: string | number;
+  newOrderTotal: string | number;
+  fundImpact: string | number;
+  createdAt: string;
+  changes: OrderCorrectionChange[];
+  fundEntry: { id: number; amount: string | number } | null;
+};
+
+type OrderCorrectionPreview = {
+  oldProductCost: number;
+  newProductCost: number;
+  oldOrderTotal: number;
+  newOrderTotal: number;
+  inventoryValueImpact: number;
+  fundImpact: number;
+  lines: Array<{
+    orderLineId: number;
+    oldProductCost: number;
+    newProductCost: number;
+    oldLandedCost: number;
+    newLandedCost: number;
+    oldLandedUnitCost: number;
+    newLandedUnitCost: number;
+  }>;
+};
+
 type OrderLine = {
   id: number;
   orderId: number;
@@ -99,6 +137,7 @@ type Order = {
   updatedAt: string;
 
   lines: OrderLine[];
+  corrections: OrderCorrection[];
 };
 
 type NewOrderForm = {
@@ -680,12 +719,10 @@ export default function OrdersPage({
                         </TableCell>
 
                         <TableCell>
-                          <OrderStatusBadge
-                            status={
-                              order.status
-                            }
+                          <div className="orders-status-stack"><OrderStatusBadge
+                            status={order.status}
                             receivingStatus={order.receivingStatus}
-                          />
+                          />{order.corrections?.length > 0 && <span className="orders-corrected-badge">Corrected{order.corrections.length > 1 ? ` ×${order.corrections.length}` : ""}</span>}</div>
                         </TableCell>
 
                         <TableCell>
@@ -1018,6 +1055,8 @@ function OrderDetailModal({
   const [editingOrder, setEditingOrder] = useState(false);
   const [showFinalizeReview, setShowFinalizeReview] = useState(false);
   const [showReceiveItems, setShowReceiveItems] = useState(false);
+  const [showCorrection, setShowCorrection] = useState(false);
+  const [showCorrectionHistory, setShowCorrectionHistory] = useState(false);
 
   const [working, setWorking] =
     useState(false);
@@ -1039,6 +1078,10 @@ function OrderDetailModal({
 
   const isDraft =
     order.status === "DRAFT";
+
+  const simpleCorrectionBlocked = order.lines.some(line =>
+    line.inventoryBatches.some(batch => batch.quantitySold > 0 || batch.quantityConverted > 0),
+  );
 
   const landedCostAnalyses = isDraft ? null : {
     STORED: analyzeLandedCosts(order, "STORED"),
@@ -1161,6 +1204,11 @@ function OrderDetailModal({
       wide
     >
       {isDraft && <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingOrder(true)}>Edit Order Information & Costs</button>}
+      {!isDraft && <div className="orders-finalized-actions">
+        <button type="button" className="secondary-button" disabled={working || simpleCorrectionBlocked} title={simpleCorrectionBlocked ? "Inventory from this order has already been consumed." : undefined} onClick={() => setShowCorrection(true)}>Correct Order</button>
+        {order.corrections?.length > 0 && <button type="button" className="orders-corrected-badge is-button" onClick={() => setShowCorrectionHistory(true)}>Corrected{order.corrections.length > 1 ? ` ×${order.corrections.length}` : ""}</button>}
+        {simpleCorrectionBlocked && <span className="orders-correction-blocked">Simple correction unavailable because inventory from this order has already been consumed.</span>}
+      </div>}
       <div className="orders-summary-grid">
         <SummaryBox
           label="Product Cost"
@@ -1642,6 +1690,16 @@ function OrderDetailModal({
           }}
         />
       )}
+      {showCorrection && !isDraft && (
+        <OrderCorrectionModal order={order} products={products} onClose={() => setShowCorrection(false)} onCorrected={async () => {
+          setShowCorrection(false);
+          await onChanged(order.id);
+          window.dispatchEvent(new Event("business-data-changed"));
+        }} />
+      )}
+      {showCorrectionHistory && !isDraft && (
+        <OrderCorrectionHistoryModal order={order} products={products} onClose={() => setShowCorrectionHistory(false)} />
+      )}
     </ModalShell>
   );
 }
@@ -1735,6 +1793,118 @@ function ReceiveItemsModal({
       </footer>
     </form>
   </div>;
+}
+
+function OrderCorrectionModal({
+  order,
+  products,
+  onClose,
+  onCorrected,
+}: {
+  order: Order;
+  products: Product[];
+  onClose: () => void;
+  onCorrected: () => Promise<void>;
+}) {
+  const [shippingCost, setShippingCost] = useState(String(order.shippingCost));
+  const [tariffCost, setTariffCost] = useState(String(order.tariffCost));
+  const [otherCost, setOtherCost] = useState(String(order.otherCost));
+  const [adjustment, setAdjustment] = useState(String(order.adjustment));
+  const [lineCosts, setLineCosts] = useState<Record<number, string>>(
+    Object.fromEntries(order.lines.map(line => [line.id, String(line.productCost)])),
+  );
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [preview, setPreview] = useState<OrderCorrectionPreview | null>(null);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const payload = () => ({
+    reason: reason.trim(),
+    notes: notes.trim(),
+    shippingCost,
+    tariffCost,
+    otherCost,
+    adjustment,
+    lines: order.lines.map(line => ({ orderLineId: line.id, productCost: lineCosts[line.id] })),
+  });
+  const change = (setter: (value: string) => void, value: string) => {
+    setter(value);
+    setPreview(null);
+  };
+
+  async function requestPreview() {
+    try {
+      setWorking(true);
+      setError(null);
+      const response = await adminFetch(`/api/orders/${order.id}/correction-preview`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload()),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Order correction could not be previewed.");
+      setPreview(body as OrderCorrectionPreview);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Order correction could not be previewed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function commit() {
+    if (!preview) return;
+    try {
+      setWorking(true);
+      setError(null);
+      const response = await adminFetch(`/api/orders/${order.id}/corrections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload()),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Order correction could not be saved.");
+      await onCorrected();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Order correction could not be saved.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return <div className="modal-backdrop orders-review-backdrop">
+    <div className="modal-surface orders-correction-modal" role="dialog" aria-modal="true" aria-labelledby="order-correction-title">
+      <header className="orders-modal-header"><div><span>Audited reconciliation</span><h2 id="order-correction-title">Correct {order.orderNumber}</h2><p>Only untouched finalized inventory can use this workflow. Quantities and receiving state will not change.</p></div><button type="button" aria-label="Close" disabled={working} onClick={onClose}>×</button></header>
+      <div className="orders-correction-body">
+        <section><h3>Corrected financial values</h3><div className="orders-correction-grid">
+          <label>Shipping<input style={inputStyle} type="number" min="0" step="0.01" value={shippingCost} onChange={event => change(setShippingCost, event.target.value)} /></label>
+          <label>Tariffs<input style={inputStyle} type="number" min="0" step="0.01" value={tariffCost} onChange={event => change(setTariffCost, event.target.value)} /></label>
+          <label>Other<input style={inputStyle} type="number" min="0" step="0.01" value={otherCost} onChange={event => change(setOtherCost, event.target.value)} /></label>
+          <label>Adjustment<input style={inputStyle} type="number" step="0.01" value={adjustment} onChange={event => change(setAdjustment, event.target.value)} /></label>
+        </div><div className="orders-correction-lines">{order.lines.map(line => <label key={line.id}><span><strong>{getProductLabel(line.purchasedProduct, line.purchasedProductId, products)}</strong><small>{line.sellableQuantity} sellable units · current {money(line.productCost)}</small></span><span>Corrected Product Cost<input style={inputStyle} type="number" min="0.01" step="0.01" value={lineCosts[line.id]} onChange={event => { setLineCosts(current => ({ ...current, [line.id]: event.target.value })); setPreview(null); }} /></span></label>)}</div></section>
+        <section className="orders-correction-reason"><h3>Audit reason</h3><label>Reason<input style={inputStyle} maxLength={200} value={reason} onChange={event => change(setReason, event.target.value)} placeholder="Why is this finalized order being corrected?" /></label><label>Notes <span>Optional</span><textarea maxLength={2000} value={notes} onChange={event => change(setNotes, event.target.value)} /></label></section>
+        {preview && <section className="orders-correction-preview"><div><h3>Correction Preview</h3><p>The server recalculated official Value Allocation. Review before committing.</p></div><div className="orders-correction-summary"><SummaryBox label="Product Cost" value={`${money(preview.oldProductCost)} → ${money(preview.newProductCost)}`} /><SummaryBox label="Order Total" value={`${money(preview.oldOrderTotal)} → ${money(preview.newOrderTotal)}`} /><SummaryBox label="Inventory Value Impact" value={signedMoney(preview.inventoryValueImpact)} /><SummaryBox label="SEALED Funds Impact" value={signedMoney(preview.fundImpact)} /></div><div className="table-scroll"><table className="orders-table"><thead><tr><TableHeader>Product</TableHeader><TableHeader>Product Cost</TableHeader><TableHeader>Landed Cost</TableHeader><TableHeader>Landed / Unit</TableHeader></tr></thead><tbody>{preview.lines.map(line => { const source = order.lines.find(item => item.id === line.orderLineId)!; return <tr key={line.orderLineId}><TableCell>{getProductLabel(source.sellableProduct, source.sellableProductId, products)}</TableCell><TableCell>{money(line.oldProductCost)} → {money(line.newProductCost)}</TableCell><TableCell>{money(line.oldLandedCost)} → {money(line.newLandedCost)}</TableCell><TableCell>{money(line.oldLandedUnitCost)} → {money(line.newLandedUnitCost)}</TableCell></tr>; })}</tbody></table></div></section>}
+        {error && <ErrorMessage message={error} />}
+      </div>
+      <footer className="orders-review-actions"><button type="button" style={secondaryButtonStyle} disabled={working} onClick={onClose}>Cancel</button>{preview ? <><button type="button" className="secondary-button" disabled={working} onClick={() => setPreview(null)}>Back to Values</button><button type="button" className="primary-button" disabled={working} onClick={() => void commit()}>{working ? "Applying…" : "Confirm & Apply Correction"}</button></> : <button type="button" className="primary-button" disabled={working || !reason.trim()} onClick={() => void requestPreview()}>{working ? "Calculating…" : "Review Correction"}</button>}</footer>
+    </div>
+  </div>;
+}
+
+function OrderCorrectionHistoryModal({ order, products, onClose }: { order: Order; products: Product[]; onClose: () => void }) {
+  return <div className="modal-backdrop orders-review-backdrop"><div className="modal-surface orders-correction-history" role="dialog" aria-modal="true" aria-labelledby="correction-history-title"><header className="orders-modal-header"><div><span>Immutable audit history</span><h2 id="correction-history-title">Corrections · {order.orderNumber}</h2><p>Current values appear on the order. Every prior correction remains recorded below.</p></div><button type="button" aria-label="Close" onClick={onClose}>×</button></header><div className="orders-correction-body">{order.corrections.map((correction, index) => <article className="orders-correction-history-card" key={correction.id}><header><div><span>Correction #{index + 1}</span><strong>{correction.reason}</strong><small>{formatDate(correction.createdAt)}</small></div><div><span>Order Total</span><strong>{money(correction.oldOrderTotal)} → {money(correction.newOrderTotal)}</strong><small>Funds impact {signedMoney(Number(correction.fundImpact))}</small></div></header>{correction.notes && <p>{correction.notes}</p>}<div className="orders-correction-change-list">{correction.changes.map(change => { const line = change.orderLineId === null ? null : order.lines.find(item => item.id === change.orderLineId); return <div key={change.id}><span>{line ? `${getProductLabel(line.sellableProduct, line.sellableProductId, products)} · ` : ""}{correctionFieldLabel(change.field)}</span><strong>{correctionChangeValue(change.field, change.oldValue)} → {correctionChangeValue(change.field, change.newValue)}</strong></div>; })}</div></article>)}</div><footer className="orders-review-actions"><button type="button" className="primary-button" onClick={onClose}>Close</button></footer></div></div>;
+}
+
+function signedMoney(value: number) {
+  return `${value > 0 ? "+" : ""}${money(value)}`;
+}
+
+function correctionFieldLabel(field: string) {
+  return ({ SHIPPING_COST: "Shipping", TARIFF_COST: "Tariffs", OTHER_COST: "Other Cost", ADJUSTMENT: "Adjustment", PRODUCT_COST: "Product Cost", LANDED_COST: "Landed Cost", LANDED_UNIT_COST: "Landed Cost / Unit" } as Record<string, string>)[field] ?? field;
+}
+
+function correctionChangeValue(field: string, value: string | number) {
+  return field === "LANDED_UNIT_COST" ? `$${Number(value).toFixed(6)}` : money(value);
 }
 
 function OrderFinalizationReview({

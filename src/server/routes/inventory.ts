@@ -161,7 +161,14 @@ router.get("/:productId", async (req, res) => {
 
             orderLine: {
               include: {
-                order: true,
+                order: {
+                  include: {
+                    corrections: {
+                      include: { changes: { orderBy: { id: "asc" } } },
+                      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+                    },
+                  },
+                },
               },
             },
           },
@@ -251,6 +258,24 @@ router.get("/:productId", async (req, res) => {
         ),
         onHandValue: Number(splitCost.onHandCost.toFixed(2)),
         inboundValue: Number(splitCost.inboundCost.toFixed(2)),
+
+        correctionCount: batch.orderLine.order.corrections.length,
+        corrections: batch.orderLine.order.corrections.map(correction => ({
+          id: correction.id,
+          reason: correction.reason,
+          notes: correction.notes,
+          createdAt: correction.createdAt,
+          oldOrderTotal: Number(correction.oldOrderTotal),
+          newOrderTotal: Number(correction.newOrderTotal),
+          changes: correction.changes
+            .filter(change => change.orderLineId === null || change.orderLineId === batch.orderLineId)
+            .map(change => ({
+              id: change.id,
+              field: change.field,
+              oldValue: Number(change.oldValue),
+              newValue: Number(change.newValue),
+            })),
+        })),
 
         createdAt: batch.createdAt,
       };
