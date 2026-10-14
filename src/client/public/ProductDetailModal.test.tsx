@@ -21,6 +21,8 @@ const product: PublicInventoryItem = {
   shortDescription: "A sealed collector box.",
   imageUrl: "/api/public/images/products/42/example.png",
   displayPrice: 100,
+  compareAtPrice: null,
+  recentPriceDrop: false,
   featured: true,
   availability: "LOW_STOCK",
   moreArrivingSoon: false,
@@ -84,6 +86,46 @@ test("product detail content shows only customer-facing product fields", () => {
   assert.match(markup, /example\.png/);
   assert.match(markup, /I’m interested/);
   assert.doesNotMatch(markup, /cost|cogs|margin|quantity|batch/i);
+});
+
+test("product card and detail mirror recent price-drop presentation", () => {
+  const dropped = {
+    ...product,
+    displayPrice: 39,
+    compareAtPrice: 45,
+    recentPriceDrop: true,
+    availability: "IN_STOCK" as const,
+  };
+  const cardMarkup = renderToStaticMarkup(React.createElement(PublicInventoryCard, {
+    product: dropped,
+    onOpen: () => undefined,
+    onInterested: () => undefined,
+  }));
+  const detailMarkup = renderToStaticMarkup(React.createElement(ProductDetailContent, {
+    product: dropped,
+    onInterested: () => undefined,
+  }));
+  for (const markup of [cardMarkup, detailMarkup]) {
+    assert.match(markup, /Recent Price Drop/);
+    assert.match(markup, /\$39\.00/);
+    assert.match(markup, /was \$45\.00/);
+  }
+});
+
+test("Coming Soon stays primary and uses an arrival inquiry CTA", () => {
+  const markup = renderToStaticMarkup(React.createElement(ProductDetailContent, {
+    product: {
+      ...product,
+      availability: "COMING_SOON",
+      recentPriceDrop: true,
+      compareAtPrice: 125,
+    },
+    onInterested: () => undefined,
+  }));
+  assert.match(markup, /Coming Soon/);
+  assert.doesNotMatch(markup, /Recent Price Drop/);
+  assert.match(markup, /Arriving soon/);
+  assert.match(markup, /Ask about arrival/);
 });
 
 test("product-detail inquiry uses the existing contact context", () => {

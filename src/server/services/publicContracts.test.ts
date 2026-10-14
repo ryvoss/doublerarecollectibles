@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PUBLIC_SITE_DEFAULTS } from "../../shared/publicSite";
-import { toPublicInventoryItem, toPublicSiteSettings } from "./publicContracts";
+import { normalizeHomepageSections, toPublicInventoryItem, toPublicSiteSettings } from "./publicContracts";
 
 test("public inventory mapping returns only the customer contract", () => {
   const source = {
@@ -11,6 +11,8 @@ test("public inventory mapping returns only the customer contract", () => {
     shortDescription: "Customer description",
     imageKey: "products/7/private-key.png",
     publicPrice: null,
+    compareAtPrice: null,
+    priceUpdatedAt: null,
     expectedSalePrice: 49.99,
     featured: true,
     landedCost: 21.25,
@@ -22,7 +24,7 @@ test("public inventory mapping returns only the customer contract", () => {
   const result = toPublicInventoryItem(source, "/api/public/product-images/7/image.png");
 
   assert.deepEqual(Object.keys(result).sort(), [
-    "availability", "displayPrice", "featured", "id", "imageUrl", "moreArrivingSoon", "name", "shortDescription",
+    "availability", "compareAtPrice", "displayPrice", "featured", "id", "imageUrl", "moreArrivingSoon", "name", "recentPriceDrop", "shortDescription",
   ]);
   assert.equal(result.name, "Customer name");
   assert.equal(result.displayPrice, 49.99);
@@ -39,6 +41,8 @@ test("public availability reports inbound-only inventory as Coming Soon without 
     displayName: null,
     shortDescription: null,
     publicPrice: null,
+    compareAtPrice: null,
+    priceUpdatedAt: null,
     expectedSalePrice: 25,
     featured: false,
     inventoryBatches: [{
@@ -53,6 +57,56 @@ test("public availability reports inbound-only inventory as Coming Soon without 
   assert.doesNotMatch(JSON.stringify(result), /quantityPurchased|quantityReceived|unitsInbound|inventoryBatches/i);
 });
 
+test("public availability stays In Stock when on-hand and inbound inventory both exist", () => {
+  const result = toPublicInventoryItem({
+    id: 10,
+    name: "Restocking product",
+    displayName: null,
+    shortDescription: null,
+    publicPrice: 30,
+    compareAtPrice: null,
+    priceUpdatedAt: null,
+    expectedSalePrice: 30,
+    featured: false,
+    inventoryBatches: [{
+      quantityPurchased: 8,
+      quantityReceived: 4,
+      quantitySold: 0,
+      quantityConverted: 0,
+    }],
+  }, null);
+  assert.equal(result.availability, "IN_STOCK");
+  assert.equal(result.moreArrivingSoon, true);
+  assert.doesNotMatch(JSON.stringify(result), /unitsInbound|quantityPurchased|quantityReceived/i);
+});
+
+test("public inventory derives and expires a safe recent price-drop flag", () => {
+  const now = new Date("2026-10-14T12:00:00.000Z");
+  const source = {
+    id: 9,
+    name: "Price drop product",
+    displayName: null,
+    shortDescription: null,
+    publicPrice: 39,
+    compareAtPrice: 45,
+    priceUpdatedAt: new Date("2026-10-01T12:00:00.000Z"),
+    expectedSalePrice: 45,
+    featured: false,
+    inventoryBatches: [{ quantityPurchased: 2, quantityReceived: 2, quantitySold: 0, quantityConverted: 0 }],
+  };
+  const result = toPublicInventoryItem(source, null, now);
+  assert.equal(result.displayPrice, 39);
+  assert.equal(result.compareAtPrice, 45);
+  assert.equal(result.recentPriceDrop, true);
+  assert.doesNotMatch(JSON.stringify(result), /priceUpdatedAt/);
+
+  const expired = toPublicInventoryItem({
+    ...source,
+    priceUpdatedAt: new Date("2026-08-01T12:00:00.000Z"),
+  }, null, now);
+  assert.equal(expired.recentPriceDrop, false);
+});
+
 test("public site settings mapping exposes exactly the intended content fields", () => {
   const source = {
     ...PUBLIC_SITE_DEFAULTS,
@@ -64,4 +118,18 @@ test("public site settings mapping exposes exactly the intended content fields",
   const result = toPublicSiteSettings(source);
   assert.deepEqual(Object.keys(result).sort(), Object.keys(PUBLIC_SITE_DEFAULTS).sort());
   assert.doesNotMatch(JSON.stringify(result), /internalNotes|createdAt|updatedAt/);
+});
+
+test("homepage section normalization preserves valid ordering and restores missing safe defaults", () => {
+  const sections = normalizeHomepageSections([
+    { key: "CONTACT", visible: false },
+    { key: "HERO", visible: true },
+    { key: "NOT_REAL", visible: true },
+  ]);
+  assert.deepEqual(sections.slice(0, 2), [
+    { key: "CONTACT", visible: false },
+    { key: "HERO", visible: true },
+  ]);
+  assert.equal(sections.length, 6);
+  assert.equal(new Set(sections.map((section) => section.key)).size, 6);
 });

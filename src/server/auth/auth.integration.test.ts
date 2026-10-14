@@ -59,6 +59,8 @@ publicRouter.get("/inventory", (_req, res) => res.json([toPublicInventoryItem({
   displayName: "Customer name",
   shortDescription: "Customer description",
   publicPrice: 12.5,
+  compareAtPrice: 15,
+  priceUpdatedAt: new Date(),
   expectedSalePrice: 14,
   featured: true,
   inventoryBatches: [{ quantityPurchased: 4, quantityReceived: 4, quantitySold: 0, quantityConverted: 0 }],
@@ -66,6 +68,7 @@ publicRouter.get("/inventory", (_req, res) => res.json([toPublicInventoryItem({
 publicRouter.get("/site", (_req, res) => res.json({
   settings: toPublicSiteSettings(PUBLIC_SITE_DEFAULTS),
   assets: EMPTY_PUBLIC_SITE_ASSETS,
+  nextShow: null,
 }));
 
 function readableRouter(path = "/") {
@@ -140,11 +143,11 @@ test("public APIs remain available without a session", async () => {
   await request(app).get("/api/health").expect(200);
   const inventory = await request(app).get("/api/public/inventory").expect(200);
   assert.deepEqual(Object.keys(inventory.body[0]).sort(), [
-    "availability", "displayPrice", "featured", "id", "imageUrl", "moreArrivingSoon", "name", "shortDescription",
+    "availability", "compareAtPrice", "displayPrice", "featured", "id", "imageUrl", "moreArrivingSoon", "name", "recentPriceDrop", "shortDescription",
   ]);
   assert.doesNotMatch(JSON.stringify(inventory.body), /landed|cost|cogs|quantity|margin|profit|batch|order|fund|internal/i);
   const site = await request(app).get("/api/public/site").expect(200);
-  assert.deepEqual(Object.keys(site.body).sort(), ["assets", "settings"]);
+  assert.deepEqual(Object.keys(site.body).sort(), ["assets", "nextShow", "settings"]);
   assert.deepEqual(Object.keys(site.body.settings).sort(), Object.keys(PUBLIC_SITE_DEFAULTS).sort());
   assert.deepEqual(Object.keys(site.body.assets).sort(), Object.keys(EMPTY_PUBLIC_SITE_ASSETS).sort());
 });

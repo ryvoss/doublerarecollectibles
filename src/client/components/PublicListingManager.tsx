@@ -5,6 +5,7 @@ import type {
   AdminPublicListingUpdate,
   PublicInventoryAvailability,
 } from "../../shared/publicInventory";
+import { isValidPublicMoney, suggestedCompareAtPrice } from "../../shared/publicInventory";
 import ProductImageManager from "./ProductImageManager";
 
 type ListingFilter = "ALL" | "PUBLIC" | "HIDDEN" | "FEATURED";
@@ -13,6 +14,7 @@ type ListingDraft = {
   displayName: string;
   shortDescription: string;
   publicPrice: string;
+  compareAtPrice: string;
   publicVisible: boolean;
   featured: boolean;
 };
@@ -48,6 +50,7 @@ function draftsFrom(items: AdminPublicListingItem[]) {
         displayName: item.displayName ?? "",
         shortDescription: item.shortDescription ?? "",
         publicPrice: item.publicPrice === null ? "" : String(item.publicPrice),
+        compareAtPrice: item.compareAtPrice === null ? "" : String(item.compareAtPrice),
         publicVisible: item.publicVisible,
         featured: item.featured,
       },
@@ -74,6 +77,7 @@ export default function PublicListingManager({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [previewId, setPreviewId] = useState<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -128,7 +132,8 @@ export default function PublicListingManager({
         (draft.shortDescription.trim() || null) !== item.shortDescription ||
         draft.publicVisible !== item.publicVisible ||
         draft.featured !== item.featured ||
-        draftPrice !== item.publicPrice
+        draftPrice !== item.publicPrice ||
+        publicPriceFrom(draft.compareAtPrice) !== item.compareAtPrice
       ) {
         dirty.add(item.id);
       }
@@ -154,6 +159,8 @@ export default function PublicListingManager({
     });
   }, [drafts, filter, items, search]);
 
+  const previewItem = previewId === null ? null : items.find((item) => item.id === previewId) ?? null;
+
   const allVisibleSelected =
     visibleItems.length > 0 &&
     visibleItems.every((item) => selectedIds.has(item.id));
@@ -167,6 +174,22 @@ export default function PublicListingManager({
         ...update,
       },
     }));
+  }
+
+  function updatePublicPrice(item: AdminPublicListingItem, value: string) {
+    const draft = drafts[item.id];
+    const nextPrice = publicPriceFrom(value);
+    const previousDisplayPrice = item.publicPrice ?? item.expectedSalePrice;
+    const currentCompareAt = publicPriceFrom(draft.compareAtPrice);
+    const suggestedCompareAt = nextPrice === null || !isValidPublicMoney(nextPrice)
+      ? currentCompareAt
+      : suggestedCompareAtPrice(previousDisplayPrice, nextPrice, currentCompareAt);
+    updateDraft(item.id, {
+      publicPrice: value,
+      ...(suggestedCompareAt !== currentCompareAt && suggestedCompareAt !== null
+        ? { compareAtPrice: suggestedCompareAt.toFixed(2) }
+        : {}),
+    });
   }
 
   function toggleSelected(productId: number) {
@@ -236,12 +259,21 @@ export default function PublicListingManager({
       if (!dirtyIds.has(item.id)) continue;
       const draft = drafts[item.id];
       const publicPrice = publicPriceFrom(draft.publicPrice);
+      const compareAtPrice = publicPriceFrom(draft.compareAtPrice);
 
       if (
         publicPrice !== null &&
-        (!Number.isFinite(publicPrice) || publicPrice < 0 || publicPrice > 99999999.99)
+        !isValidPublicMoney(publicPrice)
       ) {
         setError(`Enter a valid public price for ${item.internalName}.`);
+        return;
+      }
+
+      if (
+        compareAtPrice !== null &&
+        !isValidPublicMoney(compareAtPrice)
+      ) {
+        setError(`Enter a valid compare-at price for ${item.internalName}.`);
         return;
       }
 
@@ -260,6 +292,7 @@ export default function PublicListingManager({
         displayName: draft.displayName.trim() || null,
         shortDescription: draft.shortDescription.trim() || null,
         publicPrice,
+        compareAtPrice,
         publicVisible: draft.publicVisible,
         featured: draft.featured,
       });
@@ -283,25 +316,11 @@ export default function PublicListingManager({
       }
 
       const savedCount = updates.length;
-      const nextItems = items.map((item) => {
-        const update = updates.find((candidate) => candidate.id === item.id);
-        return update
-          ? {
-              ...item,
-              displayName: update.displayName ?? null,
-              shortDescription: update.shortDescription ?? null,
-              publicPrice: update.publicPrice ?? null,
-              publicVisible: update.publicVisible ?? item.publicVisible,
-              featured: update.featured ?? item.featured,
-            }
-          : item;
-      });
-      setItems(nextItems);
-      setDrafts(draftsFrom(nextItems));
       setSelectedIds(new Set());
       setSuccess(
         `${savedCount} ${savedCount === 1 ? "listing" : "listings"} saved.`,
       );
+      setReloadKey((key) => key + 1);
     } catch (saveError) {
       setError(
         saveError instanceof Error
@@ -330,7 +349,7 @@ export default function PublicListingManager({
           <div>
             <span>Customer site merchandising</span>
             <h2 id="public-listing-title">Manage Public Listings</h2>
-            <p>Update visibility, featured products, and customer-facing prices.</p>
+            <p>Update visibility, featured products, customer prices, and recent price drops.</p>
           </div>
           <div className="public-listing-header__summary">
             <span><strong>{items.filter((item) => drafts[item.id]?.publicVisible).length}</strong> public</span>
@@ -392,6 +411,18 @@ export default function PublicListingManager({
           </div>
         )}
 
+        {previewItem && drafts[previewItem.id] && <aside className="public-listing-preview" aria-label={`Customer preview for ${previewItem.internalName}`}>
+          <div className="public-listing-preview__image">{previewItem.imageUrl ? <img src={previewItem.imageUrl} alt="" /> : <span>DR</span>}</div>
+          <div>
+            <span>{previewItem.recentPriceDrop ? "Recent Price Drop" : stockLabels[previewItem.stockStatus]}</span>
+            <h3>{drafts[previewItem.id].displayName.trim() || previewItem.internalName}</h3>
+            {drafts[previewItem.id].shortDescription.trim() && <p>{drafts[previewItem.id].shortDescription.trim()}</p>}
+            <strong>{money(publicPriceFrom(drafts[previewItem.id].publicPrice) ?? previewItem.expectedSalePrice)}</strong>
+            {publicPriceFrom(drafts[previewItem.id].compareAtPrice) !== null && <del>{money(publicPriceFrom(drafts[previewItem.id].compareAtPrice))}</del>}
+          </div>
+          <button type="button" aria-label="Close customer preview" onClick={() => setPreviewId(null)}>&times;</button>
+        </aside>}
+
         <div className="public-listing-content">
           {loading ? (
             <div className="public-listing-state" role="status">Loading sellable products...</div>
@@ -415,6 +446,7 @@ export default function PublicListingManager({
                 <span>Stock</span>
                 <span>Expected Price</span>
                 <span>Public Price</span>
+                <span>Compare-at</span>
                 <span>Public</span>
                 <span>Featured</span>
               </div>
@@ -456,6 +488,7 @@ export default function PublicListingManager({
                       />
                       <small>Internal: {item.internalName}</small>
                       {dirtyIds.has(item.id) && <span>Unsaved</span>}
+                      <button type="button" className="public-listing-preview-button" onClick={() => setPreviewId(item.id)}>Preview</button>
                     </div>
                     <label className="public-listing-description">
                       <input
@@ -483,7 +516,7 @@ export default function PublicListingManager({
                         max="99999999.99"
                         step="0.01"
                         value={draft.publicPrice}
-                        onChange={(event) => updateDraft(item.id, { publicPrice: event.target.value })}
+                        onChange={(event) => updatePublicPrice(item, event.target.value)}
                         aria-label={`Public price for ${item.internalName}`}
                         placeholder={item.expectedSalePrice === null ? "Not set" : item.expectedSalePrice.toFixed(2)}
                       />
@@ -493,6 +526,31 @@ export default function PublicListingManager({
                             ? "No fallback price"
                             : `Uses ${money(item.expectedSalePrice)}`
                           : "Overrides expected price"}
+                      </small>
+                    </label>
+                    <label className="public-listing-price public-listing-price--compare">
+                      <span>$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="99999999.99"
+                        step="0.01"
+                        value={draft.compareAtPrice}
+                        onChange={(event) => updateDraft(item.id, { compareAtPrice: event.target.value })}
+                        aria-label={`Compare-at price for ${item.internalName}`}
+                        placeholder="Optional"
+                      />
+                      <small>
+                        {(() => {
+                          const price = publicPriceFrom(draft.publicPrice);
+                          const compare = publicPriceFrom(draft.compareAtPrice);
+                          const pendingPriceChange = price !== item.publicPrice || compare !== item.compareAtPrice;
+                          if (price !== null && compare !== null && compare > price && pendingPriceChange) {
+                            return "Recent Price Drop after save";
+                          }
+                          if (item.recentPriceDrop && !pendingPriceChange) return "Recent Price Drop active";
+                          return compare === null ? "No reference price" : "Reference price only";
+                        })()}
                       </small>
                     </label>
                     <label className="public-listing-switch">

@@ -15,6 +15,7 @@ import {
   type ContactProductContext,
 } from "./ContactOptions";
 import FeaturedInventorySection from "./FeaturedInventorySection";
+import ComingSoonSection from "./ComingSoonSection";
 import PublicInventoryPage from "./PublicInventoryPage";
 import {
   ProductDetailModal,
@@ -25,7 +26,11 @@ import type { PublicInventoryItem } from "../../shared/publicInventory";
 import {
   EMPTY_PUBLIC_SITE_ASSETS,
   PUBLIC_SITE_DEFAULTS,
+  CTA_TARGET_PATHS,
+  isAnnouncementActive,
+  visibleHomepageSectionKeys,
   type PublicSiteConfiguration,
+  type PublicNextShow,
   type PublicSiteSettings,
 } from "../../shared/publicSite";
 import "./ContactOptions.css";
@@ -137,6 +142,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const [siteConfiguration, setSiteConfiguration] = useState<PublicSiteConfiguration>({
     settings: { ...PUBLIC_SITE_DEFAULTS },
     assets: { ...EMPTY_PUBLIC_SITE_ASSETS },
+    nextShow: null,
   });
   const { assets, settings } = siteConfiguration;
 
@@ -329,6 +335,8 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         )}
       </header>
 
+      {isAnnouncementActive(settings) && <div className="public-announcement" role="status"><div className="public-container"><span>{settings.announcementMessage}</span>{settings.announcementCtaLabel && <PublicLink href={CTA_TARGET_PATHS[settings.announcementCtaTarget]} onNavigate={onNavigate}>{settings.announcementCtaLabel} <ArrowIcon /></PublicLink>}</div></div>}
+
       <main>
         {pathname === "/" && (
           <HomePage
@@ -336,6 +344,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
             onContact={openContact}
             onNavigate={onNavigate}
             onProductOpen={openProductDetail}
+            nextShow={siteConfiguration.nextShow}
             settings={settings}
           />
         )}
@@ -347,7 +356,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
           />
         )}
         {pathname === "/shows" && (
-          <ShowsPage onNavigate={onNavigate} settings={settings} />
+          <ShowsPage nextShow={siteConfiguration.nextShow} onNavigate={onNavigate} settings={settings} />
         )}
         {pathname === "/buy-sell-trade" && (
           <BuySellTradePage onNavigate={onNavigate} settings={settings} />
@@ -381,129 +390,38 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
 
 function HomePage({
   heroImageUrl,
+  nextShow,
   onContact,
   onNavigate,
   onProductOpen,
   settings,
 }: Pick<PublicSiteProps, "onNavigate"> & {
   heroImageUrl: string | null;
+  nextShow: PublicNextShow | null;
   onContact: ContactOpenHandler;
   onProductOpen: ProductDetailOpenHandler;
   settings: PublicSiteSettings;
 }) {
-  return (
-    <>
-      <section className="public-hero">
-        <div className="public-container public-hero__layout">
-          <div className="public-hero__content">
-            <p className="public-kicker">{settings.tagline}</p>
-            <h1>{settings.heroTitle}</h1>
-            <p className="public-hero__lead">{settings.heroSubtitle}</p>
-            <PublicLink
-              className="public-button public-button--primary public-hero__cta"
-              href="/inventory"
-              onNavigate={onNavigate}
-            >
-              {settings.primaryCtaLabel}
-              <ArrowIcon />
-            </PublicLink>
-          </div>
+  const sections: Record<PublicSiteSettings["homepageSections"][number]["key"], ReactNode> = {
+    HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h1>{settings.heroTitle}</h1><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div></div><div className="public-hero__visual" aria-hidden="true">{heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}</div></div><div className="public-container public-hero__promise" aria-label={`${settings.businessName} service highlights`}><span>Sealed inventory</span><span>Local card shows</span><span>Buy, sell, and trade</span></div></section>,
+    MERCHANDISING: <FeaturedInventorySection key="merchandising" excludeComingSoon={settings.homepageSections.some((section) => section.key === "COMING_SOON" && section.visible)} onContact={onContact} onNavigate={onNavigate} onProductOpen={onProductOpen} settings={settings} />,
+    COMING_SOON: <ComingSoonSection key="coming-soon" onContact={onContact} onProductOpen={onProductOpen} settings={settings} />,
+    NEXT_SHOW: nextShow ? <NextShowSection key="next-show" nextShow={nextShow} onNavigate={onNavigate} settings={settings} /> : null,
+    BUY_SELL_TRADE: <section className="public-section public-section--muted" key="bst"><div className="public-container public-bst-preview"><div className="public-bst-preview__copy"><p className="public-kicker">Your collection, your next move</p><h2>{settings.buySellTradeTitle}</h2><p>{settings.buySellTradeText}</p><PublicLink className="public-button public-button--secondary" href="/buy-sell-trade" onNavigate={onNavigate}>{settings.buySellTradeCtaLabel}<ArrowIcon /></PublicLink></div><ol className="public-bst-preview__steps"><li><span>01</span><div><strong>Browse what is available</strong><p>Start with the current public inventory.</p></div></li><li><span>02</span><div><strong>Share your collection details</strong><p>Send clear photos and what you want to sell or trade.</p></div></li><li><span>03</span><div><strong>Connect directly</strong><p>Talk through the next step through the contact form, Instagram, or email.</p></div></li></ol></div></section>,
+    CONTACT: <section className="public-contact-band" key="contact"><div className="public-container"><div><p className="public-kicker">{settings.contactPageTitle}</p><h2>{settings.contactText}</h2></div><div className="public-contact-band__actions"><button className="public-button public-button--primary" type="button" onClick={(event) => onContact(event.currentTarget)}>Contact us<ArrowIcon /></button><PublicLink className="public-button public-button--secondary" href="/contact" onNavigate={onNavigate}>Contact options</PublicLink></div></div></section>,
+  };
+  return <>{visibleHomepageSectionKeys(settings.homepageSections).map((key) => sections[key])}</>;
+}
 
-          <div className="public-hero__visual" aria-hidden="true">
-            {heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}
-          </div>
-        </div>
-        <div
-          className="public-container public-hero__promise"
-          aria-label={`${settings.businessName} service highlights`}
-        >
-          <span>Sealed inventory</span>
-          <span>Local card shows</span>
-          <span>Buy, sell, and trade</span>
-        </div>
-      </section>
-
-      <FeaturedInventorySection
-        onContact={onContact}
-        onNavigate={onNavigate}
-        onProductOpen={onProductOpen}
-        settings={settings}
-      />
-
-      <section className="public-section public-section--muted">
-        <div className="public-container public-bst-preview">
-          <div className="public-bst-preview__copy">
-            <p className="public-kicker">Your collection, your next move</p>
-            <h2>{settings.buySellTradeTitle}</h2>
-            <p>{settings.buySellTradeText}</p>
-            <PublicLink
-              className="public-button public-button--secondary"
-              href="/buy-sell-trade"
-              onNavigate={onNavigate}
-            >
-              Learn how it works
-              <ArrowIcon />
-            </PublicLink>
-          </div>
-          <ol className="public-bst-preview__steps">
-            <li>
-              <span>01</span>
-              <div>
-                <strong>Browse what is available</strong>
-                <p>Start with the current public inventory.</p>
-              </div>
-            </li>
-            <li>
-              <span>02</span>
-              <div>
-                <strong>Share your collection details</strong>
-                <p>Send clear photos and what you want to sell or trade.</p>
-              </div>
-            </li>
-            <li>
-              <span>03</span>
-              <div>
-                <strong>Connect directly</strong>
-                <p>Talk through the next step by Instagram or email.</p>
-              </div>
-            </li>
-          </ol>
-        </div>
-      </section>
-
-      <section className="public-contact-band">
-        <div className="public-container">
-          <div>
-            <p className="public-kicker">Have a product or collection question?</p>
-            <h2>Talk directly with {settings.businessName}.</h2>
-          </div>
-          <div className="public-contact-band__actions">
-            <button
-              className="public-button public-button--primary"
-              type="button"
-              onClick={(event) => onContact(event.currentTarget)}
-            >
-              Contact us
-              <ArrowIcon />
-            </button>
-            <PublicLink
-              className="public-button public-button--secondary"
-              href="/contact"
-              onNavigate={onNavigate}
-            >
-              Contact options
-            </PublicLink>
-          </div>
-        </div>
-      </section>
-    </>
-  );
+function NextShowSection({ nextShow, onNavigate, settings }: { nextShow: PublicNextShow; onNavigate: (path: string) => void; settings: PublicSiteSettings }) {
+  return <section className="public-section public-next-show"><div className="public-container"><div className="public-section-heading"><div><p className="public-kicker">Meet us in person</p><h2>{settings.nextShowSectionTitle}</h2></div></div><article className="public-next-show__card"><time dateTime={nextShow.date}>{new Date(nextShow.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</time><h3>{nextShow.name}</h3>{nextShow.venue && <strong>{nextShow.venue}</strong>}{nextShow.location && <p>{nextShow.location}</p>}{nextShow.boothInfo && <p>{nextShow.boothInfo}</p>}{nextShow.note && <p>{nextShow.note}</p>}<PublicLink className="public-button public-button--secondary" href="/shows" onNavigate={onNavigate}>Show details <ArrowIcon /></PublicLink></article></div></section>;
 }
 
 function ShowsPage({
+  nextShow,
   onNavigate,
   settings,
-}: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings }) {
+}: Pick<PublicSiteProps, "onNavigate"> & { nextShow: PublicNextShow | null; settings: PublicSiteSettings }) {
   return (
     <section className="public-inner-page public-shows-page">
       <div className="public-container">
@@ -511,7 +429,7 @@ function ShowsPage({
         <h1>{settings.showsPageTitle}</h1>
         <p className="public-inner-page__lead">{settings.showsIntroText}</p>
 
-        <div className="public-empty-state">
+        {nextShow ? <div className="public-next-show-page"><NextShowSection nextShow={nextShow} onNavigate={onNavigate} settings={settings} /></div> : <div className="public-empty-state">
           <span aria-hidden="true">DR</span>
           <div>
             <h2>No public show dates are posted right now.</h2>
@@ -538,7 +456,7 @@ function ShowsPage({
               Contact us
             </PublicLink>
           </div>
-        </div>
+        </div>}
       </div>
     </section>
   );

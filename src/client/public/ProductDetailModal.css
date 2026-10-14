@@ -244,9 +244,21 @@
   margin-bottom: 16px;
 }
 
-.public-product-detail__meta > strong {
+.public-product-detail__prices {
+  display: grid;
+  justify-items: end;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.public-product-detail__prices strong {
   color: var(--public-gold-light);
-  font-size: 18px;
+  font-size: 21px;
+}
+
+.public-product-detail__prices del {
+  color: var(--public-muted);
+  font-size: 12px;
 }
 
 .public-product-detail__information h2 {

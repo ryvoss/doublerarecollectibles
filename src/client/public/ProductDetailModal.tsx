@@ -11,6 +11,7 @@ import type {
   PublicInventoryAvailability,
   PublicInventoryItem,
 } from "../../shared/publicInventory";
+import { primaryMerchandisingBadge } from "../../shared/publicInventory";
 
 export type ProductGalleryImage = {
   alt: string;
@@ -28,6 +29,14 @@ const availabilityLabels: Record<PublicInventoryAvailability, string> = {
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 };
+
+const detailBadgeLabels = {
+  RECENT_PRICE_DROP: "Recent Price Drop",
+  COMING_SOON: "Coming Soon",
+  LOW_STOCK: "Low Stock",
+  SOLD_OUT: "Sold Out",
+  FEATURED: "Featured",
+} as const;
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -187,6 +196,7 @@ export function ProductDetailContent({
     () => images ?? galleryImagesForProduct(product),
     [images, product],
   );
+  const primaryBadge = primaryMerchandisingBadge(product);
 
   return (
     <div className="public-product-detail__body">
@@ -194,13 +204,26 @@ export function ProductDetailContent({
 
       <section className="public-product-detail__information">
         <div className="public-product-detail__meta">
-          <span className={`public-stock-badge public-stock-badge--${product.availability.toLowerCase()}`}>
-            {availabilityLabels[product.availability]}
+          <span className="public-product-detail__status">
+            {primaryBadge && (
+              <span className={`public-stock-badge public-stock-badge--${primaryBadge.toLowerCase()}`}>
+                {detailBadgeLabels[primaryBadge]}
+              </span>
+            )}
+            {primaryBadge !== product.availability && (
+              <span className="public-availability-text">{availabilityLabels[product.availability]}</span>
+            )}
           </span>
-          <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
+          <span className="public-product-detail__prices">
+            <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
+            {product.recentPriceDrop && product.compareAtPrice !== null && (
+              <del>was {formatPublicProductPrice(product.compareAtPrice)}</del>
+            )}
+          </span>
         </div>
         <h2 id="public-product-detail-title">{product.name}</h2>
-        {product.moreArrivingSoon && <p className="public-arrival-note">More inventory is arriving soon.</p>}
+        {product.availability === "COMING_SOON" && <p className="public-arrival-note">Arriving soon</p>}
+        {product.availability !== "COMING_SOON" && product.moreArrivingSoon && <p className="public-arrival-note">More inventory is arriving soon.</p>}
         {product.shortDescription ? (
           <p>{product.shortDescription}</p>
         ) : (

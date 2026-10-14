@@ -123,7 +123,7 @@ const navigation: {
     icon: "★",
   },
   { id: "reports", label: "Reports", icon: "▥" },
-  { id: "publicSite", label: "Public Site", icon: "◎" },
+  { id: "publicSite", label: "Storefront", icon: "◎" },
 ];
 
 // ---------------------------------------------------------

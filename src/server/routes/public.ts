@@ -94,6 +94,8 @@ router.get("/inventory", async (_req, res) => {
         shortDescription: true,
         imageKey: true,
         publicPrice: true,
+        compareAtPrice: true,
+        priceUpdatedAt: true,
         expectedSalePrice: true,
         featured: true,
         inventoryBatches: {

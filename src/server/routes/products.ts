@@ -6,7 +6,12 @@ import type {
   AdminPublicListingItem,
   AdminPublicListingUpdate,
 } from "../../shared/publicInventory";
-import { publicAvailabilityForUnits } from "../../shared/publicInventory";
+import {
+  isRecentPriceDrop,
+  isValidPublicMoney,
+  publicAvailabilityForUnits,
+  resolvePublicPriceUpdate,
+} from "../../shared/publicInventory";
 import {
   ProductImageValidationError,
   productImageStorage,
@@ -172,6 +177,8 @@ router.get("/public-listings", async (_req, res) => {
         imageKey: true,
         expectedSalePrice: true,
         publicPrice: true,
+        compareAtPrice: true,
+        priceUpdatedAt: true,
         publicVisible: true,
         featured: true,
         inventoryBatches: {
@@ -217,6 +224,16 @@ router.get("/public-listings", async (_req, res) => {
           product.publicPrice === null
             ? null
             : Number(product.publicPrice),
+        compareAtPrice:
+          product.compareAtPrice === null
+            ? null
+            : Number(product.compareAtPrice),
+        priceUpdatedAt: product.priceUpdatedAt?.toISOString() ?? null,
+        recentPriceDrop: isRecentPriceDrop({
+          publicPrice: product.publicPrice === null ? null : Number(product.publicPrice),
+          compareAtPrice: product.compareAtPrice === null ? null : Number(product.compareAtPrice),
+          priceUpdatedAt: product.priceUpdatedAt,
+        }),
         publicVisible: product.publicVisible,
         featured: product.featured,
       };
@@ -248,6 +265,7 @@ router.patch("/public-listings", async (req, res) => {
       "displayName",
       "shortDescription",
       "publicPrice",
+      "compareAtPrice",
       "publicVisible",
       "featured",
     ]);
@@ -340,15 +358,29 @@ router.patch("/public-listings", async (req, res) => {
           parsed.publicPrice = null;
         } else if (
           typeof update.publicPrice !== "number" ||
-          !Number.isFinite(update.publicPrice) ||
-          update.publicPrice < 0 ||
-          update.publicPrice > 99999999.99
+          !isValidPublicMoney(update.publicPrice)
         ) {
           return res.status(400).json({
             error: "Public price must be null or a valid non-negative number",
           });
         } else {
           parsed.publicPrice = update.publicPrice;
+        }
+        changedFieldCount += 1;
+      }
+
+      if (update.compareAtPrice !== undefined) {
+        if (update.compareAtPrice === null) {
+          parsed.compareAtPrice = null;
+        } else if (
+          typeof update.compareAtPrice !== "number" ||
+          !isValidPublicMoney(update.compareAtPrice)
+        ) {
+          return res.status(400).json({
+            error: "Compare-at price must be null or a valid non-negative number",
+          });
+        } else {
+          parsed.compareAtPrice = update.compareAtPrice;
         }
         changedFieldCount += 1;
       }
@@ -370,18 +402,39 @@ router.patch("/public-listings", async (req, res) => {
           active: true,
           sellable: true,
         },
-        select: { id: true },
+        select: {
+          id: true,
+          publicPrice: true,
+          compareAtPrice: true,
+          priceUpdatedAt: true,
+        },
       });
 
       if (eligibleProducts.length !== parsedUpdates.length) {
         throw new Error("INELIGIBLE_PUBLIC_LISTING_PRODUCT");
       }
 
+      const eligibleById = new Map(eligibleProducts.map(product => [product.id, product]));
+      const changedAt = new Date();
       for (const update of parsedUpdates) {
         const { id, ...data } = update;
+        const existing = eligibleById.get(id)!;
+        const priceState = resolvePublicPriceUpdate({
+          publicPrice: existing.publicPrice === null ? null : Number(existing.publicPrice),
+          compareAtPrice: existing.compareAtPrice === null ? null : Number(existing.compareAtPrice),
+          priceUpdatedAt: existing.priceUpdatedAt,
+        }, {
+          publicPrice: data.publicPrice,
+          compareAtPrice: data.compareAtPrice,
+        }, changedAt);
         await tx.product.update({
           where: { id },
-          data,
+          data: {
+            ...data,
+            publicPrice: priceState.publicPrice,
+            compareAtPrice: priceState.compareAtPrice,
+            priceUpdatedAt: priceState.priceUpdatedAt,
+          },
         });
       }
     });

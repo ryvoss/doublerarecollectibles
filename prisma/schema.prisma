@@ -59,6 +59,8 @@ model Product {
   expectedSalePrice Decimal?        @db.Decimal(10, 2)
   publicVisible     Boolean         @default(false)
   publicPrice       Decimal?        @db.Decimal(10, 2)
+  compareAtPrice    Decimal?        @db.Decimal(10, 2)
+  priceUpdatedAt    DateTime?
   featured          Boolean         @default(false)
   packsPerBox       Int?
   packDisplayName   String?
@@ -103,10 +105,22 @@ model SiteSettings {
   heroTitle            String
   heroSubtitle         String
   primaryCtaLabel      String
+  primaryCtaTarget     String   @default("INVENTORY")
+  secondaryCtaEnabled  Boolean  @default(false)
   secondaryCtaLabel    String
+  secondaryCtaTarget   String   @default("SHOWS")
   featuredSectionTitle String
+  featuredMaxItems     Int      @default(4)
+  featuredPrioritizeRecentDrops Boolean @default(true)
+  featuredIncludeFeatured Boolean @default(true)
+  featuredIncludeComingSoon Boolean @default(true)
+  featuredFallback     String   @default("AVAILABLE")
+  comingSoonSectionTitle String @default("Coming Soon")
+  comingSoonMaxItems   Int      @default(4)
+  nextShowSectionTitle String   @default("Next Show")
   buySellTradeTitle    String
   buySellTradeText     String
+  buySellTradeCtaLabel String   @default("Learn how it works")
   inventoryPageTitle   String
   inventoryIntroText   String
   showsPageTitle       String
@@ -115,6 +129,13 @@ model SiteSettings {
   contactText          String
   instagramUrl         String
   contactEmail         String
+  homepageSections     Json
+  announcementEnabled Boolean  @default(false)
+  announcementMessage String   @default("")
+  announcementCtaLabel String  @default("")
+  announcementCtaTarget String @default("INVENTORY")
+  announcementStartsAt DateTime?
+  announcementEndsAt   DateTime?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 }
@@ -432,10 +453,17 @@ model Show {
   name      String   @unique
   active    Boolean  @default(true)
   notes     String?
+  publicVisible Boolean @default(false)
+  venue        String?
+  location     String?
+  boothInfo    String?
+  publicNote   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   visits ShowVisit[]
+
+  @@index([publicVisible])
 }
 
 model ShowVisit {

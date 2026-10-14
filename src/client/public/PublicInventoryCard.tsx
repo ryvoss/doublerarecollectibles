@@ -1,4 +1,8 @@
-import type { PublicInventoryItem } from "../../shared/publicInventory";
+import {
+  primaryMerchandisingBadge,
+  type PublicInventoryItem,
+  type PublicMerchandisingBadge,
+} from "../../shared/publicInventory";
 import { formatPublicProductPrice } from "./ProductDetailModal";
 
 const availabilityLabels = {
@@ -7,6 +11,14 @@ const availabilityLabels = {
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 } as const;
+
+const badgeLabels: Record<PublicMerchandisingBadge, string> = {
+  RECENT_PRICE_DROP: "Recent Price Drop",
+  COMING_SOON: "Coming Soon",
+  LOW_STOCK: "Low Stock",
+  SOLD_OUT: "Sold Out",
+  FEATURED: "Featured",
+};
 
 function ArrowIcon() {
   return (
@@ -21,17 +33,16 @@ export function PublicInventoryCard({
   onOpen,
   product,
   onInterested,
-  showFeaturedLabel = true,
 }: {
   headingLevel?: "h2" | "h3";
   onOpen: (trigger: HTMLButtonElement) => void;
   product: PublicInventoryItem;
   onInterested: (trigger: HTMLButtonElement) => void;
-  showFeaturedLabel?: boolean;
 }) {
   const soldOut = product.availability === "SOLD_OUT";
   const comingSoon = product.availability === "COMING_SOON";
   const Heading = headingLevel;
+  const primaryBadge = primaryMerchandisingBadge(product);
 
   return (
     <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}${comingSoon ? " is-coming-soon" : ""}`}>
@@ -49,21 +60,31 @@ export function PublicInventoryCard({
             <span>DR</span>
           </div>
         )}
-        {showFeaturedLabel && product.featured && (
-          <span className="public-featured-label">Featured</span>
-        )}
       </div>
 
       <div className="public-catalog-card__body">
         <div className="public-catalog-card__meta">
-          <span className={`public-stock-badge public-stock-badge--${product.availability.toLowerCase()}`}>
-            {availabilityLabels[product.availability]}
+          <span className="public-catalog-card__status">
+            {primaryBadge && (
+              <span className={`public-stock-badge public-stock-badge--${primaryBadge.toLowerCase()}`}>
+                {badgeLabels[primaryBadge]}
+              </span>
+            )}
+            {primaryBadge !== product.availability && (
+              <span className="public-availability-text">{availabilityLabels[product.availability]}</span>
+            )}
           </span>
-          <span className="public-catalog-card__price">
-            {formatPublicProductPrice(product.displayPrice)}
+          <span className="public-catalog-card__prices">
+            <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
+            {product.recentPriceDrop && product.compareAtPrice !== null && (
+              <del aria-label={`Previously ${formatPublicProductPrice(product.compareAtPrice)}`}>
+                was {formatPublicProductPrice(product.compareAtPrice)}
+              </del>
+            )}
           </span>
         </div>
-        {product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
+        {comingSoon && <span className="public-arrival-note">Arriving soon</span>}
+        {!comingSoon && product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
         <Heading>{product.name}</Heading>
         {product.shortDescription && (
           <p className="public-catalog-card__description">

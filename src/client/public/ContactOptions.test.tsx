@@ -31,6 +31,8 @@ const product: PublicInventoryItem = {
   shortDescription: "Sealed collector box",
   imageUrl: null,
   displayPrice: 100,
+  compareAtPrice: null,
+  recentPriceDrop: false,
   featured: true,
   availability: "LOW_STOCK",
   moreArrivingSoon: false,

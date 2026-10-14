@@ -1,6 +1,7 @@
 import {
   EMPTY_PUBLIC_SITE_ASSETS,
   PUBLIC_SITE_DEFAULTS,
+  selectNearestUpcomingShow,
   type PublicSiteConfiguration,
   type PublicSiteSettings,
   type SiteAssetType,
@@ -10,37 +11,50 @@ import { productImageStorage } from "./productImageStorage";
 import { toPublicSiteSettings } from "./publicContracts";
 
 export async function getPublicSiteConfiguration(): Promise<PublicSiteConfiguration> {
-  const [settingsRecord, assetRecords] = await Promise.all([
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const [settingsRecord, assetRecords, nextShowVisits] = await Promise.all([
     prisma.siteSettings.findUnique({ where: { id: 1 } }),
     prisma.siteAsset.findMany({ select: { type: true, imageKey: true } }),
+    prisma.showVisit.findMany({
+      where: {
+        visitDate: { gte: today },
+        status: { in: ["PLANNED", "ACTIVE"] },
+        show: { publicVisible: true },
+      },
+      orderBy: [{ visitDate: "asc" }, { id: "asc" }],
+      select: {
+        visitDate: true,
+        show: {
+          select: {
+            name: true,
+            venue: true,
+            location: true,
+            boothInfo: true,
+            publicNote: true,
+          },
+        },
+      },
+    }),
   ]);
 
   const settings: PublicSiteSettings = settingsRecord
-    ? toPublicSiteSettings({
-        businessName: settingsRecord.businessName,
-        tagline: settingsRecord.tagline,
-        heroTitle: settingsRecord.heroTitle,
-        heroSubtitle: settingsRecord.heroSubtitle,
-        primaryCtaLabel: settingsRecord.primaryCtaLabel,
-        secondaryCtaLabel: settingsRecord.secondaryCtaLabel,
-        featuredSectionTitle: settingsRecord.featuredSectionTitle,
-        buySellTradeTitle: settingsRecord.buySellTradeTitle,
-        buySellTradeText: settingsRecord.buySellTradeText,
-        inventoryPageTitle: settingsRecord.inventoryPageTitle,
-        inventoryIntroText: settingsRecord.inventoryIntroText,
-        showsPageTitle: settingsRecord.showsPageTitle,
-        showsIntroText: settingsRecord.showsIntroText,
-        contactPageTitle: settingsRecord.contactPageTitle,
-        contactText: settingsRecord.contactText,
-        instagramUrl: settingsRecord.instagramUrl,
-        contactEmail: settingsRecord.contactEmail,
-      })
+    ? toPublicSiteSettings(settingsRecord)
     : { ...PUBLIC_SITE_DEFAULTS };
 
   const imageUrlFor = (type: SiteAssetType) =>
     productImageStorage.getPublicUrl(
       assetRecords.find((asset) => asset.type === type)?.imageKey ?? null,
     );
+
+  const nextShow = selectNearestUpcomingShow(nextShowVisits.map((visit) => ({
+    name: visit.show.name,
+    date: visit.visitDate.toISOString(),
+    venue: visit.show.venue,
+    location: visit.show.location,
+    boothInfo: visit.show.boothInfo,
+    note: visit.show.publicNote,
+  })));
 
   return {
     settings,
@@ -50,5 +64,6 @@ export async function getPublicSiteConfiguration(): Promise<PublicSiteConfigurat
       faviconUrl: imageUrlFor("FAVICON"),
       heroImageUrl: imageUrlFor("HERO_IMAGE"),
     },
+    nextShow,
   };
 }
