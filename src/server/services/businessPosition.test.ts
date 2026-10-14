@@ -7,10 +7,12 @@ test("Business Health includes transferred PackPool cost once and excludes conve
     expectedSalePrice: 100,
     defaultPackPrice: 6,
     inventoryBatches: [{
+      quantityPurchased: 1,
       quantityReceived: 1,
       quantitySold: 0,
       quantityConverted: 1,
       landedCost: 75.28,
+      landedUnitCost: 75.28,
       saleAllocations: [],
       packPoolAllocations: [{ totalCost: 75.28 }],
     }],
@@ -18,6 +20,30 @@ test("Business Health includes transferred PackPool cost once and excludes conve
   }]);
 
   assert.equal(result.sealedInventoryCost, 75.28);
+  assert.equal(result.sealedInventoryOnHandCost, 75.28);
+  assert.equal(result.sealedInventoryInboundCost, 0);
   assert.equal(result.sealedExpectedRetail, 108);
   assert.equal(result.missingExpectedPriceProducts, 0);
+});
+
+test("Business Health separates inbound cost while retaining owned expected retail", () => {
+  const result = calculateSealedInventoryPosition([{
+    expectedSalePrice: 100,
+    defaultPackPrice: null,
+    inventoryBatches: [{
+      quantityPurchased: 3,
+      quantityReceived: 1,
+      quantitySold: 0,
+      quantityConverted: 0,
+      landedCost: 150,
+      landedUnitCost: 50,
+      saleAllocations: [],
+      packPoolAllocations: [],
+    }],
+    packPoolsAsSource: [],
+  }]);
+  assert.equal(result.sealedInventoryCost, 150);
+  assert.equal(result.sealedInventoryOnHandCost, 50);
+  assert.equal(result.sealedInventoryInboundCost, 100);
+  assert.equal(result.sealedExpectedRetail, 300);
 });

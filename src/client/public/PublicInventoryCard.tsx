@@ -3,6 +3,7 @@ import { formatPublicProductPrice } from "./ProductDetailModal";
 
 const availabilityLabels = {
   IN_STOCK: "In Stock",
+  COMING_SOON: "Coming Soon!",
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 } as const;
@@ -29,10 +30,11 @@ export function PublicInventoryCard({
   showFeaturedLabel?: boolean;
 }) {
   const soldOut = product.availability === "SOLD_OUT";
+  const comingSoon = product.availability === "COMING_SOON";
   const Heading = headingLevel;
 
   return (
-    <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}`}>
+    <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}${comingSoon ? " is-coming-soon" : ""}`}>
       <button
         className="public-catalog-card__open"
         type="button"
@@ -61,6 +63,7 @@ export function PublicInventoryCard({
             {formatPublicProductPrice(product.displayPrice)}
           </span>
         </div>
+        {product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
         <Heading>{product.name}</Heading>
         {product.shortDescription && (
           <p className="public-catalog-card__description">
@@ -72,7 +75,7 @@ export function PublicInventoryCard({
           type="button"
           onClick={(event) => onInterested(event.currentTarget)}
         >
-          I&apos;m Interested
+          {comingSoon ? "Ask About Arrival" : "I’m Interested"}
           <ArrowIcon />
         </button>
       </div>

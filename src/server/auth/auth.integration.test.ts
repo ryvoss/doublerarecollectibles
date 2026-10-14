@@ -61,7 +61,7 @@ publicRouter.get("/inventory", (_req, res) => res.json([toPublicInventoryItem({
   publicPrice: 12.5,
   expectedSalePrice: 14,
   featured: true,
-  inventoryBatches: [{ quantityReceived: 4, quantitySold: 0, quantityConverted: 0 }],
+  inventoryBatches: [{ quantityPurchased: 4, quantityReceived: 4, quantitySold: 0, quantityConverted: 0 }],
 }, "/api/public/product-images/7/image.png")]));
 publicRouter.get("/site", (_req, res) => res.json({
   settings: toPublicSiteSettings(PUBLIC_SITE_DEFAULTS),
@@ -140,7 +140,7 @@ test("public APIs remain available without a session", async () => {
   await request(app).get("/api/health").expect(200);
   const inventory = await request(app).get("/api/public/inventory").expect(200);
   assert.deepEqual(Object.keys(inventory.body[0]).sort(), [
-    "availability", "displayPrice", "featured", "id", "imageUrl", "name", "shortDescription",
+    "availability", "displayPrice", "featured", "id", "imageUrl", "moreArrivingSoon", "name", "shortDescription",
   ]);
   assert.doesNotMatch(JSON.stringify(inventory.body), /landed|cost|cogs|quantity|margin|profit|batch|order|fund|internal/i);
   const site = await request(app).get("/api/public/site").expect(200);

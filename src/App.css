@@ -1189,6 +1189,10 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
 .orders-status { display: inline-flex; padding: 4px 9px; border-radius: 5px; font-size: 11px; font-weight: 650; border: 1px solid transparent; }
 .orders-status.is-draft { color: #e3c37e; background: #332d1d; border-color: #645331; }
 .orders-status.is-finalized { color: #a0d2b2; background: #1b3326; border-color: #345b43; }
+.orders-status.is-ordered { color: #c8c9ce; background: #292a30; border-color: #464850; }
+.orders-status.is-on_the_way { color: #a9cff5; background: #192b3f; border-color: #315574; }
+.orders-status.is-partially_delivered { color: #e7c77f; background: #342d1e; border-color: #665432; }
+.orders-status.is-delivered { color: #a0d2b2; background: #1b3326; border-color: #345b43; }
 .orders-table { min-width: 800px; }
 .orders-th { text-align: left; color: var(--text-muted); white-space: nowrap; font-size: 11px; }
 .orders-td { color: #bdc7c2; white-space: nowrap; font-size: 13px; }
@@ -1210,6 +1214,32 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
 .orders-summary-box > span { color: var(--text-muted) !important; font-size: 11px !important; }
 .orders-summary-box strong { font-variant-numeric: tabular-nums; }
 .orders-section-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.orders-receiving { margin-top: 22px; padding: 18px; border: 1px solid #303139; border-radius: 10px; background: #18191e; }
+.orders-receiving-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.orders-receiving-lines { display: grid; gap: 8px; margin-top: 14px; }
+.orders-receiving-lines > div { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(3, auto); gap: 18px; align-items: center; padding: 11px 12px; border: 1px solid #292a31; border-radius: 8px; color: #a7a7ad; font-size: 12px; }
+.orders-receiving-lines strong { color: #e5e5e7; }
+.orders-receiving-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.orders-receive-modal { width: min(920px, 100%); max-height: calc(100dvh - 32px); overflow: hidden; }
+.orders-receive-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px; border-bottom: 1px solid #2a2b31; }
+.orders-receive-modal > header span { color: #d8b86d; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.orders-receive-modal > header h2 { margin: 6px 0 4px; }
+.orders-receive-modal > header p { margin: 0; color: #92939a; }
+.orders-receive-modal > header button { min-width: 44px; min-height: 44px; border: 0; background: transparent; color: #d7d7db; cursor: pointer; font-size: 24px; }
+.orders-receive-body { max-height: calc(100dvh - 230px); overflow: auto; padding: 20px 22px; }
+.orders-receive-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 16px; }
+.orders-receive-toolbar p { max-width: 580px; margin: 0; color: #a7a7ad; line-height: 1.55; }
+.orders-receive-line { display: grid; grid-template-columns: minmax(240px, 1fr) 150px 120px; gap: 18px; align-items: end; padding: 14px 0; border-top: 1px solid #292a31; }
+.orders-receive-line > span { display: grid; gap: 5px; }
+.orders-receive-line strong { color: #e5e5e7; }
+.orders-receive-line small, .orders-receive-line em { color: #8f9097; font-size: 11px; font-style: normal; }
+.orders-receive-line input { min-height: 44px; width: 100%; padding: 0 12px; border: 1px solid #393a43; border-radius: 7px; background: #111217; color: #f1f1f3; }
+.orders-receive-line b { min-height: 44px; display: flex; align-items: center; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .orders-receiving-metrics { grid-template-columns: 1fr; }
+  .orders-receiving-lines > div, .orders-receive-line { grid-template-columns: 1fr; gap: 9px; }
+  .orders-receive-toolbar { align-items: stretch; flex-direction: column; }
+}
 .orders-empty { padding: 28px 20px; border: 1px dashed var(--border-strong); border-radius: 8px; color: var(--text-muted); text-align: center; }
 .orders-cost-breakdown { width: 100%; max-width: 400px; margin: 20px 0 0 auto; padding: 14px 18px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-input); }
 .orders-cost-breakdown strong { font-variant-numeric: tabular-nums; }

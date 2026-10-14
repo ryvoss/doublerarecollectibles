@@ -1,6 +1,7 @@
 export type FifoBatchInput = {
   id: number;
   orderDate: Date;
+  quantityPurchased?: number;
   quantityReceived: number;
   quantitySold: number;
   quantityConverted?: number;
@@ -38,7 +39,9 @@ export function simulateFifoConsumption(batches: FifoBatchInput[], requestedQuan
     if (batchAvailable <= 0) continue;
     const quantity = Math.min(batchAvailable, quantityRemaining);
     const remainingBatchCostCents = toCents(batch.landedCost) - toCents(batch.previouslyAllocatedCost);
-    const totalCostCents = quantity === batchAvailable
+    const ownedRemaining = (batch.quantityPurchased ?? batch.quantityReceived) -
+      batch.quantitySold - (batch.quantityConverted ?? 0);
+    const totalCostCents = quantity === ownedRemaining
       ? remainingBatchCostCents
       : Math.round(quantity * Number(batch.landedUnitCost) * 100);
     allocations.push({

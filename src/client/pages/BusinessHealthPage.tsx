@@ -7,6 +7,8 @@ type Position = {
   sealedFunds: number;
   singlesFunds: number;
   sealedInventoryCost: number;
+  sealedInventoryOnHandCost: number;
+  sealedInventoryInboundCost: number;
   sealedExpectedRetail: number;
   singlesInventoryValue: number | null;
   totalBusinessValue: number | null;
@@ -69,6 +71,8 @@ export default function BusinessHealthPage() {
         <HealthMetric label="Current Business Value" value={complete ? money(position.totalBusinessValue!) : "Incomplete"} detail="Actual funds + inventory at cost/valuation" primary />
         <HealthMetric label="Total Funds" value={money(position.totalBusinessFunds)} detail={`Sealed ${money(position.sealedFunds)} · Singles ${money(position.singlesFunds)}`} />
         <HealthMetric label="Inventory Value" value={money(inventoryValue)} detail={singlesInventory === null ? "Sealed cost; Singles unavailable" : `Sealed cost + Singles ${money(singlesInventory)}`} />
+        <HealthMetric label="Sealed On Hand at Cost" value={money(position.sealedInventoryOnHandCost)} detail="Physically received sealed inventory and packs" />
+        <HealthMetric label="Sealed In Transit at Cost" value={money(position.sealedInventoryInboundCost)} detail="Owned inventory not yet received" />
         <HealthMetric label="Liquidity" value={liquidity === null ? "—" : pct(liquidity)} detail="Funds share of actual value" />
         <HealthMetric label="Inventory" value={inventoryShare === null ? "—" : pct(inventoryShare)} detail="Inventory share of actual value" />
       </div>

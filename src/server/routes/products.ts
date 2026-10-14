@@ -176,6 +176,7 @@ router.get("/public-listings", async (_req, res) => {
         featured: true,
         inventoryBatches: {
           select: {
+            quantityPurchased: true,
             quantityReceived: true,
             quantitySold: true,
             quantityConverted: true,
@@ -196,6 +197,10 @@ router.get("/public-listings", async (_req, res) => {
         (total, batch) => total + batch.quantityConverted,
         0,
       );
+      const unitsInbound = product.inventoryBatches.reduce(
+        (total, batch) => total + batch.quantityPurchased - batch.quantityReceived,
+        0,
+      );
 
       return {
         id: product.id,
@@ -203,7 +208,7 @@ router.get("/public-listings", async (_req, res) => {
         displayName: product.displayName,
         shortDescription: product.shortDescription,
         imageUrl: productImageStorage.getPublicUrl(product.imageKey),
-        stockStatus: publicAvailabilityForUnits(unitsAvailable),
+        stockStatus: publicAvailabilityForUnits(unitsAvailable, unitsInbound),
         expectedSalePrice:
           product.expectedSalePrice === null
             ? null

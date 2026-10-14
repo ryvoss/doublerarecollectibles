@@ -9,10 +9,14 @@ type InventoryItem = {
   itemId: string;
   productName: string;
   productType: "SEALED" | "SINGLE";
+  unitsPurchased: number;
   unitsReceived: number;
+  unitsInbound: number;
   unitsSold: number;
   unitsOnHand: number;
   inventoryValue: number;
+  onHandInventoryValue: number;
+  inboundInventoryValue: number;
   expectedSalePrice: number;
   retailValue: number;
   potentialGrossProfit: number;
@@ -57,7 +61,9 @@ type InventoryDetail = {
     batchId: number;
     orderNumber: string;
     orderDate: string;
+    quantityPurchased: number;
     quantityReceived: number;
+    quantityInbound: number;
     quantitySold: number;
     quantityConverted: number;
     quantityRemaining: number;
@@ -65,6 +71,8 @@ type InventoryDetail = {
     landedUnitCost: number;
     allocatedCost: number;
     remainingValue: number;
+    onHandValue: number;
+    inboundValue: number;
   }[];
 };
 
@@ -150,13 +158,16 @@ export default function InventoryPage() {
   // Sum monetary API values in cents; batch accounting remains on the backend.
   const totalValue = (items.reduce((sum, item) => sum + Math.round(item.inventoryValue * 100), 0) +
     packInventory.reduce((sum, item) => sum + Math.round(item.remainingCostBasis * 100), 0)) / 100;
+  const totalOnHandValue = (items.reduce((sum, item) => sum + Math.round(item.onHandInventoryValue * 100), 0) +
+    packInventory.reduce((sum, item) => sum + Math.round(item.remainingCostBasis * 100), 0)) / 100;
+  const totalInboundValue = items.reduce((sum, item) => sum + Math.round(item.inboundInventoryValue * 100), 0) / 100;
   const totalRetail = (items.reduce((sum, item) => sum + Math.round(item.retailValue * 100), 0) +
     packInventory.reduce((sum, item) => sum + Math.round((item.expectedRetailValue ?? 0) * 100), 0)) / 100;
 
   return (
     <div className="inventory-page">
       <div className="page-heading">
-        <div><h2>Sealed Inventory</h2><p>Active, sellable products. Inventory is added when orders are finalized.</p></div>
+        <div><h2>Sealed Inventory</h2><p>Owned inventory is recorded at finalization; only received units are physically available.</p></div>
         <div className="inventory-page-actions">
           <button className="primary-button" type="button" onClick={() => setShowPublicListings(true)}>Manage Public Listings</button>
           <button className="secondary-button" type="button" disabled={loading} onClick={() => setRefresh((value) => value + 1)}>Refresh</button>
@@ -167,9 +178,12 @@ export default function InventoryPage() {
       {loading ? <p role="status">Loading inventory...</p> : !error && <>
         <div className="metric-grid inventory-metrics">
           <Metric detail={`${items.filter((item) => item.unitsOnHand > 0).length} products in stock`} label="Units on Hand" value={String(items.reduce((sum, item) => sum + item.unitsOnHand, 0))} />
-          <Metric detail="Remaining historical landed cost" label="Historical Inventory Cost" value={money(totalValue)} />
+          <Metric detail="Not yet physically received" label="Inbound Units" value={String(items.reduce((sum, item) => sum + item.unitsInbound, 0))} />
+          <Metric detail="Received sealed stock and derived packs" label="On-Hand Inventory at Cost" value={money(totalOnHandValue)} />
+          <Metric detail="Owned inventory still on the way" label="Inventory In Transit at Cost" value={money(totalInboundValue)} />
+          <Metric detail="On hand + in transit" label="Total Owned Inventory Cost" value={money(totalValue)} />
           <Metric detail="Estimate at current product prices" label="Expected Retail Value" value={money(totalRetail)} />
-          <Metric detail={totalRetail > 0 ? `${((totalRetail - totalValue) / totalRetail * 100).toFixed(1)}% potential margin` : "Margin unavailable without retail value"} label="Potential Gross Profit" value={money(totalRetail - totalValue)} />
+          <Metric detail={totalRetail > 0 ? `${((totalRetail - totalOnHandValue) / totalRetail * 100).toFixed(1)}% potential margin` : "Margin unavailable without retail value"} label="Potential Gross Profit" value={money(totalRetail - totalOnHandValue)} />
         </div>
         <section className="panel">
           <div className="panel-header inventory-toolbar">
@@ -184,14 +198,14 @@ export default function InventoryPage() {
           </div>
           <p className="inventory-caption">{visibleItems.length} of {items.length} products. Totals above include all listed inventory. Retail estimates use current expected prices; unset prices count as zero.</p>
           {visibleItems.length === 0 ? <div className="empty-state"><strong>{items.length === 0 ? "No sealed inventory yet" : "No matching products"}</strong><p>{items.length === 0 ? "Finalize a purchase order to receive inventory." : "Try another search or stock filter."}</p></div> :
-            <Table headings={["Item ID", "Product", "Received", "Sold", "On Hand", "Historical Cost", "Expected Price", "Retail Value", "Potential Profit", "Margin", "Batches", "Actions"]}>
+            <Table headings={["Item ID", "Product", "Purchased", "Received", "Inbound", "Sold", "On Hand", "Owned Cost", "Expected Price", "Retail Value", "Potential Profit", "Margin", "Batches", "Actions"]}>
               {visibleItems.map((item) => <Fragment key={item.productId}><tr className="expandable-row" onClick={(event) => {
                 if ((event.target as HTMLElement).closest("button, a, input, select")) return;
                 if (selectedId !== item.productId) { setDetail(null); setDetailError(null); setSelectedId(item.productId); }
                 else setSelectedId(null);
               }} style={{background: selectedId === item.productId ? "#202025" : undefined}}>
                 <Cell>{item.itemId}</Cell><Cell><strong>{item.productName}</strong></Cell>
-                <Cell>{item.unitsReceived}</Cell><Cell>{item.unitsSold}</Cell><Cell><span className={item.unitsOnHand > 0 ? "inventory-stock" : "inventory-stock is-empty"}>{item.unitsOnHand > 0 ? item.unitsOnHand : "Out of stock"}</span></Cell>
+                <Cell>{item.unitsPurchased}</Cell><Cell>{item.unitsReceived}</Cell><Cell>{item.unitsInbound}</Cell><Cell>{item.unitsSold}</Cell><Cell><span className={item.unitsOnHand > 0 ? "inventory-stock" : "inventory-stock is-empty"}>{item.unitsOnHand > 0 ? item.unitsOnHand : "Out of stock"}</span></Cell>
                 <Cell>{money(item.inventoryValue)}</Cell><Cell>{money(item.expectedSalePrice)}</Cell><Cell>{money(item.retailValue)}</Cell>
                 <Cell><span className={item.potentialGrossProfit < 0 ? "inventory-negative" : "inventory-profit"}>{money(item.potentialGrossProfit)}</span></Cell>
                 <Cell>{item.retailValue > 0 ? `${(item.potentialGrossProfit / item.retailValue * 100).toFixed(1)}%` : "N/A"}</Cell>
@@ -214,7 +228,7 @@ export default function InventoryPage() {
                 }}>Break Down</button>}</Cell>
               </tr>
               {selectedId === item.productId && <tr>
-                <td colSpan={12} className="inventory-expanded">
+                <td colSpan={14} className="inventory-expanded">
                   <section id={`inventory-batches-${item.productId}`} aria-label={`Batches for ${item.productName}`}
                     className="inventory-batch-section">
                     <h4 style={{margin: "0 0 6px", color: "#e5e5e7"}}>{item.productName} — Purchase Batches</h4>
@@ -230,14 +244,18 @@ export default function InventoryPage() {
                             <span style={{fontSize: "12px", color: "#a7a7ad"}}>Purchased {batch.orderDate.slice(0, 10)}{batch.quantityRemaining === 0 ? " · Depleted" : ""}</span>
                           </div>
                           <dl className="inventory-batch-values">
-                            <BatchValue label="Received" value={String(batch.quantityReceived)} />
+                            <BatchValue label="Purchased / Owned" value={String(batch.quantityPurchased)} />
+                            <BatchValue label="Physically Received" value={String(batch.quantityReceived)} />
+                            <BatchValue label="Inbound" value={String(batch.quantityInbound)} />
                             <BatchValue label="Sold" value={String(batch.quantitySold)} />
                             <BatchValue label="Converted to Packs" value={String(batch.quantityConverted)} />
-                            <BatchValue label="Remaining Units" value={String(batch.quantityRemaining)} />
+                            <BatchValue label="On Hand" value={String(batch.quantityRemaining)} />
                             <BatchValue label="Original Landed Cost" value={money(batch.landedCost)} />
                             <BatchValue label="Cost per Unit" value={money(batch.landedUnitCost)} />
                             <BatchValue label="COGS Allocated" value={money(batch.allocatedCost)} />
-                            <BatchValue label="Remaining Value" value={money(batch.remainingValue)} />
+                            <BatchValue label="On-Hand Cost" value={money(batch.onHandValue)} />
+                            <BatchValue label="Inbound Cost" value={money(batch.inboundValue)} />
+                            <BatchValue label="Total Owned Cost" value={money(batch.remainingValue)} />
                           </dl>
                         </article>)}
                       </div>}

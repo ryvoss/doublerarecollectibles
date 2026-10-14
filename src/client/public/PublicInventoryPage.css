@@ -378,6 +378,24 @@
   color: var(--public-gold-light);
 }
 
+.public-stock-badge--coming_soon {
+  border-color: rgba(104, 157, 220, 0.34);
+  background: rgba(80, 132, 196, 0.12);
+  color: #a9cff5;
+}
+
+.public-catalog-card.is-coming-soon {
+  border-color: rgba(104, 157, 220, 0.2);
+}
+
+.public-arrival-note {
+  display: block;
+  margin: -5px 0 12px;
+  color: #a9cff5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .public-stock-badge--sold_out {
   border-color: rgba(255, 255, 255, 0.11);
   background: rgba(255, 255, 255, 0.04);

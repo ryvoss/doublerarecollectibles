@@ -24,6 +24,7 @@ export type ProductDetailOpenHandler = (
 
 const availabilityLabels: Record<PublicInventoryAvailability, string> = {
   IN_STOCK: "In Stock",
+  COMING_SOON: "Coming Soon!",
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 };
@@ -199,6 +200,7 @@ export function ProductDetailContent({
           <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
         </div>
         <h2 id="public-product-detail-title">{product.name}</h2>
+        {product.moreArrivingSoon && <p className="public-arrival-note">More inventory is arriving soon.</p>}
         {product.shortDescription ? (
           <p>{product.shortDescription}</p>
         ) : (
@@ -211,7 +213,7 @@ export function ProductDetailContent({
           type="button"
           onClick={(event) => onInterested(event.currentTarget)}
         >
-          I&apos;m interested
+          {product.availability === "COMING_SOON" ? "Ask about arrival" : "I’m interested"}
         </button>
       </section>
     </div>

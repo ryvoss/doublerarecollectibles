@@ -5,10 +5,60 @@ import type { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../prisma";
 import { resolveOrderInventory } from "../../shared/orderConversion";
 import { analyzeLandedCosts } from "../../shared/landedCostAnalysis";
+import {
+  minimumReceivedForConsumption,
+  orderReceivingStatus,
+  receivingTotals,
+  validateReceiptQuantity,
+} from "../../shared/orderReceiving";
 
 const router = Router();
 
 class DraftOrderError extends Error {}
+
+class ReceivingError extends Error {}
+
+const orderInclude = {
+  lines: {
+    include: {
+      purchasedProduct: true,
+      sellableProduct: true,
+      inventoryBatches: {
+        include: { receiptEvents: { orderBy: { occurredAt: "asc" as const } } },
+      },
+    },
+    orderBy: { id: "asc" as const },
+  },
+} as const;
+
+function withReceivingState<T extends {
+  status: string;
+  inTransitAt: Date | null;
+  lines: Array<{
+    sellableQuantity: number;
+    inventoryBatches: Array<{
+      quantityPurchased: number;
+      quantityReceived: number;
+    }>;
+  }>;
+}>(order: T) {
+  const quantities = order.lines.map(line => {
+    const batch = line.inventoryBatches[0];
+    return {
+      quantityPurchased: batch?.quantityPurchased ?? line.sellableQuantity,
+      quantityReceived: batch?.quantityReceived ?? 0,
+    };
+  });
+  return {
+    ...order,
+    receivingStatus: orderReceivingStatus({
+      finalized: order.status === "FINALIZED",
+      inTransitAt: order.inTransitAt,
+      lines: quantities,
+    }),
+    receivingTotals: receivingTotals(quantities),
+  };
+}
 
 // Updating the order row locks it until the transaction completes. Every
 // draft mutation uses this gate so it cannot write after finalization.
@@ -46,15 +96,13 @@ function centsToMoney(value: number): string {
 router.get("/", async (_req, res) => {
   try {
     const orders = await prisma.order.findMany({
-      include: {
-        lines: true,
-      },
+      include: orderInclude,
       orderBy: {
         orderDate: "desc",
       },
     });
 
-    res.json(orders);
+    res.json(orders.map(withReceivingState));
   } catch (error) {
     logServerError("Error retrieving orders:", error);
 
@@ -485,7 +533,8 @@ router.post("/:orderId/finalize", async (req, res) => {
           data: {
             orderLineId: calculated.line.id,
             sellableProductId: calculated.line.sellableProductId,
-            quantityReceived: calculated.line.sellableQuantity,
+            quantityPurchased: calculated.line.sellableQuantity,
+            quantityReceived: 0,
             landedCost: calculated.landedCost,
             landedUnitCost: calculated.landedUnitCost,
             quantitySold: 0,
@@ -530,23 +579,138 @@ router.post("/:orderId/finalize", async (req, res) => {
           status: "FINALIZED",
           finalizedAt: new Date(),
         },
-        include: {
-          lines: {
-            include: {
-              inventoryBatches: true,
-            },
-          },
-        },
+        include: orderInclude,
       });
     });
 
-    res.json(finalizedOrder);
+    res.json(withReceivingState(finalizedOrder));
   } catch (error) {
     logServerError("Error finalizing order:", error);
 
     res.status(error instanceof DraftOrderError ? 409 : 500).json({
       error: error instanceof DraftOrderError ? error.message : "Failed to finalize order",
       ...developmentErrorDetails(error),
+    });
+  }
+});
+
+// ---------------------------------------------------------
+// PHYSICAL RECEIVING
+// ---------------------------------------------------------
+
+router.post("/:orderId/mark-in-transit", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  if (!Number.isSafeInteger(orderId) || orderId <= 0) {
+    res.status(400).json({ error: "orderId must be a valid integer" });
+    return;
+  }
+  try {
+    const updated = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9157, ${orderId})`;
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      if (!order) throw new ReceivingError("Order not found.");
+      if (order.status !== "FINALIZED") throw new ReceivingError("Only finalized orders can be marked On the Way.");
+
+      for (const line of order.lines) {
+        const batch = line.inventoryBatches[0];
+        if (!batch) throw new ReceivingError("Finalized order inventory is incomplete.");
+        if (minimumReceivedForConsumption(batch) > 0) {
+          throw new ReceivingError(
+            `${line.sellableProduct.name} has already been sold or converted and cannot be reclassified as fully inbound.`,
+          );
+        }
+      }
+
+      for (const line of order.lines) {
+        const batch = line.inventoryBatches[0];
+        if (batch.quantityReceived > 0) {
+          await tx.inventoryBatch.update({
+            where: { id: batch.id },
+            data: { quantityReceived: 0 },
+          });
+          await tx.inventoryReceiptEvent.create({
+            data: {
+              inventoryBatchId: batch.id,
+              type: "RECLASSIFIED_INBOUND",
+              quantityDelta: -batch.quantityReceived,
+            },
+          });
+        }
+      }
+      await tx.order.update({ where: { id: orderId }, data: { inTransitAt: new Date() } });
+      return tx.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
+    }, { isolationLevel: "Serializable" });
+    res.json(withReceivingState(updated));
+  } catch (error) {
+    logServerError("Error marking order in transit:", error);
+    res.status(error instanceof ReceivingError ? 409 : 500).json({
+      error: error instanceof ReceivingError ? error.message : "Order could not be marked On the Way.",
+    });
+  }
+});
+
+router.post("/:orderId/receive", async (req, res) => {
+  const orderId = Number(req.params.orderId);
+  const submittedLines: unknown = req.body?.lines;
+  if (!Number.isSafeInteger(orderId) || orderId <= 0 || !Array.isArray(submittedLines)) {
+    res.status(400).json({ error: "A valid order and receipt lines are required." });
+    return;
+  }
+  const receipts = submittedLines.map(value => {
+    if (typeof value !== "object" || value === null) return null;
+    const record = value as Record<string, unknown>;
+    return { orderLineId: record.orderLineId, quantity: record.quantity };
+  });
+  if (receipts.some(receipt => receipt === null || !Number.isSafeInteger(receipt.orderLineId) ||
+      Number(receipt.orderLineId) <= 0 || !Number.isSafeInteger(receipt.quantity) || Number(receipt.quantity) < 0)) {
+    res.status(400).json({ error: "Receipt quantities must be non-negative whole numbers." });
+    return;
+  }
+  const normalized = receipts as Array<{ orderLineId: number; quantity: number }>;
+  if (new Set(normalized.map(line => line.orderLineId)).size !== normalized.length ||
+      !normalized.some(line => line.quantity > 0)) {
+    res.status(400).json({ error: "Enter at least one quantity to receive and do not repeat order lines." });
+    return;
+  }
+
+  try {
+    const updated = await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9157, ${orderId})`;
+      const order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
+      if (!order) throw new ReceivingError("Order not found.");
+      if (order.status !== "FINALIZED") throw new ReceivingError("Only finalized orders can receive inventory.");
+
+      for (const receipt of normalized) {
+        const line = order.lines.find(item => item.id === receipt.orderLineId);
+        const batch = line?.inventoryBatches[0];
+        if (!line || !batch) throw new ReceivingError("A receipt line does not belong to this order.");
+        const validation = validateReceiptQuantity(batch, receipt.quantity);
+        if (validation) throw new ReceivingError(`${line.sellableProduct.name}: ${validation}`);
+      }
+
+      for (const receipt of normalized) {
+        if (receipt.quantity === 0) continue;
+        const line = order.lines.find(item => item.id === receipt.orderLineId)!;
+        const batch = line.inventoryBatches[0];
+        await tx.inventoryBatch.update({
+          where: { id: batch.id },
+          data: { quantityReceived: { increment: receipt.quantity } },
+        });
+        await tx.inventoryReceiptEvent.create({
+          data: {
+            inventoryBatchId: batch.id,
+            type: "RECEIVED",
+            quantityDelta: receipt.quantity,
+          },
+        });
+      }
+      return tx.order.findUniqueOrThrow({ where: { id: orderId }, include: orderInclude });
+    }, { isolationLevel: "Serializable" });
+    res.json(withReceivingState(updated));
+  } catch (error) {
+    logServerError("Error receiving order inventory:", error);
+    res.status(error instanceof ReceivingError ? 409 : 500).json({
+      error: error instanceof ReceivingError ? error.message : "Inventory receipt could not be saved.",
     });
   }
 });
@@ -569,15 +733,7 @@ router.get("/:orderId", async (req, res) => {
       where: {
         id: orderId,
       },
-      include: {
-        lines: {
-          include: {
-            purchasedProduct: true,
-            sellableProduct: true,
-            inventoryBatches: true,
-          },
-        },
-      },
+      include: orderInclude,
     });
 
     if (!order) {
@@ -586,7 +742,7 @@ router.get("/:orderId", async (req, res) => {
       });
     }
 
-    res.json(order);
+    res.json(withReceivingState(order));
   } catch (error) {
     logServerError("Error retrieving order:", error);
 

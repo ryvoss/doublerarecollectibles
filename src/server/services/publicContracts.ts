@@ -11,6 +11,7 @@ type PublicInventorySource = {
   expectedSalePrice: unknown;
   featured: boolean;
   inventoryBatches: Array<{
+    quantityPurchased: number;
     quantityReceived: number;
     quantitySold: number;
     quantityConverted: number;
@@ -25,6 +26,10 @@ export function toPublicInventoryItem(
     (total, batch) => total + batch.quantityReceived - batch.quantitySold - batch.quantityConverted,
     0,
   );
+  const unitsInbound = product.inventoryBatches.reduce(
+    (total, batch) => total + batch.quantityPurchased - batch.quantityReceived,
+    0,
+  );
   const displayPrice = product.publicPrice ?? product.expectedSalePrice;
   return {
     id: product.id,
@@ -33,7 +38,8 @@ export function toPublicInventoryItem(
     imageUrl,
     displayPrice: displayPrice === null ? null : Number(displayPrice),
     featured: product.featured,
-    availability: publicAvailabilityForUnits(unitsAvailable),
+    availability: publicAvailabilityForUnits(unitsAvailable, unitsInbound),
+    moreArrivingSoon: unitsAvailable > 0 && unitsInbound > 0,
   };
 }
 

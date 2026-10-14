@@ -33,6 +33,7 @@ const product: PublicInventoryItem = {
   displayPrice: 100,
   featured: true,
   availability: "LOW_STOCK",
+  moreArrivingSoon: false,
 };
 
 test("header renders a generic Contact action and invokes the shared opener", () => {
@@ -72,6 +73,7 @@ test("product inquiries use the shared contact context and prefill the form", ()
     name: "CN Pris Box",
     price: "$100.00",
     availability: "Low Stock",
+    comingSoon: false,
   });
   assert.deepEqual(openedWith, { trigger, product: context });
   assert.equal(initial.topic, "PRODUCT_QUESTION");

@@ -67,3 +67,10 @@ test("rejects insufficient Box inventory", () => {
     (error: unknown) => error instanceof PackBreakdownPlanError && error.availableBoxes === 1,
   );
 });
+
+test("inbound Boxes cannot be broken down before they are received", () => {
+  assert.throws(
+    () => planPackBreakdown([batch({ quantityPurchased: 3, quantityReceived: 0 })], 1, 18),
+    (error: unknown) => error instanceof PackBreakdownPlanError && error.availableBoxes === 0,
+  );
+});

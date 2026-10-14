@@ -93,6 +93,7 @@ async function preparePackBreakdown(
   const batchInputs = batches.map(batch => ({
     id: batch.id,
     orderDate: batch.orderLine.order.orderDate,
+    quantityPurchased: batch.quantityPurchased,
     quantityReceived: batch.quantityReceived,
     quantitySold: batch.quantitySold,
     quantityConverted: batch.quantityConverted,

@@ -1,5 +1,6 @@
 export type PublicInventoryAvailability =
   | "SOLD_OUT"
+  | "COMING_SOON"
   | "LOW_STOCK"
   | "IN_STOCK";
 
@@ -7,9 +8,10 @@ export const PUBLIC_LOW_STOCK_MAXIMUM = 3;
 
 export function publicAvailabilityForUnits(
   unitsAvailable: number,
+  unitsInbound = 0,
 ): PublicInventoryAvailability {
   if (unitsAvailable <= 0) {
-    return "SOLD_OUT";
+    return unitsInbound > 0 ? "COMING_SOON" : "SOLD_OUT";
   }
 
   if (unitsAvailable <= PUBLIC_LOW_STOCK_MAXIMUM) {
@@ -27,6 +29,7 @@ export type PublicInventoryItem = {
   displayPrice: number | null;
   featured: boolean;
   availability: PublicInventoryAvailability;
+  moreArrivingSoon: boolean;
 };
 
 export type AdminPublicListingItem = {

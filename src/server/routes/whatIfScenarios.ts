@@ -1,6 +1,7 @@
 import { logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
+import { splitRemainingBatchCost } from "../services/inventoryCost";
 
 const router = Router();
 
@@ -108,6 +109,7 @@ router.get("/inventory", async (_req, res) => {
       const batches = product.inventoryBatches.map(batch => ({
         id: batch.id,
         orderDate: batch.orderLine.order.orderDate,
+        quantityPurchased: batch.quantityPurchased,
         quantityReceived: batch.quantityReceived,
         quantitySold: batch.quantitySold,
         quantityConverted: batch.quantityConverted,
@@ -122,9 +124,9 @@ router.get("/inventory", async (_req, res) => {
         (total, batch) => total + batch.quantityReceived - batch.quantitySold - batch.quantityConverted,
         0
       );
-      const inventoryCost = batches.reduce(
-        (total, batch) => total + batch.landedCost - batch.previouslyAllocatedCost,
-        0
+      const inventoryCost = product.inventoryBatches.reduce(
+        (total, batch) => total + splitRemainingBatchCost(batch).onHandCost,
+        0,
       );
       return {
         productId: product.id,

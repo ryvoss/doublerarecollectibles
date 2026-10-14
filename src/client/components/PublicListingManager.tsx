@@ -26,6 +26,7 @@ const filters: Array<{ value: ListingFilter; label: string }> = [
 
 const stockLabels: Record<PublicInventoryAvailability, string> = {
   IN_STOCK: "In Stock",
+  COMING_SOON: "Coming Soon",
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 };

@@ -20,6 +20,7 @@ export type ContactProductContext = {
   name: string;
   price: string;
   availability: string;
+  comingSoon: boolean;
 };
 
 export type ContactOpenHandler = (
@@ -48,6 +49,7 @@ const EMPTY_CONTACT_FORM: PublicContactSubmission = {
 
 const availabilityLabels = {
   IN_STOCK: "In Stock",
+  COMING_SOON: "Coming Soon",
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 } as const;
@@ -64,6 +66,7 @@ export function contactProductContext(product: PublicInventoryItem): ContactProd
       ? "Contact for price"
       : currencyFormatter.format(product.displayPrice),
     availability: availabilityLabels[product.availability],
+    comingSoon: product.availability === "COMING_SOON",
   };
 }
 
@@ -82,7 +85,9 @@ export function createContactInitialSubmission(
   return {
     ...EMPTY_CONTACT_FORM,
     topic: "PRODUCT_QUESTION",
-    message: `I'm interested in ${product.name} — ${product.price}.`,
+    message: product.comingSoon
+      ? `I'm interested in ${product.name} when it arrives — ${product.price}.`
+      : `I'm interested in ${product.name} — ${product.price}.`,
   };
 }
 
@@ -101,7 +106,9 @@ export function buildContactMethods(
       ? [
           `Hi ${settings.businessName},`,
           "",
-          `I'm interested in ${product.name}.`,
+          product.comingSoon
+            ? `I'm interested in ${product.name} when it arrives.`
+            : `I'm interested in ${product.name}.`,
           `Listed price: ${product.price}`,
           `Availability: ${product.availability}`,
           "",

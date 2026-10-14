@@ -23,6 +23,7 @@ const availabilityFilters: Array<{
   { value: "ALL", label: "All" },
   { value: "IN_STOCK", label: "In Stock" },
   { value: "LOW_STOCK", label: "Low Stock" },
+  { value: "COMING_SOON", label: "Coming Soon" },
   { value: "SOLD_OUT", label: "Sold Out" },
 ];
 

@@ -39,7 +39,7 @@ async function main() {
         allocated += share;
         const landedCost = round(productCost + share), unitCost = landedCost / quantity;
         const line = await tx.orderLine.create({ data: { orderId: order.id, purchasedProductId: products[productIndex].id, sellableProductId: products[productIndex].id, quantityPurchased: quantity, productCost, sellableQuantity: quantity, landedCost, landedUnitCost: unitCost } });
-        const batch = await tx.inventoryBatch.create({ data: { orderLineId: line.id, sellableProductId: products[productIndex].id, quantityReceived: quantity, landedCost, landedUnitCost: unitCost } });
+        const batch = await tx.inventoryBatch.create({ data: { orderLineId: line.id, sellableProductId: products[productIndex].id, quantityPurchased: quantity, quantityReceived: quantity, landedCost, landedUnitCost: unitCost } });
         batches.push({ id: batch.id, productId: products[productIndex].id, remaining: quantity, unitCost });
       }
       await tx.fundEntry.create({ data: { source: "SEALED", type: "ORDER_PURCHASE", amount: -round(base + extra), transactionDate: day(spec.date), orderId: order.id, note: `Test purchase ${order.orderNumber}` } });

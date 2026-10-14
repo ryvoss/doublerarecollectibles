@@ -45,6 +45,22 @@ type OrderStatus =
   | "DRAFT"
   | "FINALIZED";
 
+type OrderReceivingStatus = "DRAFT" | "ORDERED" | "ON_THE_WAY" | "PARTIALLY_DELIVERED" | "DELIVERED";
+
+type OrderInventoryBatch = {
+  id: number;
+  quantityPurchased: number;
+  quantityReceived: number;
+  quantitySold: number;
+  quantityConverted: number;
+  receiptEvents: Array<{
+    id: number;
+    type: "RECEIVED" | "RECLASSIFIED_INBOUND";
+    quantityDelta: number;
+    occurredAt: string;
+  }>;
+};
+
 type OrderLine = {
   id: number;
   orderId: number;
@@ -58,6 +74,7 @@ type OrderLine = {
 
   purchasedProduct?: Product;
   sellableProduct?: Product;
+  inventoryBatches: OrderInventoryBatch[];
 };
 
 type Order = {
@@ -74,6 +91,9 @@ type Order = {
 
   status: OrderStatus;
   finalizedAt: string | null;
+  inTransitAt: string | null;
+  receivingStatus: OrderReceivingStatus;
+  receivingTotals: { purchased: number; received: number; inbound: number };
 
   createdAt: string;
   updatedAt: string;
@@ -664,6 +684,7 @@ export default function OrdersPage({
                             status={
                               order.status
                             }
+                            receivingStatus={order.receivingStatus}
                           />
                         </TableCell>
 
@@ -996,6 +1017,7 @@ function OrderDetailModal({
   const [editingLine, setEditingLine] = useState<OrderLine | null>(null);
   const [editingOrder, setEditingOrder] = useState(false);
   const [showFinalizeReview, setShowFinalizeReview] = useState(false);
+  const [showReceiveItems, setShowReceiveItems] = useState(false);
 
   const [working, setWorking] =
     useState(false);
@@ -1106,6 +1128,25 @@ function OrderDetailModal({
     }
   }
 
+  async function markOnTheWay() {
+    if (isDraft || !window.confirm(
+      "Mark this order On the Way? Any unconsumed received quantities will be reclassified as inbound. Landed cost and total owned inventory value will not change.",
+    )) return;
+    try {
+      setWorking(true);
+      setError(null);
+      const response = await adminFetch(`/api/orders/${order.id}/mark-in-transit`, { method: "POST" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Order could not be marked On the Way.");
+      await onChanged(order.id);
+      window.dispatchEvent(new Event("business-data-changed"));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Order could not be marked On the Way.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
     <ModalShell inline={inline}
       onClose={onClose}
@@ -1143,10 +1184,49 @@ function OrderDetailModal({
           value={
             order.status === "DRAFT"
               ? "Draft"
-              : "Finalized"
+              : receivingStatusLabel(order.receivingStatus)
           }
         />
       </div>
+
+      {!isDraft && (
+        <section className="orders-receiving" aria-labelledby={`receiving-${order.id}`}>
+          <div className="orders-section-header">
+            <div>
+              <h3 id={`receiving-${order.id}`}>Receiving &amp; Delivery</h3>
+              <p className="orders-description">Finalization records ownership and cost. Receiving controls physical availability.</p>
+            </div>
+            <OrderStatusBadge status={order.status} receivingStatus={order.receivingStatus} />
+          </div>
+          <div className="orders-receiving-metrics">
+            <SummaryBox label="Purchased Units" value={String(order.receivingTotals.purchased)} />
+            <SummaryBox label="Received Units" value={String(order.receivingTotals.received)} />
+            <SummaryBox label="Inbound Units" value={String(order.receivingTotals.inbound)} />
+          </div>
+          <div className="orders-receiving-lines">
+            {order.lines.map(line => {
+              const batch = line.inventoryBatches[0];
+              const received = batch?.quantityReceived ?? 0;
+              return <div key={line.id}>
+                <strong>{getProductLabel(line.sellableProduct, line.sellableProductId, products)}</strong>
+                <span>Purchased {line.sellableQuantity}</span>
+                <span>Received {received}</span>
+                <span>Inbound {line.sellableQuantity - received}</span>
+              </div>;
+            })}
+          </div>
+          <div className="orders-receiving-actions">
+            {order.receivingTotals.inbound > 0 && (
+              <button type="button" className="primary-button" disabled={working} onClick={() => setShowReceiveItems(true)}>Receive Items</button>
+            )}
+            {(order.receivingStatus === "ORDERED" || order.receivingStatus === "DELIVERED") && (
+              <button type="button" className="secondary-button" disabled={working} onClick={() => void markOnTheWay()}>
+                {order.receivingStatus === "DELIVERED" ? "Reclassify as On the Way" : "Mark On the Way"}
+              </button>
+            )}
+          </div>
+        </section>
+      )}
 
       <div
         style={{
@@ -1550,8 +1630,111 @@ function OrderDetailModal({
           onFinalize={() => void finalizeOrder()}
         />
       )}
+      {showReceiveItems && !isDraft && (
+        <ReceiveItemsModal
+          order={order}
+          products={products}
+          onClose={() => setShowReceiveItems(false)}
+          onReceived={async () => {
+            setShowReceiveItems(false);
+            await onChanged(order.id);
+            window.dispatchEvent(new Event("business-data-changed"));
+          }}
+        />
+      )}
     </ModalShell>
   );
+}
+
+function ReceiveItemsModal({
+  order,
+  products,
+  onClose,
+  onReceived,
+}: {
+  order: Order;
+  products: Product[];
+  onClose: () => void;
+  onReceived: () => Promise<void>;
+}) {
+  const [quantities, setQuantities] = useState<Record<number, number>>(
+    Object.fromEntries(order.lines.map(line => [line.id, 0])),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const remainingFor = (line: OrderLine) =>
+    line.sellableQuantity - (line.inventoryBatches[0]?.quantityReceived ?? 0);
+
+  function setQuantity(line: OrderLine, value: number) {
+    const next = Number.isFinite(value) ? Math.trunc(value) : 0;
+    setQuantities(current => ({
+      ...current,
+      [line.id]: Math.max(0, Math.min(remainingFor(line), next)),
+    }));
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!order.lines.some(line => (quantities[line.id] ?? 0) > 0)) {
+      setError("Enter at least one quantity to receive.");
+      return;
+    }
+    try {
+      setSaving(true);
+      setError(null);
+      const response = await adminFetch(`/api/orders/${order.id}/receive`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lines: order.lines.map(line => ({
+            orderLineId: line.id,
+            quantity: quantities[line.id] ?? 0,
+          })),
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error ?? "Inventory receipt could not be saved.");
+      await onReceived();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Inventory receipt could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <div className="modal-backdrop" onMouseDown={event => {
+    if (event.target === event.currentTarget && !saving) onClose();
+  }}>
+    <form className="modal-surface orders-receive-modal" role="dialog" aria-modal="true" aria-labelledby="receive-items-title" onSubmit={submit}>
+      <header>
+        <div><span>Physical inventory</span><h2 id="receive-items-title">Receive Items</h2><p>{order.orderNumber} · Record a full or partial delivery.</p></div>
+        <button type="button" aria-label="Close" disabled={saving} onClick={onClose}>×</button>
+      </header>
+      <div className="orders-receive-body">
+        <div className="orders-receive-toolbar">
+          <p>Only received units become available for Sales, Shows, pack breakdown, and public in-stock status.</p>
+          <button type="button" className="secondary-button" disabled={saving} onClick={() => setQuantities(Object.fromEntries(
+            order.lines.map(line => [line.id, remainingFor(line)]),
+          ))}>Receive All Remaining</button>
+        </div>
+        {order.lines.map(line => {
+          const received = line.inventoryBatches[0]?.quantityReceived ?? 0;
+          const receiveNow = quantities[line.id] ?? 0;
+          return <label className="orders-receive-line" key={line.id}>
+            <span><strong>{getProductLabel(line.sellableProduct, line.sellableProductId, products)}</strong><small>Purchased {line.sellableQuantity} · Previously received {received}</small></span>
+            <span><em>Receive Now</em><input type="number" min="0" max={remainingFor(line)} step="1" value={receiveNow} disabled={saving || remainingFor(line) === 0} onChange={event => setQuantity(line, Number(event.target.value))} /></span>
+            <span><em>Remaining After</em><b>{remainingFor(line) - receiveNow}</b></span>
+          </label>;
+        })}
+        {error && <ErrorMessage message={error} />}
+      </div>
+      <footer className="orders-review-actions">
+        <button type="button" style={secondaryButtonStyle} disabled={saving} onClick={onClose}>Cancel</button>
+        <button type="submit" className="primary-button" disabled={saving}>{saving ? "Receiving…" : "Confirm Receipt"}</button>
+      </footer>
+    </form>
+  </div>;
 }
 
 function OrderFinalizationReview({
@@ -1610,7 +1793,7 @@ function OrderFinalizationReview({
   return <div className="modal-backdrop orders-review-backdrop">
     <div className="modal-surface orders-review-modal" role="dialog" aria-modal="true" aria-labelledby={`finalize-review-${order.id}`}>
       <header className="orders-modal-header">
-        <div><h2 id={`finalize-review-${order.id}`}>Review &amp; Finalize {order.orderNumber}</h2><p>Review the read-only landed-cost allocation before inventory and funds are committed.</p></div>
+        <div><h2 id={`finalize-review-${order.id}`}>Review &amp; Finalize {order.orderNumber}</h2><p>Review landed cost before ownership and funds are committed. Physical inventory will be received separately.</p></div>
         <button type="button" onClick={onBack} disabled={working} style={closeButtonStyle}>×</button>
       </header>
       <div className="orders-review-body">
@@ -2033,21 +2216,31 @@ function FilterButton({
 
 function OrderStatusBadge({
   status,
+  receivingStatus,
 }: {
   status: OrderStatus;
+  receivingStatus?: OrderReceivingStatus;
 }) {
   const finalized =
     status === "FINALIZED";
 
   return (
     <span
-      className={finalized ? "orders-status is-finalized" : "orders-status is-draft"}
+      className={finalized ? `orders-status is-finalized is-${(receivingStatus ?? "DELIVERED").toLowerCase()}` : "orders-status is-draft"}
     >
       {finalized
-        ? "Finalized"
+        ? receivingStatusLabel(receivingStatus ?? "DELIVERED")
         : "Draft"}
     </span>
   );
+}
+
+function receivingStatusLabel(status: OrderReceivingStatus) {
+  if (status === "ON_THE_WAY") return "On the Way";
+  if (status === "PARTIALLY_DELIVERED") return "Partially Delivered";
+  if (status === "DELIVERED") return "Delivered";
+  if (status === "ORDERED") return "Ordered";
+  return "Draft";
 }
 
 function TableHeader({

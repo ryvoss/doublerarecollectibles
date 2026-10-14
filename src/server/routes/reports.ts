@@ -33,7 +33,10 @@ router.get("/business-position-snapshots", async (req, res) => {
     res.json([...grouped.entries()].map(([period, snapshot]) => ({
       period, snapshotDate: snapshot.snapshotDate, snapshotAt: snapshot.snapshotAt,
       totalBusinessFunds: Number(snapshot.totalBusinessFunds), sealedFunds: Number(snapshot.sealedFunds), singlesFunds: Number(snapshot.singlesFunds),
-      sealedInventoryCost: Number(snapshot.sealedInventoryCost), singlesInventoryValue: snapshot.singlesInventoryValue === null ? null : Number(snapshot.singlesInventoryValue),
+      sealedInventoryCost: Number(snapshot.sealedInventoryCost),
+      sealedInventoryOnHandCost: Number(snapshot.sealedInventoryOnHandCost),
+      sealedInventoryInboundCost: Number(snapshot.sealedInventoryInboundCost),
+      singlesInventoryValue: snapshot.singlesInventoryValue === null ? null : Number(snapshot.singlesInventoryValue),
       totalBusinessValue: snapshot.totalBusinessValue === null ? null : Number(snapshot.totalBusinessValue), sealedExpectedRetail: Number(snapshot.sealedExpectedRetail),
       expectedPricingComplete: snapshot.expectedPricingComplete,
       missingExpectedPriceProducts: snapshot.missingExpectedPriceProducts,

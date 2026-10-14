@@ -98,6 +98,7 @@ router.get("/inventory", async (_req, res) => {
         featured: true,
         inventoryBatches: {
           select: {
+            quantityPurchased: true,
             quantityReceived: true,
             quantitySold: true,
             quantityConverted: true,

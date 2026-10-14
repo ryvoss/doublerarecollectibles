@@ -23,6 +23,7 @@ const product: PublicInventoryItem = {
   displayPrice: 100,
   featured: true,
   availability: "LOW_STOCK",
+  moreArrivingSoon: false,
 };
 
 type TestElementProps = {
@@ -81,7 +82,7 @@ test("product detail content shows only customer-facing product fields", () => {
   assert.match(markup, /Low Stock/);
   assert.match(markup, /A sealed collector box\./);
   assert.match(markup, /example\.png/);
-  assert.match(markup, /I&#x27;m interested/);
+  assert.match(markup, /I’m interested/);
   assert.doesNotMatch(markup, /cost|cogs|margin|quantity|batch/i);
 });
 

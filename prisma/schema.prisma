@@ -150,6 +150,7 @@ model Order {
   updatedAt    DateTime    @updatedAt
   status       OrderStatus @default(DRAFT)
   finalizedAt  DateTime?
+  inTransitAt  DateTime?
 
   lines OrderLine[]
 
@@ -189,7 +190,8 @@ model InventoryBatch {
   id                Int      @id @default(autoincrement())
   orderLineId       Int      @unique
   sellableProductId Int
-  quantityReceived  Int
+  quantityPurchased Int
+  quantityReceived  Int      @default(0)
   landedCost        Decimal  @db.Decimal(10, 2)
   landedUnitCost    Decimal  @db.Decimal(14, 6)
   quantitySold      Int      @default(0)
@@ -202,6 +204,26 @@ model InventoryBatch {
 
   saleAllocations     SaleAllocation[]
   packPoolAllocations PackPoolSourceAllocation[]
+  receiptEvents       InventoryReceiptEvent[]
+}
+
+enum InventoryReceiptEventType {
+  RECEIVED
+  RECLASSIFIED_INBOUND
+}
+
+// Append-only physical receiving history. Financial ownership and landed cost
+// remain on InventoryBatch; these events only explain availability changes.
+model InventoryReceiptEvent {
+  id               Int                       @id @default(autoincrement())
+  inventoryBatchId Int
+  type             InventoryReceiptEventType
+  quantityDelta    Int
+  occurredAt       DateTime                  @default(now())
+
+  inventoryBatch InventoryBatch @relation(fields: [inventoryBatchId], references: [id])
+
+  @@index([inventoryBatchId, occurredAt])
 }
 
 // ---------------------------------------------------------
@@ -505,6 +527,8 @@ model BusinessPositionSnapshot {
   sealedFunds                  Decimal  @db.Decimal(14, 2)
   singlesFunds                 Decimal  @db.Decimal(14, 2)
   sealedInventoryCost          Decimal  @db.Decimal(14, 2)
+  sealedInventoryOnHandCost    Decimal  @db.Decimal(14, 2)
+  sealedInventoryInboundCost   Decimal  @db.Decimal(14, 2)
   singlesInventoryValue        Decimal? @db.Decimal(14, 2)
   totalBusinessValue           Decimal? @db.Decimal(14, 2)
   sealedExpectedRetail         Decimal  @db.Decimal(14, 2)

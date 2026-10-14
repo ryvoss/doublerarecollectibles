@@ -1,7 +1,13 @@
 import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
-import { allocatedBatchCost, remainingBatchCost, remainingBatchQuantity } from "../services/inventoryCost";
+import {
+  allocatedBatchCost,
+  inboundBatchQuantity,
+  remainingBatchCost,
+  remainingBatchQuantity,
+  splitRemainingBatchCost,
+} from "../services/inventoryCost";
 
 const router = Router();
 
@@ -31,11 +37,15 @@ router.get("/", async (_req, res) => {
     });
 
     const inventory = products.map((product) => {
+      let unitsPurchased = 0;
       let unitsReceived = 0;
+      let unitsInbound = 0;
       let unitsSold = 0;
       let unitsConvertedOut = 0;
       let unitsOnHand = 0;
       let inventoryValue = 0;
+      let onHandInventoryValue = 0;
+      let inboundInventoryValue = 0;
 
       for (const batch of product.inventoryBatches) {
         const quantityRemaining = remainingBatchQuantity(batch);
@@ -43,12 +53,17 @@ router.get("/", async (_req, res) => {
         // Remaining value subtracts both recognized COGS and cost basis
         // transferred into pack inventory.
         const batchRemainingValue = remainingBatchCost(batch);
+        const splitCost = splitRemainingBatchCost(batch);
 
+        unitsPurchased += batch.quantityPurchased;
         unitsReceived += batch.quantityReceived;
+        unitsInbound += inboundBatchQuantity(batch);
         unitsSold += batch.quantitySold;
         unitsConvertedOut += batch.quantityConverted;
         unitsOnHand += quantityRemaining;
         inventoryValue += batchRemainingValue;
+        onHandInventoryValue += splitCost.onHandCost;
+        inboundInventoryValue += splitCost.inboundCost;
       }
 
       const expectedSalePrice =
@@ -60,7 +75,7 @@ router.get("/", async (_req, res) => {
         unitsOnHand * expectedSalePrice;
 
       const potentialGrossProfit =
-        retailValue - inventoryValue;
+        retailValue - onHandInventoryValue;
 
       const potentialGrossMargin =
         retailValue > 0
@@ -73,7 +88,9 @@ router.get("/", async (_req, res) => {
         productName: product.name,
         productType: product.type,
 
+        unitsPurchased,
         unitsReceived,
+        unitsInbound,
         unitsSold,
         unitsConvertedOut,
         unitsOnHand,
@@ -81,6 +98,8 @@ router.get("/", async (_req, res) => {
         inventoryValue: Number(
           inventoryValue.toFixed(2)
         ),
+        onHandInventoryValue: Number(onHandInventoryValue.toFixed(2)),
+        inboundInventoryValue: Number(inboundInventoryValue.toFixed(2)),
 
         expectedSalePrice,
 
@@ -176,11 +195,15 @@ router.get("/:productId", async (req, res) => {
       return a.id - b.id;
     });
 
+    let unitsPurchased = 0;
     let unitsReceived = 0;
+    let unitsInbound = 0;
     let unitsSold = 0;
     let unitsConvertedOut = 0;
     let unitsOnHand = 0;
     let inventoryValue = 0;
+    let onHandInventoryValue = 0;
+    let inboundInventoryValue = 0;
 
     const batches = product.inventoryBatches.map((batch) => {
       const quantityRemaining = remainingBatchQuantity(batch);
@@ -190,12 +213,17 @@ router.get("/:productId", async (req, res) => {
 
       // Exact historical cost still remaining in inventory.
       const remainingValue = remainingBatchCost(batch);
+      const splitCost = splitRemainingBatchCost(batch);
 
+      unitsPurchased += batch.quantityPurchased;
       unitsReceived += batch.quantityReceived;
+      unitsInbound += inboundBatchQuantity(batch);
       unitsSold += batch.quantitySold;
       unitsConvertedOut += batch.quantityConverted;
       unitsOnHand += quantityRemaining;
       inventoryValue += remainingValue;
+      onHandInventoryValue += splitCost.onHandCost;
+      inboundInventoryValue += splitCost.inboundCost;
 
       return {
         batchId: batch.id,
@@ -204,7 +232,9 @@ router.get("/:productId", async (req, res) => {
         orderNumber: batch.orderLine.order.orderNumber,
         orderDate: batch.orderLine.order.orderDate,
 
+        quantityPurchased: batch.quantityPurchased,
         quantityReceived: batch.quantityReceived,
+        quantityInbound: inboundBatchQuantity(batch),
         quantitySold: batch.quantitySold,
         quantityConverted: batch.quantityConverted,
         quantityRemaining,
@@ -219,6 +249,8 @@ router.get("/:productId", async (req, res) => {
         remainingValue: Number(
           remainingValue.toFixed(2)
         ),
+        onHandValue: Number(splitCost.onHandCost.toFixed(2)),
+        inboundValue: Number(splitCost.inboundCost.toFixed(2)),
 
         createdAt: batch.createdAt,
       };
@@ -245,7 +277,7 @@ router.get("/:productId", async (req, res) => {
       unitsOnHand * expectedSalePrice;
 
     const potentialGrossProfit =
-      retailValue - inventoryValue;
+        retailValue - onHandInventoryValue;
 
     const potentialGrossMargin =
       retailValue > 0
@@ -262,7 +294,9 @@ router.get("/:productId", async (req, res) => {
       },
 
       summary: {
+        unitsPurchased,
         unitsReceived,
+        unitsInbound,
         unitsSold,
         unitsConvertedOut,
         unitsOnHand,
@@ -270,6 +304,8 @@ router.get("/:productId", async (req, res) => {
         inventoryValue: Number(
           inventoryValue.toFixed(2)
         ),
+        onHandInventoryValue: Number(onHandInventoryValue.toFixed(2)),
+        inboundInventoryValue: Number(inboundInventoryValue.toFixed(2)),
 
         retailValue: Number(
           retailValue.toFixed(2)
