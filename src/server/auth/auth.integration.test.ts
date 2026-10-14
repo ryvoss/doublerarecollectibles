@@ -172,6 +172,7 @@ test("unauthenticated writes cannot reach business handlers or mutate data", asy
   await request(app).post("/api/orders/1/receive").send({ lines: [] }).expect(401);
   await request(app).post("/api/orders/1/correction-preview").send({}).expect(401);
   await request(app).post("/api/orders/1/corrections").send({}).expect(401);
+  await request(app).put("/api/products/7/image").set("Content-Type", "image/png").send(Buffer.from("image")).expect(401);
 });
 
 test("unauthenticated admin pages redirect to login and are not cached", async () => {
@@ -204,6 +205,7 @@ test("CSRF blocks missing, invalid, and cross-session tokens without mutation", 
   await first.post("/api/orders/1/receive").set("Origin", testOrigin).send({ lines: [] }).expect(403);
   await first.post("/api/orders/1/corrections").set("Origin", testOrigin).send({}).expect(403);
   await first.post("/api/products").set("Origin", testOrigin).send({}).expect(403);
+  await first.put("/api/products/7/image").set("Origin", testOrigin).set("Content-Type", "image/png").send(Buffer.from("image")).expect(403);
   await first.post("/api/products").set("Origin", testOrigin).set("X-CSRF-Token", "invalid").send({}).expect(403);
   await second.post("/api/products").set("Origin", testOrigin).set("X-CSRF-Token", firstToken).send({}).expect(403);
   assert.equal(productMutationCount, beforeCount);

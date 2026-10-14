@@ -18,6 +18,7 @@ import {
   validateProductImageUpload,
 } from "../services/productImageStorage";
 import { parseImageBody } from "../middleware/imageUpload";
+import { ProductImageConflictError, replaceProductImage } from "../services/productImageReplacement";
 
 const router = Router();
 
@@ -462,7 +463,6 @@ router.put(
   "/:productId/image",
   parseImageBody,
   async (req, res) => {
-    let newImageKey: string | null = null;
     try {
       const productId = Number(req.params.productId);
       if (!Number.isSafeInteger(productId) || productId <= 0) {
@@ -494,28 +494,21 @@ router.put(
         mimeType: req.get("content-type")?.split(";", 1)[0]?.trim() ?? "",
         originalFileName,
       });
-      newImageKey = await productImageStorage.saveProductImage(productId, image);
-
-      const updated = await prisma.product.updateMany({
-        where: { id: productId, imageKey: product.imageKey },
-        data: { imageKey: newImageKey },
+      const newImageKey = await replaceProductImage({
+        currentImageKey: product.imageKey,
+        image,
+        productId,
+        storage: productImageStorage,
+        updateImageKey: async (imageKey) => (await prisma.product.updateMany({
+          where: { id: productId, imageKey: product.imageKey },
+          data: { imageKey },
+        })).count === 1,
+        onCleanupError: (cleanupError) => logServerError("Old product image cleanup failed:", cleanupError),
       });
-      if (updated.count !== 1) {
-        await productImageStorage.deleteProductImage(newImageKey);
-        return res.status(409).json({ error: "The product image changed during upload. Try again." });
-      }
-
-      try {
-        await productImageStorage.deleteProductImage(product.imageKey);
-      } catch (cleanupError) {
-        logServerError("Old product image cleanup failed:", cleanupError);
-      }
 
       return res.json({ imageUrl: productImageStorage.getPublicUrl(newImageKey) });
     } catch (error) {
-      if (newImageKey) {
-        await productImageStorage.deleteProductImage(newImageKey).catch(() => undefined);
-      }
+      if (error instanceof ProductImageConflictError) return res.status(409).json({ error: error.message });
       if (error instanceof ProductImageValidationError) {
         return res.status(400).json({ error: error.message });
       }

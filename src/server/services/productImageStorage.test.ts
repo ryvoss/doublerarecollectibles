@@ -10,7 +10,9 @@ import {
 } from "@aws-sdk/client-s3";
 import {
   createProductImageStorage,
+  MAX_PRODUCT_IMAGE_BYTES,
   S3ProductImageStorage,
+  validateProductImageUpload,
   type SendS3StorageCommand,
   type StoredProductImage,
 } from "./productImageStorage";
@@ -117,4 +119,22 @@ test("S3 factory validates private bucket configuration without exposing credent
     REGION: "auto",
   });
   assert.ok(storage instanceof S3ProductImageStorage);
+});
+
+test("image validation rejects unsupported, mismatched, and oversized uploads", () => {
+  assert.throws(() => validateProductImageUpload({
+    data: Buffer.from("not an image"),
+    mimeType: "image/gif",
+    originalFileName: "product.gif",
+  }), /JPEG, PNG, or WebP/);
+  assert.throws(() => validateProductImageUpload({
+    data: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    mimeType: "image/png",
+    originalFileName: "product.jpg",
+  }), /extension does not match/);
+  assert.throws(() => validateProductImageUpload({
+    data: Buffer.alloc(MAX_PRODUCT_IMAGE_BYTES + 1),
+    mimeType: "image/png",
+    originalFileName: "product.png",
+  }), /8 MB or smaller/);
 });

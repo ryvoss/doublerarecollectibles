@@ -2,6 +2,7 @@ import { adminFetch } from "../adminFetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import PublicListingManager from "../components/PublicListingManager";
+import BulkProductImageUpload from "../components/BulkProductImageUpload";
 import {
   CTA_TARGETS,
   EMPTY_PUBLIC_SITE_ASSETS,
@@ -68,6 +69,7 @@ export default function PublicSiteManagerPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [listingManagerOpen, setListingManagerOpen] = useState(false);
+  const [bulkImagesOpen, setBulkImagesOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -145,7 +147,7 @@ export default function PublicSiteManagerPage() {
           {activeTab === "PRODUCTS" && <ManagerSection title="Products" description="The existing merchandising workflow remains the single source for customer-facing product settings.">
             <div className="storefront-launch-card">
               <div><span className="eyebrow">PRODUCT LISTINGS</span><h4>Manage public products</h4><p>Control visibility, featured status, public and compare-at pricing, descriptions, primary images, and recent price-drop presentation.</p></div>
-              <div className="storefront-launch-card__actions"><button className="primary-button" type="button" onClick={() => setListingManagerOpen(true)}>Open Product Listings</button><a className="secondary-button" href="/inventory" target="_blank" rel="noreferrer">Preview Inventory</a></div>
+              <div className="storefront-launch-card__actions"><button className="primary-button" type="button" onClick={() => setListingManagerOpen(true)}>Open Product Listings</button><button className="secondary-button" type="button" onClick={() => setBulkImagesOpen(true)}>Bulk Upload Images</button><a className="secondary-button" href="/inventory" target="_blank" rel="noreferrer">Preview Inventory</a></div>
             </div>
             <div className="storefront-mini-preview" aria-label="Customer product preview example"><div className="storefront-mini-preview__image">Image</div><div><span>Recent Price Drop</span><h4>Customer product name</h4><p>Short descriptions, availability, current price, and compare-at price appear on the customer card.</p><strong>$99.00 <del>$119.00</del></strong><button type="button" disabled>I&apos;m Interested</button></div></div>
           </ManagerSection>}
@@ -161,6 +163,7 @@ export default function PublicSiteManagerPage() {
         </footer>}
       </form>
       {listingManagerOpen && <PublicListingManager onClose={() => setListingManagerOpen(false)} />}
+      {bulkImagesOpen && <BulkProductImageUpload onClose={() => setBulkImagesOpen(false)} />}
     </div>
   );
 }

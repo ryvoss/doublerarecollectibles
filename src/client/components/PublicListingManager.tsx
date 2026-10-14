@@ -7,6 +7,7 @@ import type {
 } from "../../shared/publicInventory";
 import { isValidPublicMoney, suggestedCompareAtPrice } from "../../shared/publicInventory";
 import ProductImageManager from "./ProductImageManager";
+import BulkProductImageUpload from "./BulkProductImageUpload";
 
 type ListingFilter = "ALL" | "PUBLIC" | "HIDDEN" | "FEATURED";
 
@@ -78,6 +79,7 @@ export default function PublicListingManager({
   const [success, setSuccess] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [previewId, setPreviewId] = useState<number | null>(null);
+  const [bulkImagesOpen, setBulkImagesOpen] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -354,6 +356,7 @@ export default function PublicListingManager({
           <div className="public-listing-header__summary">
             <span><strong>{items.filter((item) => drafts[item.id]?.publicVisible).length}</strong> public</span>
             <span><strong>{items.filter((item) => drafts[item.id]?.featured).length}</strong> featured</span>
+            <button type="button" className="secondary-button public-listing-bulk-upload" onClick={() => setBulkImagesOpen(true)}>Bulk Upload Images</button>
           </div>
           <button type="button" aria-label="Close public listing manager" onClick={requestClose}>
             &times;
@@ -593,6 +596,7 @@ export default function PublicListingManager({
           </div>
         </footer>
       </section>
+      {bulkImagesOpen && <BulkProductImageUpload onClose={() => setBulkImagesOpen(false)} onUploaded={() => setReloadKey((key) => key + 1)} />}
     </div>
   );
 }
