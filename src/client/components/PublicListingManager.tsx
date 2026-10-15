@@ -7,6 +7,7 @@ import type {
 } from "../../shared/publicInventory";
 import { isValidPublicMoney, suggestedCompareAtPrice } from "../../shared/publicInventory";
 import ProductImageManager from "./ProductImageManager";
+import ProductImage from "./ProductImage";
 import BulkProductImageUpload from "./BulkProductImageUpload";
 
 type ListingFilter = "ALL" | "PUBLIC" | "HIDDEN" | "FEATURED";
@@ -415,7 +416,7 @@ export default function PublicListingManager({
         )}
 
         {previewItem && drafts[previewItem.id] && <aside className="public-listing-preview" aria-label={`Customer preview for ${previewItem.internalName}`}>
-          <div className="public-listing-preview__image">{previewItem.imageUrl ? <img src={previewItem.imageUrl} alt="" /> : <span>DR</span>}</div>
+          <ProductImage className="public-listing-preview__image" variant="admin-preview" src={previewItem.imageUrl} alt="" />
           <div>
             <span>{previewItem.recentPriceDrop ? "Recent Price Drop" : stockLabels[previewItem.stockStatus]}</span>
             <h3>{drafts[previewItem.id].displayName.trim() || previewItem.internalName}</h3>

@@ -1,5 +1,6 @@
 import { adminFetch } from "../adminFetch";
 import { useRef, useState, type ChangeEvent } from "react";
+import ProductImage from "./ProductImage";
 
 const MAX_PRODUCT_IMAGE_BYTES = 8 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -85,13 +86,13 @@ export default function ProductImageManager({
 
   return (
     <div className={`product-image-manager${compact ? " product-image-manager--compact" : ""}`}>
-      <div className="product-image-manager__preview">
-        {imageUrl ? (
-          <img src={imageUrl} alt={`${productName} product`} />
-        ) : (
-          <span aria-label="No product image">DR</span>
-        )}
-      </div>
+      <ProductImage
+        className="product-image-manager__preview"
+        variant="admin-preview"
+        src={imageUrl}
+        alt={`${productName} product`}
+        fallbackAriaLabel="No product image"
+      />
       <div className="product-image-manager__controls">
         <input
           ref={inputRef}

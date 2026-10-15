@@ -84,6 +84,8 @@ test("product detail content shows only customer-facing product fields", () => {
   assert.match(markup, /Low Stock/);
   assert.match(markup, /A sealed collector box\./);
   assert.match(markup, /example\.png/);
+  assert.match(markup, /product-image-frame--modal/);
+  assert.match(markup, /alt="CN Pris Box"/);
   assert.match(markup, /I’m interested/);
   assert.doesNotMatch(markup, /cost|cogs|margin|quantity|batch/i);
 });
@@ -162,6 +164,7 @@ test("product detail restores focus and retains dialog accessibility behavior", 
 test("logo and product modal styles retain content at phone and desktop sizes", () => {
   const siteCss = readFileSync(new URL("./PublicSite.css", import.meta.url), "utf8");
   const detailCss = readFileSync(new URL("./ProductDetailModal.css", import.meta.url), "utf8");
+  const productImageCss = readFileSync(new URL("../components/ProductImage.css", import.meta.url), "utf8");
 
   assert.match(siteCss, /\.public-brand__mark img[\s\S]*max-width: 100%/);
   assert.match(siteCss, /\.public-brand__mark img[\s\S]*max-height: 100%/);
@@ -169,5 +172,7 @@ test("logo and product modal styles retain content at phone and desktop sizes", 
   assert.match(siteCss, /@media \(max-width: 390px\)/);
   assert.match(detailCss, /height: calc\(100dvh - 8px\)/);
   assert.match(detailCss, /overflow-x: hidden/);
+  assert.match(detailCss, /grid-template-rows: clamp\(190px, 42vh, 360px\)/);
   assert.match(detailCss, /@media \(min-width: 768px\)/);
+  assert.match(productImageCss, /object-fit: contain/);
 });

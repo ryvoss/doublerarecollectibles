@@ -4,6 +4,7 @@ import {
   type PublicMerchandisingBadge,
 } from "../../shared/publicInventory";
 import { formatPublicProductPrice } from "./ProductDetailModal";
+import ProductImage from "../components/ProductImage";
 
 const availabilityLabels = {
   IN_STOCK: "In Stock",
@@ -52,15 +53,13 @@ export function PublicInventoryCard({
         aria-label={`View details for ${product.name}`}
         onClick={(event) => onOpen(event.currentTarget)}
       />
-      <div className="public-catalog-card__image">
-        {product.imageUrl ? (
-          <img src={product.imageUrl} alt={product.name} loading="lazy" decoding="async" />
-        ) : (
-          <div className="public-product-fallback" aria-hidden="true">
-            <span>DR</span>
-          </div>
-        )}
-      </div>
+      <ProductImage
+        className="public-catalog-card__image"
+        variant="card"
+        src={product.imageUrl}
+        alt={product.name}
+        loading="lazy"
+      />
 
       <div className="public-catalog-card__body">
         <div className="public-catalog-card__meta">

@@ -1,4 +1,5 @@
 import { adminFetch } from "../adminFetch";
+import ProductImage from "./ProductImage";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import type { AdminPublicListingItem } from "../../shared/publicInventory";
 import {
@@ -225,10 +226,10 @@ export default function BulkProductImageUpload({ onClose, onUploaded }: { onClos
             const product = entry.productId === null ? null : productById.get(entry.productId) ?? null;
             const duplicate = entry.productId !== null && duplicateIds.has(entry.productId);
             return <article className={`bulk-image-row${entry.skipped ? " is-skipped" : ""}`} key={entry.id}>
-              <div className="bulk-image-row__new">{entry.previewUrl ? <img src={entry.previewUrl} alt={`Preview of ${entry.file.name}`} /> : <span>Invalid</span>}</div>
+              <ProductImage className="bulk-image-row__new" variant="thumbnail" src={entry.previewUrl} alt={`Preview of ${entry.file.name}`} fallbackMark="Invalid" />
               <div className="bulk-image-row__file"><strong title={entry.file.name}>{entry.file.name}</strong><span>{formatBytes(entry.file.size)}</span><b className={`is-${entry.matchStatus.toLowerCase()}`}>{matchLabels[entry.matchStatus]}</b>{entry.validationError && <small>{entry.validationError}</small>}</div>
               <div className="bulk-image-row__match"><label><span>Product match</span><input list="bulk-product-options" value={entry.selectorValue} disabled={busy || entry.uploadState === "SUCCESS" || Boolean(entry.validationError)} placeholder="Search product name" onChange={(event) => assignFromSelector(entry.id, event.target.value)} /></label>{duplicate && <small>Duplicate product assignment</small>}</div>
-              <div className="bulk-image-row__replacement">{product?.imageUrl ? <><div><img src={product.imageUrl} alt={`Current ${product.internalName}`} /></div><span aria-hidden="true">&rarr;</span><small>Replaces current image</small></> : <small>{product ? "Adds first image" : "No product selected"}</small>}</div>
+              <div className="bulk-image-row__replacement">{product?.imageUrl ? <><ProductImage className="bulk-image-row__current-image" variant="thumbnail" src={product.imageUrl} alt={`Current ${product.internalName}`} /><span aria-hidden="true">&rarr;</span><small>Replaces current image</small></> : <small>{product ? "Adds first image" : "No product selected"}</small>}</div>
               <div className="bulk-image-row__result"><strong className={`is-${entry.uploadState.toLowerCase()}`}>{entry.uploadState === "PENDING" ? "Ready for review" : entry.uploadState === "UPLOADING" ? "Uploading…" : entry.uploadState === "SUCCESS" ? "Uploaded" : "Upload failed"}</strong>{entry.uploadError && <small>{entry.uploadError}</small>}<label><input type="checkbox" checked={entry.skipped} disabled={busy || entry.uploadState === "SUCCESS"} onChange={(event) => updateFile(entry.id, { skipped: event.target.checked })} /> Skip</label><button type="button" disabled={busy} onClick={() => removeFile(entry)}>Remove</button></div>
             </article>;
           })}

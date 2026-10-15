@@ -246,68 +246,12 @@
 }
 
 .public-catalog-card__image {
-  position: relative;
-  display: grid;
-  place-items: center;
-  min-height: 210px;
-  overflow: hidden;
   border-bottom: 1px solid var(--public-border);
-  background:
-    radial-gradient(circle at 50% 44%, rgba(214, 178, 94, 0.13), transparent 8.5rem),
-    linear-gradient(145deg, #191a20, #0d0e12);
 }
 
 .public-catalog-card.is-sold-out .public-catalog-card__image {
   filter: saturate(0.45);
   opacity: 0.7;
-}
-
-.public-catalog-card__image::before {
-  content: none;
-}
-
-.public-catalog-card__image > img {
-  position: relative;
-  z-index: 1;
-  width: calc(100% - 28px);
-  height: 182px;
-  padding: 10px;
-  border-radius: 13px;
-  background: #f3f2ee;
-  object-fit: contain;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
-}
-
-.public-product-fallback {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 126px;
-  height: 170px;
-  border: 1px solid rgba(214, 178, 94, 0.25);
-  border-radius: 17px;
-  background:
-    linear-gradient(155deg, rgba(214, 178, 94, 0.11), transparent 50%),
-    #121319;
-  box-shadow:
-    -22px 18px 0 -10px rgba(214, 178, 94, 0.045),
-    0 24px 44px rgba(0, 0, 0, 0.25);
-  transform: rotate(3deg);
-}
-
-.public-product-fallback::after {
-  position: absolute;
-  inset: 9px;
-  border: 1px solid rgba(214, 178, 94, 0.1);
-  border-radius: 11px;
-  content: "";
-}
-
-.public-product-fallback span {
-  color: var(--public-gold-light);
-  font-size: 24px;
-  font-weight: 850;
-  letter-spacing: 0.08em;
 }
 
 .public-featured-label {
@@ -562,7 +506,7 @@
 }
 
 .public-catalog-skeleton > div {
-  height: 210px;
+  aspect-ratio: 4 / 3;
   border-bottom: 1px solid var(--public-border);
 }
 
@@ -614,15 +558,6 @@
   .public-catalog-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 24px;
-  }
-
-  .public-catalog-card__image,
-  .public-catalog-skeleton > div {
-    min-height: 270px;
-  }
-
-  .public-catalog-card__image > img {
-    height: 236px;
   }
 
   .public-catalog-card__body {

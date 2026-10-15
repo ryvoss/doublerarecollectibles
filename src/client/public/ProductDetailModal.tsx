@@ -12,6 +12,7 @@ import type {
   PublicInventoryItem,
 } from "../../shared/publicInventory";
 import { primaryMerchandisingBadge } from "../../shared/publicInventory";
+import ProductImage from "../components/ProductImage";
 
 export type ProductGalleryImage = {
   alt: string;
@@ -125,18 +126,14 @@ function ProductGallery({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        {images.length > 0 ? (
-          <img
-            src={images[activeIndex].url}
-            alt={images[activeIndex].alt}
-            decoding="async"
-          />
-        ) : (
-          <div className="public-product-gallery__fallback" role="img" aria-label={`${productName} image not available`}>
-            <span>DR</span>
-            <small>Image coming soon</small>
-          </div>
-        )}
+        <ProductImage
+          className="public-product-gallery__image"
+          variant="modal"
+          src={images[activeIndex]?.url}
+          alt={images[activeIndex]?.alt ?? productName}
+          fallbackAriaLabel={`${productName} image not available`}
+          fallbackDescription="Image coming soon"
+        />
 
         {hasMultipleImages && (
           <>
@@ -174,7 +171,12 @@ function ProductGallery({
               aria-pressed={index === activeIndex}
               onClick={() => setActiveIndex(index)}
             >
-              <img src={image.url} alt="" />
+              <ProductImage
+                className="public-product-gallery__thumbnail"
+                variant="thumbnail"
+                src={image.url}
+                alt=""
+              />
             </button>
           ))}
         </div>
