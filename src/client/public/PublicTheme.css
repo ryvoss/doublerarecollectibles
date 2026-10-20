@@ -1,0 +1,16 @@
+/* Portaled dialogs share the storefront palette without changing the admin theme. */
+:where(:root:has(.public-site), .public-site, .public-contact-modal-backdrop, .public-product-detail-backdrop, .public-editorial-preview) {
+  --public-bg: #0b0c0e;
+  --public-surface: #131517;
+  --public-surface-raised: #1b1d20;
+  --public-text: #f5f2e9;
+  --public-muted: #b8b7b2;
+  --public-subtle: #a0a19b;
+  --public-gold: #c9af78;
+  --public-gold-light: #e8d4a7;
+  --public-silver: #c8cbd0;
+  --public-border: rgba(214, 216, 220, 0.14);
+  color-scheme: dark;
+}
+
+:root:has(.public-site) { background: var(--public-bg); }

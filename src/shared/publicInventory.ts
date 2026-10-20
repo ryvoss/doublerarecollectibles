@@ -165,13 +165,23 @@ export function selectHomepageMerchandise(
     ), soldOut);
   }
 
-  for (const group of groups) {
-    for (const product of group) {
-      if (seen.has(product.id)) continue;
-      seen.add(product.id);
-      selected.push(product);
+  const availableGroups = groups.filter((group) => group.some((product) => product.availability !== "SOLD_OUT"));
+  // Rotate the configured sources so a run of drops cannot crowd out featured
+  // and inbound picks. Deduplicate overlap, then use sold out only as fallback.
+  let added = true;
+  while (added && selected.length < config.limit) {
+    added = false;
+    for (const group of availableGroups) {
+      const product = group.find((item) => !seen.has(item.id));
+      if (!product) continue;
+      seen.add(product.id); selected.push(product); added = true;
       if (selected.length === config.limit) return selected;
     }
+  }
+  for (const group of groups) for (const product of group) {
+    if (seen.has(product.id)) continue;
+    seen.add(product.id); selected.push(product);
+    if (selected.length === config.limit) return selected;
   }
   return selected;
 }

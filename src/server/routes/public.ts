@@ -5,8 +5,13 @@ import { productImageStorage } from "../services/productImageStorage";
 import { getPublicSiteConfiguration } from "../services/siteConfiguration";
 import type { SiteAssetType } from "../../shared/publicSite";
 import { toPublicInventoryItem } from "../services/publicContracts";
+import { createPublicEditorialRouter } from "./storefrontContent";
+import { storefrontRepository } from "../services/storefrontContent";
 
 const router = Router();
+router.use(createPublicEditorialRouter(storefrontRepository, async () =>
+  (await prisma.product.findMany({ where: { publicVisible: true, active: true, sellable: true }, select: { id: true } })).map((product) => product.id),
+));
 
 router.get("/site", async (_req, res) => {
   try {

@@ -1,3 +1,4 @@
+import { createStorefrontContentRouter } from "../routes/storefrontContent";
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import type { Request, Response } from "express";
@@ -31,6 +32,7 @@ const password = "test-only-password-phrase";
 const testOrigin = "http://localhost:3003";
 let admin: AdminAuthenticationRecord | null = null;
 let productMutationCount = 0;
+let contentMutationCount = 0;
 
 const testPassport = createAdminPassport({
   findById: async (id) => admin?.id === id ? admin : null,
@@ -77,6 +79,15 @@ function readableRouter(path = "/") {
   return router;
 }
 
+const siteContentRouter = readableRouter();
+siteContentRouter.use("/content", createStorefrontContentRouter({
+  read: async () => ({ categories: [], news: [], announcements: [] }),
+  listNewsPage: async () => ({ posts: [], hasMore: false }),
+  findNewsArticle: async () => null,
+  save: async () => { contentMutationCount += 1; },
+  remove: async () => { contentMutationCount += 1; },
+}));
+
 const reportsRouter = readableRouter("/business-position");
 reportsRouter.get("/explode", () => {
   throw new Error("postgresql://secret-user:secret-password@private-host/private-db");
@@ -104,7 +115,7 @@ mountApiRoutes(app, {
   reports: reportsRouter,
   sales: readableRouter(),
   shows: readableRouter(),
-  site: readableRouter(),
+  site: siteContentRouter,
   whatIfScenarios: readableRouter(),
 }, requireAdmin, {
   authenticatedApiLimiter,
@@ -310,6 +321,26 @@ test("authenticated users without ADMIN role receive 403", () => {
   requireAdmin(req, res, () => { nextCalled = true; });
   assert.equal(statusCode, 403);
   assert.equal(nextCalled, false);
+});
+
+test("Storefront content routes inherit ADMIN, CSRF, Origin, and no-store boundaries", async () => {
+  const category = { name: "Boxes", slug: "boxes", visible: false, sortOrder: 0, productIds: [] };
+  const beforeWrites = contentMutationCount;
+  await request(app).get("/api/site/content").expect(401);
+  for (const method of ["post", "put", "delete"] as const) {
+    await request(app)[method](`/api/site/content/categories${method === "post" ? "" : "/1"}`).set("Origin", testOrigin).send(category).expect(401);
+  }
+  const agent = request.agent(app); await login(agent);
+  const token = await csrf(agent);
+  const read = await agent.get("/api/site/content").expect(200);
+  assert.match(read.headers["cache-control"], /no-store/);
+  await agent.post("/api/site/content/categories").set("Origin", testOrigin).send(category).expect(403);
+  await agent.post("/api/site/content/categories").set("Origin", "https://unexpected.example").set("x-csrf-token", token).send(category).expect(403);
+  assert.equal(contentMutationCount, beforeWrites);
+  await agent.post("/api/site/content/categories").set("Origin", testOrigin).set("x-csrf-token", token).send(category).expect(201);
+  await agent.put("/api/site/content/categories/1").set("Origin", testOrigin).set("x-csrf-token", token).send({ ...category, visible: true }).expect(200);
+  await agent.delete("/api/site/content/categories/1").set("Origin", testOrigin).set("x-csrf-token", token).expect(200);
+  assert.equal(contentMutationCount, beforeWrites + 3);
 });
 
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {

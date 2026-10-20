@@ -79,6 +79,7 @@ model Product {
 
   packPoolsAsSource PackPool[]         @relation("PackPoolSource")
   showPackSnapshots ShowPackSnapshot[] @relation("ShowPackSnapshotSource")
+  storefrontCategories StorefrontCategoryProduct[]
 
   @@index([publicVisible, active, sellable])
 }
@@ -152,6 +153,52 @@ enum SiteAssetType {
   PRIMARY_LOGO
   FAVICON
   HERO_IMAGE
+}
+
+// Retail navigation is independent from the accounting Product hierarchy.
+model StorefrontCategory {
+  id        Int @id @default(autoincrement())
+  name      String @db.VarChar(80)
+  slug      String @unique @db.VarChar(100)
+  visible   Boolean @default(false)
+  sortOrder Int @default(0)
+  products  StorefrontCategoryProduct[]
+}
+
+model StorefrontCategoryProduct {
+  categoryId Int
+  productId  Int
+  category StorefrontCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@id([categoryId, productId])
+  @@index([productId])
+}
+
+model StorefrontNewsPost {
+  id          Int @id @default(autoincrement())
+  title       String @db.VarChar(160)
+  slug        String @unique @db.VarChar(100)
+  summary     String @db.VarChar(320)
+  body        String @db.Text
+  imageUrl    String? @db.VarChar(500)
+  published   Boolean @default(false)
+  publishAt   DateTime
+  @@index([published, publishAt])
+}
+
+model StorefrontAnnouncement {
+  id              Int @id @default(autoincrement())
+  type            String @db.VarChar(30)
+  title           String @db.VarChar(120)
+  summary         String @db.VarChar(240)
+  imageUrl        String? @db.VarChar(500)
+  published       Boolean @default(false)
+  sortOrder       Int @default(0)
+  startsAt        DateTime?
+  endsAt          DateTime?
+  destination     String @db.VarChar(30)
+  destinationSlug String? @db.VarChar(100)
+  @@index([published, sortOrder])
 }
 
 // ---------------------------------------------------------

@@ -126,10 +126,22 @@ test("homepage section normalization preserves valid ordering and restores missi
     { key: "HERO", visible: true },
     { key: "NOT_REAL", visible: true },
   ]);
-  assert.deepEqual(sections.slice(0, 2), [
+  assert.deepEqual(sections.slice(1, 3), [
     { key: "CONTACT", visible: false },
     { key: "HERO", visible: true },
   ]);
-  assert.equal(sections.length, 6);
-  assert.equal(new Set(sections.map((section) => section.key)).size, 6);
+  assert.deepEqual(sections[0], { key: "UPDATES", visible: true });
+  assert.equal(sections.length, 7);
+  assert.equal(new Set(sections.map((section) => section.key)).size, 7);
+});
+
+test("the legacy default layout upgrades to inventory-first while preserving visibility", () => {
+  const sections = normalizeHomepageSections([
+    { key: "HERO", visible: false }, { key: "MERCHANDISING", visible: true },
+    { key: "COMING_SOON", visible: false }, { key: "NEXT_SHOW", visible: true },
+    { key: "BUY_SELL_TRADE", visible: true }, { key: "CONTACT", visible: false },
+  ]);
+  assert.deepEqual(sections.map((section) => section.key), ["UPDATES", "MERCHANDISING", "COMING_SOON", "NEXT_SHOW", "BUY_SELL_TRADE", "HERO", "CONTACT"]);
+  assert.equal(sections.find((section) => section.key === "HERO")?.visible, false);
+  assert.equal(sections.find((section) => section.key === "CONTACT")?.visible, false);
 });

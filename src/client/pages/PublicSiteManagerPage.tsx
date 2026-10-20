@@ -1,3 +1,5 @@
+import StorefrontContentManager from "../components/StorefrontContentManager";
+import type { ContentKind } from "../../shared/storefrontContent";
 import { adminFetch } from "../adminFetch";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
@@ -16,7 +18,7 @@ import {
 } from "../../shared/publicSite";
 import "./PublicSiteManagerPage.css";
 
-type ManagerTab = "HOME" | "PRODUCTS" | "SHOWS" | "CONTENT" | "BRANDING";
+type ManagerTab = "HOME" | "PRODUCTS" | "SHOWS" | "CONTENT" | "BRANDING" | "CATEGORIES" | "ANNOUNCEMENTS" | "NEWS";
 
 type StorefrontShow = {
   id: number;
@@ -33,13 +35,17 @@ type StorefrontShow = {
 const tabs: Array<{ id: ManagerTab; label: string }> = [
   { id: "HOME", label: "Homepage" },
   { id: "PRODUCTS", label: "Products" },
+  { id: "CATEGORIES", label: "Categories" },
+  { id: "ANNOUNCEMENTS", label: "Announcements" },
+  { id: "NEWS", label: "News & Updates" },
   { id: "SHOWS", label: "Shows" },
   { id: "CONTENT", label: "Content" },
   { id: "BRANDING", label: "Branding" },
 ];
 
 const sectionLabels: Record<HomepageSectionKey, string> = {
-  HERO: "Hero",
+  UPDATES: "Announcements & Updates",
+  HERO: "Compact introduction",
   MERCHANDISING: "Featured & Recent Drops",
   COMING_SOON: "Coming Soon",
   NEXT_SHOW: "Next Show",
@@ -126,6 +132,8 @@ export default function PublicSiteManagerPage() {
     } finally { setSaving(false); }
   }
 
+  const managedKind: ContentKind | null = activeTab === "CATEGORIES" ? "categories" : activeTab === "ANNOUNCEMENTS" ? "announcements" : activeTab === "NEWS" ? "news" : null;
+
   if (loading) return <div className="site-manager-state">Loading storefront settings...</div>;
 
   return (
@@ -141,7 +149,7 @@ export default function PublicSiteManagerPage() {
 
       {(error || success) && <div className={`site-manager-notice ${error ? "is-error" : "is-success"}`} role={error ? "alert" : "status"}>{error ?? success}</div>}
 
-      <form onSubmit={(event) => void saveSettings(event)}>
+      {managedKind ? <StorefrontContentManager key={managedKind} kind={managedKind} /> : <form onSubmit={(event) => void saveSettings(event)}>
         <section className="panel site-manager-panel">
           {activeTab === "HOME" && <HomepageManager draft={draft} assets={configuration.assets} moveSection={moveSection} setSectionVisibility={setSectionVisibility} updateSetting={updateSetting} />}
           {activeTab === "PRODUCTS" && <ManagerSection title="Products" description="The existing merchandising workflow remains the single source for customer-facing product settings.">
@@ -161,7 +169,7 @@ export default function PublicSiteManagerPage() {
           <button type="button" className="secondary-button" disabled={!dirty || saving} onClick={() => setDraft(configuration.settings)}>Discard</button>
           <button type="submit" className="primary-button" disabled={!dirty || saving}>{saving ? "Saving..." : "Save Storefront"}</button>
         </footer>}
-      </form>
+      </form>}
       {listingManagerOpen && <PublicListingManager onClose={() => setListingManagerOpen(false)} />}
       {bulkImagesOpen && <BulkProductImageUpload onClose={() => setBulkImagesOpen(false)} />}
     </div>

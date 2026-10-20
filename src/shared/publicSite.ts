@@ -1,4 +1,5 @@
 export const HOMEPAGE_SECTION_KEYS = [
+  "UPDATES",
   "HERO",
   "MERCHANDISING",
   "COMING_SOON",
@@ -87,14 +88,16 @@ export type PublicSiteConfiguration = {
   settings: PublicSiteSettings;
   assets: PublicSiteAssets;
   nextShow: PublicNextShow | null;
+  upcomingShows?: PublicNextShow[];
 };
 
 export const DEFAULT_HOMEPAGE_SECTIONS: HomepageSectionConfig[] = [
-  { key: "HERO", visible: true },
+  { key: "UPDATES", visible: true },
   { key: "MERCHANDISING", visible: true },
   { key: "COMING_SOON", visible: false },
   { key: "NEXT_SHOW", visible: true },
   { key: "BUY_SELL_TRADE", visible: true },
+  { key: "HERO", visible: true },
   { key: "CONTACT", visible: true },
 ];
 
@@ -158,11 +161,15 @@ export function selectNearestUpcomingShow(
   shows: PublicNextShow[],
   now = new Date(),
 ) {
+  return upcomingPublicShows(shows, now)[0] ?? null;
+}
+
+export function upcomingPublicShows(shows: PublicNextShow[], now = new Date()) {
   const beginningOfToday = new Date(now);
   beginningOfToday.setUTCHours(0, 0, 0, 0);
   return shows
     .filter((show) => new Date(show.date).getTime() >= beginningOfToday.getTime())
-    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime())[0] ?? null;
+    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime() || left.name.localeCompare(right.name));
 }
 
 export function visibleHomepageSectionKeys(sections: HomepageSectionConfig[]) {

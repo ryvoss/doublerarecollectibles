@@ -1,7 +1,10 @@
+import { InventoryEmptyState } from "./InventoryEmptyState";
 import { useEffect, useMemo, useState } from "react";
+import { usePublicCatalog } from "./PublicCatalog";
+import { CategoryNavigation } from "./StorefrontSections";
+import { inventoryBrowseState, filterStorefrontInventory, type PublicCategory } from "../../shared/storefrontContent";
 import type {
   PublicInventoryAvailability,
-  PublicInventoryItem,
 } from "../../shared/publicInventory";
 import type { PublicSiteSettings } from "../../shared/publicSite";
 import {
@@ -37,86 +40,32 @@ function SearchIcon() {
 }
 
 export default function PublicInventoryPage({
+  categories, categoriesError, searchQuery, onNavigate,
   onContact,
   onProductOpen,
   settings,
 }: {
+  categories: PublicCategory[];
+  categoriesError: boolean;
+  searchQuery: string;
+  onNavigate: (path: string) => void;
   onContact: ContactOpenHandler;
   onProductOpen: ProductDetailOpenHandler;
   settings: PublicSiteSettings;
 }) {
-  const [products, setProducts] = useState<PublicInventoryItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const [search, setSearch] = useState("");
-  const [availability, setAvailability] =
-    useState<AvailabilityFilter>("ALL");
-
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadInventory() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const response = await fetch("/api/public/inventory", {
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("Inventory could not be loaded right now.");
-        }
-
-        const data: unknown = await response.json();
-
-        if (!Array.isArray(data)) {
-          throw new Error("Inventory could not be loaded right now.");
-        }
-
-        setProducts(data as PublicInventoryItem[]);
-      } catch (loadError) {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        console.error("Public inventory loading error:", loadError);
-        setError(
-          loadError instanceof Error
-            ? loadError.message
-            : "Inventory could not be loaded right now.",
-        );
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadInventory();
-    return () => controller.abort();
-  }, [reloadKey]);
-
-  const filteredProducts = useMemo(() => {
-    const normalizedSearch = search.trim().toLocaleLowerCase();
-
-    return products.filter((product) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        product.name.toLocaleLowerCase().includes(normalizedSearch);
-      const matchesAvailability =
-        availability === "ALL" || product.availability === availability;
-
-      return matchesSearch && matchesAvailability;
-    });
-  }, [availability, products, search]);
-
-  const hasFilters = search.trim() !== "" || availability !== "ALL";
+  const { products, loading, error, retry } = usePublicCatalog();
+  const route = useMemo(() => inventoryBrowseState(searchQuery), [searchQuery]);
+  const [search, setSearch] = useState(route.search);
+  const [availability, setAvailability] = useState<AvailabilityFilter>(route.availability as AvailabilityFilter);
+  useEffect(() => { setSearch(route.search); setAvailability(route.availability as AvailabilityFilter); }, [route]);
+  const filteredProducts = useMemo(() => filterStorefrontInventory(products,
+    { ...route, search, availability }, categories), [products, route, search, availability, categories]);
+  const hasFilters = search.trim() !== "" || availability !== "ALL" || !!route.category || !!route.view;
 
   function clearFilters() {
     setSearch("");
     setAvailability("ALL");
+    onNavigate("/inventory");
   }
 
   return (
@@ -130,6 +79,9 @@ export default function PublicInventoryPage({
       </div>
 
       <div className="public-container public-inventory-content">
+        <CategoryNavigation categories={categories} active={route.category} onNavigate={onNavigate} />
+        {categoriesError && <p role="status">Categories are temporarily unavailable. All inventory is still available below.</p>}
+        <div className="public-browse-links"><button type="button" className={`public-filter-link${route.view ? " is-active" : ""}`} aria-pressed={!!route.view} onClick={() => onNavigate(route.view ? "/inventory" : "/inventory?view=recent-drops")}>Recent price drops</button>{route.category && !categories.some((category) => category.slug === route.category) && <span role="status">This category is unavailable. Choose All inventory.</span>}</div>
         <div className="public-catalog-controls">
           <label className="public-catalog-search">
             <SearchIcon />
@@ -173,7 +125,7 @@ export default function PublicInventoryPage({
           <div className="public-catalog-summary" aria-live="polite">
             <p>
               <strong>{filteredProducts.length}</strong>{" "}
-              {filteredProducts.length === 1 ? "product" : "products"}
+              {filteredProducts.length === 1 ? "product" : "products"}{route.view ? " ? Recent price drops" : ""}
             </p>
             {hasFilters && (
               <button type="button" onClick={clearFilters}>
@@ -193,7 +145,7 @@ export default function PublicInventoryPage({
             <button
               className="public-button public-button--secondary"
               type="button"
-              onClick={() => setReloadKey((key) => key + 1)}
+              onClick={retry}
             >
               Try again
             </button>
@@ -201,14 +153,7 @@ export default function PublicInventoryPage({
         )}
 
         {!loading && !error && products.length === 0 && (
-          <div className="public-catalog-message">
-            <span>Inventory update in progress</span>
-            <h2>New products are on the way.</h2>
-            <p>
-              Check back soon or contact us to ask about what is currently
-              available.
-            </p>
-          </div>
+          <InventoryEmptyState />
         )}
 
         {!loading && !error && products.length > 0 && filteredProducts.length === 0 && (

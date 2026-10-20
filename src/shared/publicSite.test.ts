@@ -12,7 +12,7 @@ import {
 test("existing storefront defaults preserve a complete ordered homepage", () => {
   assert.deepEqual(PUBLIC_SITE_DEFAULTS.homepageSections, DEFAULT_HOMEPAGE_SECTIONS);
   assert.deepEqual(PUBLIC_SITE_DEFAULTS.homepageSections.map((section) => section.key), [
-    "HERO", "MERCHANDISING", "COMING_SOON", "NEXT_SHOW", "BUY_SELL_TRADE", "CONTACT",
+    "UPDATES", "MERCHANDISING", "COMING_SOON", "NEXT_SHOW", "BUY_SELL_TRADE", "HERO", "CONTACT",
   ]);
   assert.equal(PUBLIC_SITE_DEFAULTS.homepageSections.find((section) => section.key === "COMING_SOON")?.visible, false);
   assert.equal(PUBLIC_SITE_DEFAULTS.homepageSections.find((section) => section.key === "HERO")?.visible, true);

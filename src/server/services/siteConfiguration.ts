@@ -1,7 +1,7 @@
 import {
   EMPTY_PUBLIC_SITE_ASSETS,
   PUBLIC_SITE_DEFAULTS,
-  selectNearestUpcomingShow,
+  upcomingPublicShows,
   type PublicSiteConfiguration,
   type PublicSiteSettings,
   type SiteAssetType,
@@ -47,7 +47,7 @@ export async function getPublicSiteConfiguration(): Promise<PublicSiteConfigurat
       assetRecords.find((asset) => asset.type === type)?.imageKey ?? null,
     );
 
-  const nextShow = selectNearestUpcomingShow(nextShowVisits.map((visit) => ({
+  const upcomingShows = upcomingPublicShows(nextShowVisits.map((visit) => ({
     name: visit.show.name,
     date: visit.visitDate.toISOString(),
     venue: visit.show.venue,
@@ -64,6 +64,7 @@ export async function getPublicSiteConfiguration(): Promise<PublicSiteConfigurat
       faviconUrl: imageUrlFor("FAVICON"),
       heroImageUrl: imageUrlFor("HERO_IMAGE"),
     },
-    nextShow,
+    nextShow: upcomingShows[0] ?? null,
+    upcomingShows,
   };
 }

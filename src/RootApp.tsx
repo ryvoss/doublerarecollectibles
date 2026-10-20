@@ -17,9 +17,11 @@ function normalizePath(pathname: string) {
 }
 
 function RootApp() {
-  const [pathname, setPathname] = useState(() =>
-    normalizePath(window.location.pathname),
+  const [locationPath, setPathname] = useState(() =>
+    normalizePath(window.location.pathname) + window.location.search,
   );
+  const pathname = locationPath.split("?")[0]!;
+  const search = locationPath.includes("?") ? locationPath.slice(locationPath.indexOf("?")) : "";
   const [adminAuth, setAdminAuth] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
   const [adminAuthInvalidated, setAdminAuthInvalidated] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -27,7 +29,7 @@ function RootApp() {
 
   useEffect(() => {
     function handlePopState() {
-      setPathname(normalizePath(window.location.pathname));
+      setPathname(normalizePath(window.location.pathname) + window.location.search);
     }
 
     window.addEventListener("popstate", handlePopState);
@@ -100,10 +102,12 @@ function RootApp() {
   }, [adminAuthInvalidated, adminPath, pathname]);
 
   function navigate(nextPath: string) {
-    const normalizedPath = normalizePath(nextPath);
+    const target = new URL(nextPath, window.location.origin);
+    if (target.origin !== window.location.origin) return;
+    const normalizedPath = normalizePath(target.pathname) + target.search;
 
-    if (normalizedPath === pathname) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+    if (normalizedPath === locationPath) {
+      window.scrollTo({ top: 0, behavior: "auto" });
       return;
     }
 
@@ -137,7 +141,7 @@ function RootApp() {
     );
   }
 
-  return <PublicSite pathname={pathname} onNavigate={navigate} />;
+  return <PublicSite pathname={pathname} search={search} onNavigate={navigate} />;
 }
 
 export default RootApp;

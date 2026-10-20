@@ -17,8 +17,11 @@ import {
   validateProductImageUpload,
 } from "../services/productImageStorage";
 import { getPublicSiteConfiguration } from "../services/siteConfiguration";
+import { createStorefrontContentRouter } from "./storefrontContent";
+import { storefrontRepository } from "../services/storefrontContent";
 
 const router = Router();
+router.use("/content", createStorefrontContentRouter(storefrontRepository));
 const siteAssetTypes = new Set<SiteAssetType>(["PRIMARY_LOGO", "FAVICON", "HERO_IMAGE"]);
 const stringLimits = {
   businessName: 120,

@@ -76,8 +76,16 @@ export function normalizeHomepageSections(value: unknown): HomepageSectionConfig
     seen.add(key);
     normalized.push({ key: key as HomepageSectionConfig["key"], visible: (candidate as { visible: boolean }).visible });
   }
+  if (!seen.has("UPDATES")) {
+    const legacyDefaultOrder = ["HERO", "MERCHANDISING", "COMING_SOON", "NEXT_SHOW", "BUY_SELL_TRADE", "CONTACT"];
+    if (normalized.map((section) => section.key).join() === legacyDefaultOrder.join()) {
+      // Upgrade the old default layout; retain explicit custom ordering and every visibility setting.
+      return DEFAULT_HOMEPAGE_SECTIONS.map((fallback) => normalized.find((section) => section.key === fallback.key) ?? { ...fallback });
+    }
+    normalized.unshift({ key: "UPDATES", visible: true });
+  }
   for (const fallback of DEFAULT_HOMEPAGE_SECTIONS) {
-    if (!seen.has(fallback.key)) normalized.push({ ...fallback });
+    if (fallback.key !== "UPDATES" && !seen.has(fallback.key)) normalized.push({ ...fallback });
   }
   return normalized;
 }

@@ -1,3 +1,5 @@
+import { PriceDisplay } from "./PriceDisplay";
+export { formatPublicProductPrice } from "./PriceDisplay";
 import {
   useEffect,
   useMemo,
@@ -8,10 +10,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type {
-  PublicInventoryAvailability,
   PublicInventoryItem,
 } from "../../shared/publicInventory";
-import { primaryMerchandisingBadge } from "../../shared/publicInventory";
+import { PublicProductStatus } from "./PublicProductStatus";
 import ProductImage from "../components/ProductImage";
 
 export type ProductGalleryImage = {
@@ -23,30 +24,6 @@ export type ProductDetailOpenHandler = (
   trigger: HTMLElement,
   product: PublicInventoryItem,
 ) => void;
-
-const availabilityLabels: Record<PublicInventoryAvailability, string> = {
-  IN_STOCK: "In Stock",
-  COMING_SOON: "Coming Soon!",
-  LOW_STOCK: "Low Stock",
-  SOLD_OUT: "Sold Out",
-};
-
-const detailBadgeLabels = {
-  RECENT_PRICE_DROP: "Recent Price Drop",
-  COMING_SOON: "Coming Soon",
-  LOW_STOCK: "Low Stock",
-  SOLD_OUT: "Sold Out",
-  FEATURED: "Featured",
-} as const;
-
-const currencyFormatter = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-});
-
-export function formatPublicProductPrice(price: number | null) {
-  return price === null ? "Contact for price" : currencyFormatter.format(price);
-}
 
 export function galleryImagesForProduct(
   product: PublicInventoryItem,
@@ -65,8 +42,14 @@ export function nextGalleryIndex(
   return (currentIndex + direction + imageCount) % imageCount;
 }
 
-export function restoreProductDetailFocus(target: HTMLElement | null) {
-  globalThis.setTimeout(() => target?.focus(), 0);
+export function restoreProductDetailFocus(target: HTMLElement | null, productId?: number) {
+  globalThis.setTimeout(() => {
+    if (target && target.isConnected !== false) target.focus();
+    else if (typeof document !== "undefined") {
+      const replacement = productId === undefined ? null : document.querySelector<HTMLElement>(`[data-public-product-id="${productId}"] .public-catalog-card__open`);
+      (replacement ?? document.querySelector<HTMLElement>("#public-main"))?.focus();
+    }
+  }, 0);
 }
 
 function ChevronIcon({ direction }: { direction: "left" | "right" }) {
@@ -198,7 +181,6 @@ export function ProductDetailContent({
     () => images ?? galleryImagesForProduct(product),
     [images, product],
   );
-  const primaryBadge = primaryMerchandisingBadge(product);
 
   return (
     <div className="public-product-detail__body">
@@ -206,22 +188,8 @@ export function ProductDetailContent({
 
       <section className="public-product-detail__information">
         <div className="public-product-detail__meta">
-          <span className="public-product-detail__status">
-            {primaryBadge && (
-              <span className={`public-stock-badge public-stock-badge--${primaryBadge.toLowerCase()}`}>
-                {detailBadgeLabels[primaryBadge]}
-              </span>
-            )}
-            {primaryBadge !== product.availability && (
-              <span className="public-availability-text">{availabilityLabels[product.availability]}</span>
-            )}
-          </span>
-          <span className="public-product-detail__prices">
-            <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
-            {product.recentPriceDrop && product.compareAtPrice !== null && (
-              <del>was {formatPublicProductPrice(product.compareAtPrice)}</del>
-            )}
-          </span>
+          <PublicProductStatus product={product} className="public-product-detail__status" />
+          <PriceDisplay className="public-product-detail__prices" price={product.displayPrice} compareAtPrice={product.compareAtPrice} recentPriceDrop={product.recentPriceDrop} />
         </div>
         <h2 id="public-product-detail-title">{product.name}</h2>
         {product.availability === "COMING_SOON" && <p className="public-arrival-note">Arriving soon</p>}

@@ -1,9 +1,14 @@
+import { lazy, Suspense } from "react";
+import { EMPTY_EDITORIAL, type PublicEditorial } from "../../shared/storefrontContent";
+import { PublicCatalogProvider, usePublicCatalog } from "./PublicCatalog";
+import { AnnouncementRail, ShowCard, SectionHeading } from "./StorefrontSections";
+const NewsPage = lazy(() => import("./NewsPage"));
+import { PublicLink } from "./PublicLink";
 import {
   useCallback,
   useEffect,
   useRef,
   useState,
-  type MouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -35,23 +40,20 @@ import {
 } from "../../shared/publicSite";
 import "./ContactOptions.css";
 import "./ProductDetailModal.css";
+import "./PublicTheme.css";
 import "./PublicSite.css";
+import "./StorefrontRetail.css";
 
 type PublicSiteProps = {
   pathname: string;
-  onNavigate: (path: string) => void;
-};
-
-type PublicLinkProps = {
-  children: ReactNode;
-  className?: string;
-  href: string;
+  search?: string;
   onNavigate: (path: string) => void;
 };
 
 const publicNavigation = [
   { href: "/inventory", label: "Inventory" },
   { href: "/shows", label: "Shows" },
+  { href: "/news", label: "News / Updates" },
   { href: "/buy-sell-trade", label: "Buy / Sell / Trade" },
   { href: "/contact", label: "Contact" },
 ];
@@ -60,32 +62,10 @@ const knownPublicPaths = new Set([
   "/",
   "/inventory",
   "/shows",
+  "/news",
   "/buy-sell-trade",
   "/contact",
 ]);
-
-function PublicLink({ children, className, href, onNavigate }: PublicLinkProps) {
-  function handleClick(event: MouseEvent<HTMLAnchorElement>) {
-    if (
-      event.button !== 0 ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    onNavigate(href);
-  }
-
-  return (
-    <a className={className} href={href} onClick={handleClick}>
-      {children}
-    </a>
-  );
-}
 
 function ArrowIcon() {
   return (
@@ -129,7 +109,14 @@ function PublicBrandMark({
   );
 }
 
-function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
+function PublicSite(props: PublicSiteProps) {
+  return <PublicCatalogProvider pathname={props.pathname}><PublicSiteContent {...props} /></PublicCatalogProvider>;
+}
+
+function PublicSiteContent({ pathname, search = "", onNavigate }: PublicSiteProps) {
+  const catalog = usePublicCatalog();
+  const [editorial, setEditorial] = useState<PublicEditorial>(EMPTY_EDITORIAL);
+  const [editorialError, setEditorialError] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [compactHeader, setCompactHeader] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -137,6 +124,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const [detailProduct, setDetailProduct] = useState<PublicInventoryItem>();
   const contactTriggerRef = useRef<HTMLElement | null>(null);
   const detailTriggerRef = useRef<HTMLElement | null>(null);
+  const detailProductIdRef = useRef<number | undefined>(undefined);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavigationRef = useRef<HTMLElement>(null);
   const [siteConfiguration, setSiteConfiguration] = useState<PublicSiteConfiguration>({
@@ -145,6 +133,18 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
     nextShow: null,
   });
   const { assets, settings } = siteConfiguration;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/public/editorial", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Updates unavailable");
+        const content = await response.json() as PublicEditorial;
+        if (!controller.signal.aborted) setEditorial(content);
+      }).catch(() => { if (!controller.signal.aborted) setEditorialError(true); });
+    return () => controller.abort();
+  }, []);
+
 
   useEffect(() => {
     const controller = new AbortController();
@@ -178,13 +178,15 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         ? settings.showsPageTitle
         : pathname === "/contact"
           ? settings.contactPageTitle
+          : pathname === "/news" || pathname.startsWith("/news/")
+            ? "News & Updates"
           : pathname === "/buy-sell-trade"
             ? "Buy / Sell / Trade"
             : "";
 
-    document.title = pageLabel
-      ? `${pageLabel} | ${settings.businessName}`
-      : settings.businessName;
+    if (!pathname.startsWith("/news/")) {
+      document.title = pageLabel ? `${pageLabel} | ${settings.businessName}` : settings.businessName;
+    }
     document
       .querySelector('meta[name="description"]')
       ?.setAttribute("content", settings.heroSubtitle);
@@ -243,17 +245,18 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
   const closeContact = useCallback(() => {
     setContactOpen(false);
     setContactProduct(undefined);
-    window.setTimeout(() => contactTriggerRef.current?.focus(), 0);
+    restoreProductDetailFocus(contactTriggerRef.current);
   }, []);
 
   const openProductDetail: ProductDetailOpenHandler = useCallback((trigger, product) => {
     detailTriggerRef.current = trigger;
+    detailProductIdRef.current = product.id;
     setDetailProduct(product);
   }, []);
 
   const closeProductDetail = useCallback(() => {
     setDetailProduct(undefined);
-    restoreProductDetailFocus(detailTriggerRef.current);
+    restoreProductDetailFocus(detailTriggerRef.current, detailProductIdRef.current);
   }, []);
 
   const contactFromProductDetail = useCallback((
@@ -265,8 +268,16 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
     openContact(returnFocusTarget, contactProductContext(product));
   }, [openContact]);
 
+  useEffect(() => {
+    if (!detailProduct || catalog.loading) return;
+    const current = catalog.products.find((product) => product.id === detailProduct.id);
+    if (catalog.error || !current) closeProductDetail();
+    else if (current !== detailProduct) setDetailProduct(current);
+  }, [catalog.products, catalog.error, catalog.loading, detailProduct, closeProductDetail]);
+
   return (
     <div className="public-site">
+      <a className="public-skip-link" href="#public-main">Skip to content</a>
       <header className={`public-header${compactHeader ? " public-header--compact" : ""}`}>
         <div className="public-header__inner">
           <PublicLink className="public-brand" href="/" onNavigate={onNavigate}>
@@ -285,6 +296,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
             {publicNavigation.map((item) => (
               <PublicLink
                 key={item.href}
+                current={pathname === item.href || (item.href === "/news" && pathname.startsWith("/news/"))}
                 className={pathname === item.href ? "is-active" : undefined}
                 href={item.href}
                 onNavigate={onNavigate}
@@ -323,6 +335,7 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
             {publicNavigation.map((item) => (
               <PublicLink
                 key={item.href}
+                current={pathname === item.href || (item.href === "/news" && pathname.startsWith("/news/"))}
                 className={pathname === item.href ? "is-active" : undefined}
                 href={item.href}
                 onNavigate={onNavigate}
@@ -335,11 +348,13 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         )}
       </header>
 
-      {isAnnouncementActive(settings) && <div className="public-announcement" role="status"><div className="public-container"><span>{settings.announcementMessage}</span>{settings.announcementCtaLabel && <PublicLink href={CTA_TARGET_PATHS[settings.announcementCtaTarget]} onNavigate={onNavigate}>{settings.announcementCtaLabel} <ArrowIcon /></PublicLink>}</div></div>}
+      {pathname !== "/" && isAnnouncementActive(settings) && <div className="public-announcement" role="status"><div className="public-container"><span>{settings.announcementMessage}</span>{settings.announcementCtaLabel && <PublicLink href={CTA_TARGET_PATHS[settings.announcementCtaTarget]} onNavigate={onNavigate}>{settings.announcementCtaLabel} <ArrowIcon /></PublicLink>}</div></div>}
 
-      <main>
+      <main id="public-main" tabIndex={-1}>
         {pathname === "/" && (
           <HomePage
+            editorial={editorial}
+            editorialError={editorialError}
             heroImageUrl={assets.heroImageUrl}
             onContact={openContact}
             onNavigate={onNavigate}
@@ -350,19 +365,24 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
         )}
         {pathname === "/inventory" && (
           <PublicInventoryPage
+            searchQuery={search}
+            categories={editorial.categories}
+            categoriesError={editorialError}
+            onNavigate={onNavigate}
             onContact={openContact}
             onProductOpen={openProductDetail}
             settings={settings}
           />
         )}
         {pathname === "/shows" && (
-          <ShowsPage nextShow={siteConfiguration.nextShow} onNavigate={onNavigate} settings={settings} />
+          <ShowsPage shows={siteConfiguration.upcomingShows ?? (siteConfiguration.nextShow ? [siteConfiguration.nextShow] : [])} onNavigate={onNavigate} settings={settings} />
         )}
         {pathname === "/buy-sell-trade" && (
-          <BuySellTradePage onNavigate={onNavigate} settings={settings} />
+          <BuySellTradePage onContact={openContact} onNavigate={onNavigate} settings={settings} />
         )}
         {pathname === "/contact" && <ContactPage settings={settings} />}
-        {!knownPublicPaths.has(pathname) && <NotFoundPage onNavigate={onNavigate} />}
+        {(pathname === "/news" || /^\/news\/[^/]+$/.test(pathname)) && <Suspense fallback={<p className="public-container" role="status">Loading updates...</p>}><NewsPage key={pathname} businessName={settings.businessName} slug={pathname === "/news" ? undefined : pathname.slice(6)} onNavigate={onNavigate} /></Suspense>}
+        {!knownPublicPaths.has(pathname) && !/^\/news\/[^/]+$/.test(pathname) && <NotFoundPage onNavigate={onNavigate} />}
       </main>
 
       <PublicFooter
@@ -389,6 +409,8 @@ function PublicSite({ pathname, onNavigate }: PublicSiteProps) {
 }
 
 function HomePage({
+  editorial,
+  editorialError,
   heroImageUrl,
   nextShow,
   onContact,
@@ -396,6 +418,8 @@ function HomePage({
   onProductOpen,
   settings,
 }: Pick<PublicSiteProps, "onNavigate"> & {
+  editorial: PublicEditorial;
+  editorialError: boolean;
   heroImageUrl: string | null;
   nextShow: PublicNextShow | null;
   onContact: ContactOpenHandler;
@@ -403,25 +427,29 @@ function HomePage({
   settings: PublicSiteSettings;
 }) {
   const sections: Record<PublicSiteSettings["homepageSections"][number]["key"], ReactNode> = {
-    HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h1>{settings.heroTitle}</h1><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div></div><div className="public-hero__visual" aria-hidden="true">{heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}</div></div><div className="public-container public-hero__promise" aria-label={`${settings.businessName} service highlights`}><span>Sealed inventory</span><span>Local card shows</span><span>Buy, sell, and trade</span></div></section>,
-    MERCHANDISING: <FeaturedInventorySection key="merchandising" excludeComingSoon={settings.homepageSections.some((section) => section.key === "COMING_SOON" && section.visible)} onContact={onContact} onNavigate={onNavigate} onProductOpen={onProductOpen} settings={settings} />,
+    UPDATES: <AnnouncementRail key="updates" items={[
+      ...(isAnnouncementActive(settings) ? [{ type: "STORE_UPDATE" as const, title: settings.announcementMessage, summary: "", imageUrl: null, href: CTA_TARGET_PATHS[settings.announcementCtaTarget], actionLabel: settings.announcementCtaLabel, date: null }] : []),
+      ...editorial.announcements,
+    ]} onNavigate={onNavigate} />,
+    HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h2>{settings.heroTitle}</h2><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div><p className="public-hero__note">Explore at your pace. Contact us to confirm availability before making plans.</p></div><div className="public-hero__visual" aria-hidden="true">{heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}</div></div><div className="public-container public-hero__promise" aria-label={`${settings.businessName} service highlights`}><span>Sealed inventory</span><span>Local card shows</span><span>Buy, sell, and trade</span></div></section>,
+    MERCHANDISING: <FeaturedInventorySection categories={editorial.categories} key="merchandising" excludeComingSoon={settings.homepageSections.some((section) => section.key === "COMING_SOON" && section.visible)} onContact={onContact} onNavigate={onNavigate} onProductOpen={onProductOpen} settings={settings} />,
     COMING_SOON: <ComingSoonSection key="coming-soon" onContact={onContact} onProductOpen={onProductOpen} settings={settings} />,
     NEXT_SHOW: nextShow ? <NextShowSection key="next-show" nextShow={nextShow} onNavigate={onNavigate} settings={settings} /> : null,
-    BUY_SELL_TRADE: <section className="public-section public-section--muted" key="bst"><div className="public-container public-bst-preview"><div className="public-bst-preview__copy"><p className="public-kicker">Your collection, your next move</p><h2>{settings.buySellTradeTitle}</h2><p>{settings.buySellTradeText}</p><PublicLink className="public-button public-button--secondary" href="/buy-sell-trade" onNavigate={onNavigate}>{settings.buySellTradeCtaLabel}<ArrowIcon /></PublicLink></div><ol className="public-bst-preview__steps"><li><span>01</span><div><strong>Browse what is available</strong><p>Start with the current public inventory.</p></div></li><li><span>02</span><div><strong>Share your collection details</strong><p>Send clear photos and what you want to sell or trade.</p></div></li><li><span>03</span><div><strong>Connect directly</strong><p>Talk through the next step through the contact form, Instagram, or email.</p></div></li></ol></div></section>,
-    CONTACT: <section className="public-contact-band" key="contact"><div className="public-container"><div><p className="public-kicker">{settings.contactPageTitle}</p><h2>{settings.contactText}</h2></div><div className="public-contact-band__actions"><button className="public-button public-button--primary" type="button" onClick={(event) => onContact(event.currentTarget)}>Contact us<ArrowIcon /></button><PublicLink className="public-button public-button--secondary" href="/contact" onNavigate={onNavigate}>Contact options</PublicLink></div></div></section>,
+    BUY_SELL_TRADE: <section className="public-section public-section--muted" key="bst"><div className="public-container"><SectionHeading eyebrow="Collector to collector" title={settings.buySellTradeTitle}><PublicLink className="public-text-link" href="/buy-sell-trade" onNavigate={onNavigate}>{settings.buySellTradeCtaLabel} &rarr;</PublicLink></SectionHeading><p className="public-inner-page__lead">{settings.buySellTradeText}</p><BuySellTradeOptions onNavigate={onNavigate} onContact={onContact} /></div></section>,
+    CONTACT: <section className="public-contact-band" key="contact"><div className="public-container"><div><p className="public-kicker">Questions welcome</p><h2>{settings.contactPageTitle}</h2><p className="public-contact-band__copy">{settings.contactText}</p></div><div className="public-contact-band__actions"><button className="public-button public-button--primary" type="button" onClick={(event) => onContact(event.currentTarget)}>Contact us<ArrowIcon /></button><PublicLink className="public-button public-button--secondary" href="/contact" onNavigate={onNavigate}>Contact options</PublicLink></div></div></section>,
   };
-  return <>{visibleHomepageSectionKeys(settings.homepageSections).map((key) => sections[key])}</>;
+  return <>{<h1 className="public-visually-hidden">{settings.businessName}</h1>}{editorialError && <p className="public-container public-service-notice" role="status">Updates and categories are temporarily unavailable. <PublicLink href="/inventory" onNavigate={onNavigate}>Browse all inventory</PublicLink></p>}{visibleHomepageSectionKeys(settings.homepageSections).map((key) => sections[key])}</>;
 }
 
 function NextShowSection({ nextShow, onNavigate, settings }: { nextShow: PublicNextShow; onNavigate: (path: string) => void; settings: PublicSiteSettings }) {
-  return <section className="public-section public-next-show"><div className="public-container"><div className="public-section-heading"><div><p className="public-kicker">Meet us in person</p><h2>{settings.nextShowSectionTitle}</h2></div></div><article className="public-next-show__card"><time dateTime={nextShow.date}>{new Date(nextShow.date).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</time><h3>{nextShow.name}</h3>{nextShow.venue && <strong>{nextShow.venue}</strong>}{nextShow.location && <p>{nextShow.location}</p>}{nextShow.boothInfo && <p>{nextShow.boothInfo}</p>}{nextShow.note && <p>{nextShow.note}</p>}<PublicLink className="public-button public-button--secondary" href="/shows" onNavigate={onNavigate}>Show details <ArrowIcon /></PublicLink></article></div></section>;
+  return <section className="public-section public-next-show"><div className="public-container"><SectionHeading eyebrow="Meet us at the table" title={settings.nextShowSectionTitle} /><ShowCard show={nextShow} nearest onNavigate={onNavigate} /></div></section>;
 }
 
 function ShowsPage({
-  nextShow,
+  shows,
   onNavigate,
   settings,
-}: Pick<PublicSiteProps, "onNavigate"> & { nextShow: PublicNextShow | null; settings: PublicSiteSettings }) {
+}: Pick<PublicSiteProps, "onNavigate"> & { shows: PublicNextShow[]; settings: PublicSiteSettings }) {
   return (
     <section className="public-inner-page public-shows-page">
       <div className="public-container">
@@ -429,7 +457,7 @@ function ShowsPage({
         <h1>{settings.showsPageTitle}</h1>
         <p className="public-inner-page__lead">{settings.showsIntroText}</p>
 
-        {nextShow ? <div className="public-next-show-page"><NextShowSection nextShow={nextShow} onNavigate={onNavigate} settings={settings} /></div> : <div className="public-empty-state">
+        {shows.length ? <div className="public-show-list">{shows.map((show, index) => <ShowCard key={`${show.date}-${show.name}`} show={show} nearest={index === 0} detail onNavigate={onNavigate} />)}</div> : <div className="public-empty-state">
           <span aria-hidden="true">DR</span>
           <div>
             <h2>No public show dates are posted right now.</h2>
@@ -463,9 +491,10 @@ function ShowsPage({
 }
 
 function BuySellTradePage({
+  onContact,
   onNavigate,
   settings,
-}: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings }) {
+}: Pick<PublicSiteProps, "onNavigate"> & { settings: PublicSiteSettings; onContact: ContactOpenHandler }) {
   return (
     <section className="public-inner-page">
       <div className="public-container">
@@ -473,41 +502,7 @@ function BuySellTradePage({
         <h1>{settings.buySellTradeTitle}</h1>
         <p className="public-inner-page__lead">{settings.buySellTradeText}</p>
 
-        <div className="public-bst-detail">
-          <div className="public-bst-detail__bring">
-            <p className="public-kicker">Start with the details</p>
-            <h2>Tell us what you have in mind.</h2>
-            <ul>
-              <li>Sealed products you want to sell or trade</li>
-              <li>Clear photos and a short collection summary</li>
-              <li>Products you are looking for from our inventory</li>
-            </ul>
-          </div>
-
-          <ol className="public-bst-detail__process">
-            <li>
-              <span>01</span>
-              <div>
-                <h2>Send the details</h2>
-                <p>Use Instagram or email to share the product or collection information.</p>
-              </div>
-            </li>
-            <li>
-              <span>02</span>
-              <div>
-                <h2>Talk through the options</h2>
-                <p>We will confirm what is available and discuss a practical next step.</p>
-              </div>
-            </li>
-            <li>
-              <span>03</span>
-              <div>
-                <h2>Connect in person</h2>
-                <p>When it makes sense, arrange to meet at a card show or agreed location.</p>
-              </div>
-            </li>
-          </ol>
-        </div>
+        <BuySellTradeOptions onNavigate={onNavigate} onContact={onContact} />
 
         <div className="public-page-actions">
           <PublicLink
@@ -529,6 +524,14 @@ function BuySellTradePage({
       </div>
     </section>
   );
+}
+
+function BuySellTradeOptions({ onNavigate, onContact }: { onNavigate: (path: string) => void; onContact: ContactOpenHandler }) {
+  return <div className="public-bst-options">
+    <div className="public-bst-option"><h3>Buy</h3><p>Find something for your collection, or a gift worth asking about.</p><PublicLink className="public-text-link" href="/inventory" onNavigate={onNavigate}>Browse inventory &rarr;</PublicLink></div>
+    <div className="public-bst-option"><h3>Sell</h3><p>Tell us what you are looking to move. Start with a short description.</p><button className="public-text-link" type="button" onClick={(event) => onContact(event.currentTarget)}>Tell us what you have &rarr;</button></div>
+    <div className="public-bst-option"><h3>Trade</h3><p>Have something in mind? Let us talk through the possibilities together.</p><button className="public-text-link" type="button" onClick={(event) => onContact(event.currentTarget)}>Start a conversation &rarr;</button></div>
+  </div>;
 }
 
 function ContactPage({ settings }: { settings: PublicSiteSettings }) {

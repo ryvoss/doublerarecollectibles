@@ -1,25 +1,7 @@
-import {
-  primaryMerchandisingBadge,
-  type PublicInventoryItem,
-  type PublicMerchandisingBadge,
-} from "../../shared/publicInventory";
-import { formatPublicProductPrice } from "./ProductDetailModal";
+import type { PublicInventoryItem } from "../../shared/publicInventory";
+import { PublicProductStatus } from "./PublicProductStatus";
+import { PriceDisplay } from "./PriceDisplay";
 import ProductImage from "../components/ProductImage";
-
-const availabilityLabels = {
-  IN_STOCK: "In Stock",
-  COMING_SOON: "Coming Soon!",
-  LOW_STOCK: "Low Stock",
-  SOLD_OUT: "Sold Out",
-} as const;
-
-const badgeLabels: Record<PublicMerchandisingBadge, string> = {
-  RECENT_PRICE_DROP: "Recent Price Drop",
-  COMING_SOON: "Coming Soon",
-  LOW_STOCK: "Low Stock",
-  SOLD_OUT: "Sold Out",
-  FEATURED: "Featured",
-};
 
 function ArrowIcon() {
   return (
@@ -43,10 +25,9 @@ export function PublicInventoryCard({
   const soldOut = product.availability === "SOLD_OUT";
   const comingSoon = product.availability === "COMING_SOON";
   const Heading = headingLevel;
-  const primaryBadge = primaryMerchandisingBadge(product);
 
   return (
-    <article className={`public-catalog-card${soldOut ? " is-sold-out" : ""}${comingSoon ? " is-coming-soon" : ""}`}>
+    <article data-public-product-id={product.id} className={`public-catalog-card${soldOut ? " is-sold-out" : ""}${comingSoon ? " is-coming-soon" : ""}`}>
       <button
         className="public-catalog-card__open"
         type="button"
@@ -62,34 +43,11 @@ export function PublicInventoryCard({
       />
 
       <div className="public-catalog-card__body">
-        <div className="public-catalog-card__meta">
-          <span className="public-catalog-card__status">
-            {primaryBadge && (
-              <span className={`public-stock-badge public-stock-badge--${primaryBadge.toLowerCase()}`}>
-                {badgeLabels[primaryBadge]}
-              </span>
-            )}
-            {primaryBadge !== product.availability && (
-              <span className="public-availability-text">{availabilityLabels[product.availability]}</span>
-            )}
-          </span>
-          <span className="public-catalog-card__prices">
-            <strong>{formatPublicProductPrice(product.displayPrice)}</strong>
-            {product.recentPriceDrop && product.compareAtPrice !== null && (
-              <del aria-label={`Previously ${formatPublicProductPrice(product.compareAtPrice)}`}>
-                was {formatPublicProductPrice(product.compareAtPrice)}
-              </del>
-            )}
-          </span>
-        </div>
+        <Heading>{product.name}</Heading>
+        <PriceDisplay className="public-catalog-card__prices" price={product.displayPrice} compareAtPrice={product.compareAtPrice} recentPriceDrop={product.recentPriceDrop} />
+        <div className="public-catalog-card__meta"><PublicProductStatus product={product} className="public-catalog-card__status" /></div>
         {comingSoon && <span className="public-arrival-note">Arriving soon</span>}
         {!comingSoon && product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
-        <Heading>{product.name}</Heading>
-        {product.shortDescription && (
-          <p className="public-catalog-card__description">
-            {product.shortDescription}
-          </p>
-        )}
         <button
           className="public-catalog-card__action"
           type="button"
