@@ -79,3 +79,15 @@ This verifier creates a unique schema and synthetic Product/category/news/announ
 5. Smoke-test public category/search/drop views, news publication, announcement destinations, Show dates, inquiry/focus behavior, and existing admin workflows against the migrated environment. Check real images at the reviewed widths before release.
 
 No Railway configuration, production data, production migration state, or hosting deployment was altered.
+
+## Follow-up: unified What’s New activity feed
+
+`GET /api/public/editorial` now includes a derived `activity` array combining currently public Announcements and News posts. The existing `announcements` field remains available for compatibility. No content table, schema migration, or second publishing workflow was added.
+
+The homepage rail uses this unified array and is titled “What’s New at Double Rare.” It hides when the array is empty. The legacy settings-based banner remains a separate global banner, including on the homepage, so it cannot keep an otherwise empty activity section visible.
+
+Ordering uses existing announcement controls: order `0` leads the feed; remaining activity sorts by newest known date. Announcement dates use their start date, or a linked article’s publication date when applicable; unrelated undated announcements remain undated and follow dated regular activity. Equal dates use announcement order, source, and record ID for deterministic ties. This behavior is described in the existing announcement editor.
+
+An eligible announcement pointing to a public news article replaces that article’s separate feed card. Multiple eligible announcements for the same article produce one card, selected by feed order. Draft, expired, or future announcements do not suppress an otherwise public article. Invalid news slugs and invalid announcement destinations are excluded. Public activity items expose only card content, public destinations, and useful dates; internal IDs, priority metadata, draft state, and article bodies are omitted.
+
+Follow-up validation passed: TypeScript, 171 tests (135 unit/service/component and 36 auth/route), production build, production dependency audit (zero vulnerabilities), and `git diff --check`. The first build found an encoding error in the changed admin help text; it was corrected. A sandbox subprocess restriction required rerunning the successful build outside the sandbox. No database connection, migration, deployment, or production action was performed for this follow-up. The database verification release blocker above remains unresolved.

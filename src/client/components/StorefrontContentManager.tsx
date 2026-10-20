@@ -82,7 +82,7 @@ export default function StorefrontContentManager({ kind }: { kind: ContentKind }
   }
 
   return <section className="panel site-manager-section">
-    <header><h3>{label}</h3><p>{kind === "categories" ? "Customer navigation only. Set order, visibility, and product assignments without changing inventory." : "Plain-text editorial content. Drafts and future schedules stay private. Lower order numbers appear first."}</p></header>
+    <header><h3>{label}</h3><p>{kind === "categories" ? "Customer navigation only. Set order, visibility, and product assignments without changing inventory." : kind === "announcements" ? "Drafts and future schedules stay private. Order 0 leads What's New; other items appear newest first, with lower order breaking date ties." : "Plain-text editorial content. Drafts and future schedules stay private."}</p></header>
     {error && <p className="site-manager-notice is-error" role="alert">{error}</p>}{message && <p className="site-manager-notice is-success" role="status">{message}</p>}
     {loading ? <p role="status">Loading content…</p> : <div className="storefront-editor-layout">
       <aside className="storefront-editor-list" aria-label={`${label} records`}>

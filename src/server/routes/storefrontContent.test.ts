@@ -87,3 +87,19 @@ test("duplicate slugs and missing records produce controlled errors", async () =
   repository.remove = async () => { throw Object.assign(new Error("private database details"), { code: "P2025" }); };
   await request(app).delete("/content/news/1").expect(404);
 });
+
+test("editorial endpoint exposes a unified safe feed, including news without an announcement", async () => {
+  const independentPost = { ...fixture.news[0]!, id: 4, slug: "independent-update", title: "Independent published update", body: "Full article body" };
+  const { app, repository } = setup({ ...fixture, news: [...fixture.news, independentPost], announcements: [
+    ...fixture.announcements,
+    { ...fixture.announcements[0]!, id: 10, title: "Expired announcement", endsAt: "2020-01-01T00:00:00Z" },
+    { ...fixture.announcements[0]!, id: 11, title: "Future announcement", startsAt: "2099-01-01T00:00:00Z" },
+  ] });
+  const read = repository.read;
+  repository.read = async (includeBodies) => { assert.equal(includeBodies, false); return read(includeBodies); };
+  const response = await request(app).get("/public/editorial").expect(200);
+  assert.match(response.headers["cache-control"], /no-store/);
+  assert.deepEqual(response.body.activity.map((item: { title: string }) => item.title), ["Read the news", independentPost.title]);
+  assert.equal(response.body.activity.filter((item: { href: string }) => item.href === "/news/published").length, 1);
+  assert.doesNotMatch(JSON.stringify(response.body.activity), /Private draft|Future announcement|Expired announcement|Full article body|"(?:id|published|sortOrder|destinationSlug|body|source|pinned)"\s*:/);
+});

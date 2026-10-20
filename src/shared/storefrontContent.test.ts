@@ -103,3 +103,73 @@ test("homepage rotates sources so numerous price drops do not monopolize the fee
   const result = selectHomepageMerchandise([...drops, products[0]!, products[2]!], 4);
   assert.deepEqual(result.map((product) => product.id), [10, 1, 3, 11]);
 });
+
+test("What's New includes an announcement and an independent published news post with safe card fields", () => {
+  const independent = { ...post, id: 2, slug: "crystal-gathering", title: "Crystal Gathering inventory update", imageUrl: "/api/public/product-images/1/fixture.png" };
+  const priceDrop = { ...announcement, type: "PRICE_DROP" as const, title: "Gem 4 price reduced", destination: "RECENT_DROPS" as const, destinationSlug: null };
+  const result = publicEditorial({ ...content, news: [independent], announcements: [priceDrop] }, [], now);
+  assert.deepEqual(result.activity, [
+    { type: "PRICE_DROP", title: priceDrop.title, summary: priceDrop.summary, imageUrl: null, href: "/inventory?view=recent-drops", date: null },
+    { type: "NEWS", title: independent.title, summary: independent.summary, imageUrl: independent.imageUrl, href: "/news/crystal-gathering", date: independent.publishAt, actionLabel: "Read update" },
+  ]);
+  assert.doesNotMatch(JSON.stringify(result.activity), /"(?:id|body|sortOrder|published|destinationSlug|pinned|order|source|newsSlug)"\s*:/);
+});
+
+test("What's New excludes draft news and announcements, future/expired items, and invalid destinations/slugs", () => {
+  const announcements = [
+    { ...announcement, id: 10, published: false },
+    { ...announcement, id: 11, startsAt: "2026-10-20T00:00:00Z" },
+    { ...announcement, id: 12, endsAt: now.toISOString() },
+    { ...announcement, id: 13, endsAt: "2026-10-18T00:00:00Z" },
+    { ...announcement, id: 14, destinationSlug: "missing" },
+    { ...announcement, id: 15, destination: "CATEGORY" as const, destinationSlug: "private" },
+    { ...announcement, id: 16, destination: "javascript:alert(1)" as StorefrontAnnouncement["destination"] },
+  ];
+  const news = [
+    { ...post, published: false },
+    { ...post, id: 2, slug: "future", publishAt: "2026-10-20T00:00:00Z" },
+    { ...post, id: 3, slug: "" }, { ...post, id: 4, slug: "../private" },
+  ];
+  assert.deepEqual(publicEditorial({ ...content, news, announcements }, [], now).activity, []);
+  const atStart = { ...announcement, destination: "INVENTORY" as const, destinationSlug: null, startsAt: now.toISOString() };
+  assert.equal(publicEditorial({ ...content, announcements: [atStart], news: [] }, [], now).activity.length, 1);
+  assert.equal(publicEditorial({ ...content, announcements: [], news: [{ ...post, publishAt: now.toISOString() }] }, [], now).activity.length, 1);
+});
+
+test("related announcement and news share one card, choosing the highest-priority announcement", () => {
+  const preferred = { ...announcement, title: "Read our collector update" };
+  const lowerPriority = { ...announcement, id: 2, sortOrder: 3, title: "Another link to the update" };
+  const result = publicEditorial({ ...content, announcements: [lowerPriority, preferred] }, [], now);
+  assert.equal(result.activity.length, 1);
+  assert.equal(result.activity[0]?.title, preferred.title);
+  assert.equal(result.activity[0]?.href, "/news/at-the-table");
+  assert.equal(result.activity[0]?.date, post.publishAt);
+});
+
+test("a non-public related announcement does not suppress the published news card", () => {
+  for (const change of [{ published: false }, { startsAt: "2026-10-20T00:00:00Z" }, { endsAt: now.toISOString() }]) {
+    const result = publicEditorial({ ...content, announcements: [{ ...announcement, ...change }] }, [], now);
+    assert.equal(result.activity.length, 1);
+    assert.equal(result.activity[0]?.title, post.title);
+  }
+});
+
+test("activity ordering pins order zero, then uses newest date, priority on date ties, and stable IDs", () => {
+  const base = { ...announcement, destination: "INVENTORY" as const, destinationSlug: null };
+  const announcements = [
+    { ...base, id: 40, title: "Pinned older", startsAt: "2026-10-01T00:00:00Z" },
+    { ...base, id: 20, title: "Regular newest", sortOrder: 5, startsAt: "2026-10-19T11:00:00Z" },
+    { ...base, id: 10, title: "Regular tied lower priority", sortOrder: 3, startsAt: post.publishAt },
+    { ...base, id: 11, title: "Regular tied higher priority", sortOrder: 2, startsAt: post.publishAt },
+    { ...base, id: 12, title: "Undated", sortOrder: 1 },
+  ];
+  const news = [
+    { ...post, id: 3, title: "News ID 3", slug: "news-three" },
+    { ...post, id: 2, title: "News ID 2", slug: "news-two" },
+    { ...post, id: 4, title: "Newer news", slug: "newer-news", publishAt: "2026-10-19T10:00:00Z" },
+  ];
+  const expected = ["Pinned older", "Regular newest", "Newer news", "Regular tied higher priority", "Regular tied lower priority", "News ID 2", "News ID 3", "Undated"];
+  const first = publicEditorial({ ...content, news, announcements }, [], now).activity;
+  assert.deepEqual(first.map((item) => item.title), expected);
+  assert.deepEqual(publicEditorial({ ...content, news: [...news].reverse(), announcements: [...announcements].reverse() }, [], now).activity, first);
+});

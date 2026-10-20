@@ -348,7 +348,7 @@ function PublicSiteContent({ pathname, search = "", onNavigate }: PublicSiteProp
         )}
       </header>
 
-      {pathname !== "/" && isAnnouncementActive(settings) && <div className="public-announcement" role="status"><div className="public-container"><span>{settings.announcementMessage}</span>{settings.announcementCtaLabel && <PublicLink href={CTA_TARGET_PATHS[settings.announcementCtaTarget]} onNavigate={onNavigate}>{settings.announcementCtaLabel} <ArrowIcon /></PublicLink>}</div></div>}
+      {isAnnouncementActive(settings) && <div className="public-announcement" role="status"><div className="public-container"><span>{settings.announcementMessage}</span>{settings.announcementCtaLabel && <PublicLink href={CTA_TARGET_PATHS[settings.announcementCtaTarget]} onNavigate={onNavigate}>{settings.announcementCtaLabel} <ArrowIcon /></PublicLink>}</div></div>}
 
       <main id="public-main" tabIndex={-1}>
         {pathname === "/" && (
@@ -427,10 +427,7 @@ function HomePage({
   settings: PublicSiteSettings;
 }) {
   const sections: Record<PublicSiteSettings["homepageSections"][number]["key"], ReactNode> = {
-    UPDATES: <AnnouncementRail key="updates" items={[
-      ...(isAnnouncementActive(settings) ? [{ type: "STORE_UPDATE" as const, title: settings.announcementMessage, summary: "", imageUrl: null, href: CTA_TARGET_PATHS[settings.announcementCtaTarget], actionLabel: settings.announcementCtaLabel, date: null }] : []),
-      ...editorial.announcements,
-    ]} onNavigate={onNavigate} />,
+    UPDATES: <AnnouncementRail key="updates" items={editorial.activity ?? editorial.announcements} onNavigate={onNavigate} />,
     HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h2>{settings.heroTitle}</h2><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div><p className="public-hero__note">Explore at your pace. Contact us to confirm availability before making plans.</p></div><div className="public-hero__visual" aria-hidden="true">{heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}</div></div><div className="public-container public-hero__promise" aria-label={`${settings.businessName} service highlights`}><span>Sealed inventory</span><span>Local card shows</span><span>Buy, sell, and trade</span></div></section>,
     MERCHANDISING: <FeaturedInventorySection categories={editorial.categories} key="merchandising" excludeComingSoon={settings.homepageSections.some((section) => section.key === "COMING_SOON" && section.visible)} onContact={onContact} onNavigate={onNavigate} onProductOpen={onProductOpen} settings={settings} />,
     COMING_SOON: <ComingSoonSection key="coming-soon" onContact={onContact} onProductOpen={onProductOpen} settings={settings} />,

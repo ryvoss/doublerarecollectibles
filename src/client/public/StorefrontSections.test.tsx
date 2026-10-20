@@ -6,6 +6,7 @@ import { AnnouncementCard, AnnouncementRail, CategoryNavigation, HorizontalRail,
 import { PublicInventoryCard } from "./PublicInventoryCard";
 import { PriceDisplay } from "./PriceDisplay";
 import type { PublicInventoryItem } from "../../shared/publicInventory";
+import { publicEditorial, type StorefrontContent } from "../../shared/storefrontContent";
 Object.assign(globalThis, { React });
 
 test("editorial rail is a keyboard-focusable labeled region with real destination links", () => {
@@ -17,6 +18,26 @@ test("editorial rail is a keyboard-focusable labeled region with real destinatio
   assert.equal(renderToStaticMarkup(<AnnouncementRail items={[]} onNavigate={() => undefined} />), "");
   assert.match(renderToStaticMarkup(<HorizontalRail label="Updates">Content</HorizontalRail>), /tabindex="0"/);
   assert.doesNotMatch(renderToStaticMarkup(<AnnouncementCard item={item} preview onNavigate={() => undefined} />), /<a /);
+});
+
+test("What's New renders both sources and hides when neither source has public content", () => {
+  const content: StorefrontContent = {
+    categories: [],
+    announcements: [{ id: 1, type: "PRICE_DROP", title: "Gem 4 price reduced", summary: "See the latest price", imageUrl: null,
+      published: true, sortOrder: 0, startsAt: null, endsAt: null, destination: "RECENT_DROPS", destinationSlug: null }],
+    news: [{ id: 2, title: "Crystal Gathering inventory update", slug: "crystal-gathering", summary: "Our collector update", body: "Article body must not appear in the rail", imageUrl: null, published: true, publishAt: "2026-10-18T00:00:00Z" }],
+  };
+  const now = new Date("2026-10-19T12:00:00Z");
+  const render = (source: StorefrontContent) => renderToStaticMarkup(<AnnouncementRail items={publicEditorial(source, [], now).activity} onNavigate={() => undefined} />);
+  const markup = render(content);
+  assert.match(markup, /What’s New at Double Rare/);
+  assert.match(markup, /Gem 4 price reduced/);
+  assert.match(markup, /Crystal Gathering inventory update/);
+  assert.match(markup, /href="\/news\/crystal-gathering"/);
+  assert.match(markup, /Oct 18, 2026/);
+  assert.doesNotMatch(markup, /Article body must not appear/);
+  assert.equal(render({ categories: [], news: [], announcements: [] }), "");
+  assert.equal(render({ ...content, news: content.news.map((post) => ({ ...post, published: false })), announcements: content.announcements.map((item) => ({ ...item, published: false })) }), "");
 });
 
 test("category navigation always offers All Inventory and clearly marks the current category", () => {

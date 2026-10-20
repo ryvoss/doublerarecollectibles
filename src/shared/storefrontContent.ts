@@ -15,8 +15,9 @@ export type PublicCategory = Pick<StorefrontCategory, "name" | "slug" | "product
 export type PublicNewsSummary = Pick<StorefrontNewsPost, "title" | "slug" | "summary" | "imageUrl" | "publishAt">;
 export type PublicNewsArticle = PublicNewsSummary & { body: string };
 export type PublicAnnouncement = Pick<StorefrontAnnouncement, "type" | "title" | "summary" | "imageUrl"> & { href: string; date: string | null; actionLabel?: string };
-export type PublicEditorial = { categories: PublicCategory[]; announcements: PublicAnnouncement[] };
-export const EMPTY_EDITORIAL: PublicEditorial = { categories: [], announcements: [] };
+export type PublicActivityItem = PublicAnnouncement;
+export type PublicEditorial = { categories: PublicCategory[]; announcements: PublicAnnouncement[]; activity: PublicActivityItem[] };
+export const EMPTY_EDITORIAL: PublicEditorial = { categories: [], announcements: [], activity: [] };
 export type ContentKind = keyof StorefrontContent;
 export type ContentUpdate = Omit<StorefrontCategory, "id"> | Omit<StorefrontNewsPost, "id"> | Omit<StorefrontAnnouncement, "id">;
 
@@ -85,7 +86,7 @@ export function validateContent(kind: ContentKind, value: unknown): ContentUpdat
 }
 
 export function publishedNews(posts: StorefrontNewsPost[], now = new Date()) {
-  return posts.filter((post) => post.published && Date.parse(post.publishAt) <= now.getTime())
+  return posts.filter((post) => post.published && validStorefrontSlug(post.slug) && Date.parse(post.publishAt) <= now.getTime())
     .sort((a, b) => Date.parse(b.publishAt) - Date.parse(a.publishAt) || a.slug.localeCompare(b.slug));
 }
 
@@ -102,15 +103,50 @@ export function publicEditorial(content: StorefrontContent, publicProductIds: nu
   const categories = content.categories.filter((category) => category.visible)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.slug.localeCompare(b.slug))
     .map((category) => ({ name: category.name, slug: category.slug, productIds: category.productIds.filter((id) => allowedIds.has(id)) }));
-  const newsSlugs = new Set(publishedNews(content.news, now).map((post) => post.slug));
+  const news = publishedNews(content.news, now);
+  const newsBySlug = new Map(news.map((post) => [post.slug, post]));
   const categorySlugs = new Set(categories.map((category) => category.slug));
-  const announcements = content.announcements.filter((item) => item.published &&
+  const eligibleAnnouncements = content.announcements.filter((item) => item.published &&
     (!item.startsAt || Date.parse(item.startsAt) <= now.getTime()) && (!item.endsAt || Date.parse(item.endsAt) > now.getTime()) &&
+    CONTENT_DESTINATIONS.includes(item.destination) &&
     (item.destination !== "CATEGORY" || categorySlugs.has(item.destinationSlug ?? "")) &&
-    (item.destination !== "NEWS" || newsSlugs.has(item.destinationSlug ?? "")))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
-    .map((item) => ({ type: item.type, title: item.title, summary: item.summary, imageUrl: item.imageUrl, href: contentDestinationPath(item.destination, item.destinationSlug), date: item.startsAt }));
-  return { categories, announcements };
+    (item.destination !== "NEWS" || newsBySlug.has(item.destinationSlug ?? "")))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  const announcements = eligibleAnnouncements.map(toPublicAnnouncement);
+  const linkedNews = new Set(eligibleAnnouncements.filter((item) => item.destination === "NEWS").map((item) => item.destinationSlug));
+  const candidates: Array<{ item: PublicActivityItem; pinned: boolean; order: number; source: number; id: number; newsSlug: string | null }> = [
+    ...eligibleAnnouncements.map((announcement) => {
+      const relatedPost = announcement.destination === "NEWS" ? newsBySlug.get(announcement.destinationSlug ?? "") : undefined;
+      return {
+        item: { ...toPublicAnnouncement(announcement), date: announcement.startsAt ?? relatedPost?.publishAt ?? null },
+        pinned: announcement.sortOrder === 0, order: announcement.sortOrder, source: 0, id: announcement.id,
+        newsSlug: relatedPost?.slug ?? null,
+      };
+    }),
+    ...news.filter((post) => !linkedNews.has(post.slug)).map((post) => ({
+      item: { type: "NEWS" as const, title: post.title, summary: post.summary, imageUrl: post.imageUrl,
+        href: contentDestinationPath("NEWS", post.slug), date: post.publishAt, actionLabel: "Read update" },
+      pinned: false, order: Number.MAX_SAFE_INTEGER, source: 1, id: post.id, newsSlug: post.slug,
+    })),
+  ];
+  // Existing order 0 leads; regular activity uses known publication/start dates.
+  // Internal ordering metadata never enters the public DTO. Undated items follow dated activity.
+  const timestamp = (item: PublicActivityItem) => item.date ? Date.parse(item.date) : Number.NEGATIVE_INFINITY;
+  candidates.sort((a, b) => Number(b.pinned) - Number(a.pinned) ||
+    (timestamp(b.item) - timestamp(a.item) || 0) || a.order - b.order || a.source - b.source || a.id - b.id);
+  const seenNews = new Set<string>();
+  const activity = candidates.filter((candidate) => {
+    if (!candidate.newsSlug) return true;
+    if (seenNews.has(candidate.newsSlug)) return false;
+    seenNews.add(candidate.newsSlug);
+    return true;
+  }).map((candidate) => candidate.item);
+  return { categories, announcements, activity };
+}
+
+function toPublicAnnouncement(item: StorefrontAnnouncement): PublicAnnouncement {
+  return { type: item.type, title: item.title, summary: item.summary, imageUrl: item.imageUrl,
+    href: contentDestinationPath(item.destination, item.destinationSlug), date: item.startsAt };
 }
 
 export type InventoryBrowseState = { search: string; category: string; view: string; availability: string };
