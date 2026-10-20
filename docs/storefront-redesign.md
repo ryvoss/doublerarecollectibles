@@ -91,3 +91,16 @@ Ordering uses existing announcement controls: order `0` leads the feed; remainin
 An eligible announcement pointing to a public news article replaces that article’s separate feed card. Multiple eligible announcements for the same article produce one card, selected by feed order. Draft, expired, or future announcements do not suppress an otherwise public article. Invalid news slugs and invalid announcement destinations are excluded. Public activity items expose only card content, public destinations, and useful dates; internal IDs, priority metadata, draft state, and article bodies are omitted.
 
 Follow-up validation passed: TypeScript, 171 tests (135 unit/service/component and 36 auth/route), production build, production dependency audit (zero vulnerabilities), and `git diff --check`. The first build found an encoding error in the changed admin help text; it was corrected. A sandbox subprocess restriction required rerunning the successful build outside the sandbox. No database connection, migration, deployment, or production action was performed for this follow-up. The database verification release blocker above remains unresolved.
+
+
+## Follow-up: first performance quick-win pass
+
+Reports now load current inventory, funds, product options, and Shows independently of report filters. Filter changes reload performance only; business refresh events and Retry still refresh both groups. Superseded requests and retry delays are abortable, and aborted responses cannot update report state. Loading/error feedback covers both groups.
+
+Editorial saves emit `storefront-content-changed` instead of the financial/inventory refresh event. Existing Orders, receiving, Sales, pack/inventory, corrections, Funds, and Show event producers remain unchanged. The public catalog records the latest successful fetch time for its one-minute focus revalidation; navigation refreshes and stock semantics remain intact.
+
+Production static serving gives Vite's default eight-character hashed filenames under `/assets/` one-year immutable caching. HTML uses `no-cache`; other static files retain one-hour caching. Protected API middleware and `no-store` remain unchanged. No compression layer was added.
+
+Regression checks: `node scripts/verify-performance-quick-wins.mjs` exercises real React components in isolated local Chrome with synthetic responses, including report request counts, cancellation/stale responses, error/retry, catalog navigation/focus freshness, and an actual editorial save alongside the admin shell. The automated suite additionally checks retry cancellation and real Express static response headers. No business API or database is used by the browser fixture.
+
+No deployment, migration, or production access was performed. A separately authorized release must restart the built server for the static policy and verify actual hosting headers for a hashed asset, HTML, an unhashed file, and a protected API response. Railway/edge overrides were not inspected. The earlier database-verification blocker remains unresolved. Business Health aggregation, indexes, images, pagination, and broader caching remain deferred.

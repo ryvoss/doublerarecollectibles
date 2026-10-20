@@ -58,7 +58,8 @@ export default function StorefrontContentManager({ kind }: { kind: ContentKind }
       const body = await response.json() as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Content could not be saved.");
       setDraft(initialDraft(kind)); setId(null); setVersion((value) => value + 1); setMessage("Saved. Published content follows its schedule and destination visibility.");
-      window.dispatchEvent(new Event("business-data-changed"));
+      // Editorial changes do not affect stock, costs, or business position.
+      window.dispatchEvent(new Event("storefront-content-changed"));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Content could not be saved."); }
     finally { setBusy(false); }
   }

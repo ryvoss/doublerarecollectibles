@@ -4,6 +4,7 @@ import { access } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import express from "express";
+import { frontendStatic } from "./services/frontendStatic";
 import { passport } from "./auth/passport";
 import { requireAdmin, requireAdminPage } from "./auth/authorization";
 import { adminSessionPool, createAdminSessionMiddleware } from "./auth/session";
@@ -139,10 +140,7 @@ mountApiRoutes(app, {
 app.use("/admin", noStore, requireAdminPage);
 
 if (production) {
-  app.use(express.static(frontendDistPath, {
-    index: false,
-    maxAge: "1h",
-  }));
+  app.use(frontendStatic(frontendDistPath));
 
   app.use((req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();

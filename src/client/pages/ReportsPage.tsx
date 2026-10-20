@@ -141,14 +141,36 @@ export default function ReportsPage() {
   const [funds, setFunds] = useState<Funds | null>(null);
   const [singlesValuation, setSinglesValuation] = useState<SinglesValuation | null>(null);
   const [options, setOptions] = useState<{ products: { id: number; name: string }[]; shows: { id: number; name: string }[] }>({ products: [], shows: [] });
+  const [referenceLoading, setReferenceLoading] = useState(true);
+  const [referenceError, setReferenceError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
   useEffect(() => { const listener = () => setRefresh(n => n + 1); window.addEventListener("business-data-changed", listener); return () => window.removeEventListener("business-data-changed", listener); }, []);
+  // Filters affect performance only; current balances/options refresh on business changes.
+  const reportActive = section !== "What-If" && section !== "Business Health";
   useEffect(() => {
-    let cancelled = false;
+    if (!reportActive) return;
+    const controller = new AbortController();
+    setReferenceLoading(true); setReferenceError("");
+    void Promise.all([
+      fetchReportData<Inventory[]>("/api/inventory", "Report inventory could not be loaded.", controller.signal),
+      fetchReportData<Funds>("/api/funds/summary", "Report funds could not be loaded.", controller.signal),
+      fetchReportData<Array<{ id: number; name: string; sellable: boolean; type: string }>>("/api/products", "Report product options could not be loaded.", controller.signal),
+      fetchReportData<ShowResponse[]>("/api/shows", "Report Show options could not be loaded.", controller.signal),
+    ]).then(([i, f, products, shows]) => {
+      if (controller.signal.aborted) return;
+      setInventory(i); setFunds(f); setSinglesValuation(latestSinglesValuation(shows));
+      setOptions({ products: products.filter(item => item.sellable && item.type === "SEALED").map(item => ({ id: item.id, name: item.name })), shows: shows.map(item => ({ id: item.id, name: item.name })) });
+    }).catch((cause: unknown) => {
+      if (!controller.signal.aborted) setReferenceError(cause instanceof Error ? cause.message : "Reports could not be loaded.");
+    }).finally(() => { if (!controller.signal.aborted) setReferenceLoading(false); });
+    return () => controller.abort();
+  }, [reportActive, refresh]);
+  useEffect(() => {
+    if (!reportActive) return;
+    const controller = new AbortController();
     async function load() {
-      if (section === "What-If" || section === "Business Health") return;
       setLoading(true); setError("");
       try {
         const dates = rangeDates(range, from, to);
@@ -159,19 +181,13 @@ export default function ReportsPage() {
         if (productId) query.set("productId", productId);
         if (section === "Shows" && showId) query.set("showId", showId);
         if (section === "Shows") query.set("showOnly", "1");
-        const [p, i, f, products, shows] = await Promise.all([
-          fetchReportData<Performance>(`/api/reports/performance?${query}`, "Report performance could not be loaded."),
-          fetchReportData<Inventory[]>("/api/inventory", "Report inventory could not be loaded."),
-          fetchReportData<Funds>("/api/funds/summary", "Report funds could not be loaded."),
-          fetchReportData<Array<{ id: number; name: string; sellable: boolean; type: string }>>("/api/products", "Report product options could not be loaded."),
-          fetchReportData<ShowResponse[]>("/api/shows", "Report Show options could not be loaded."),
-        ]);
-        if (!cancelled) { setPerformance(p); setInventory(i); setFunds(f); setSinglesValuation(latestSinglesValuation(shows as ShowResponse[])); setOptions({ products: products.filter((item: { sellable: boolean; type: string }) => item.sellable && item.type === "SEALED").map((item: { id: number; name: string }) => ({ id: item.id, name: item.name })), shows: shows.map((item: { id: number; name: string }) => ({ id: item.id, name: item.name })) }); }
-      } catch (cause) { if (!cancelled) setError(cause instanceof Error ? cause.message : "Reports could not be loaded."); }
-      finally { if (!cancelled) setLoading(false); }
+        const p = await fetchReportData<Performance>(`/api/reports/performance?${query}`, "Report performance could not be loaded.", controller.signal);
+        if (!controller.signal.aborted) setPerformance(p);
+      } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Reports could not be loaded."); }
+      finally { if (!controller.signal.aborted) setLoading(false); }
     }
-    void load(); return () => { cancelled = true; };
-  }, [section, range, from, to, productId, showId, refresh]);
+    void load(); return () => controller.abort();
+  }, [reportActive, section, range, from, to, productId, showId, refresh]);
   const filteredInventory = section === "Inventory" && productId ? inventory.filter(item => String(item.productId) === productId) : inventory;
   const owned = filteredInventory.filter(item => item.unitsOnHand > 0 || item.unitsInbound > 0);
   const stock = filteredInventory.filter(item => item.unitsOnHand > 0);
@@ -187,8 +203,8 @@ export default function ReportsPage() {
     {section === "What-If" ? <WhatIfPage /> : section === "Business Health" ? <BusinessHealthPage /> : <>
     <div className="panel report-filters"><label>Sale / visit date <select value={range} onChange={e => setRange(e.target.value as Range)}><option value="all">All Time</option><option value="month">This Month</option><option value="lastMonth">Last Month</option><option value="30">Last 30 Days</option><option value="year">This Year</option><option value="custom">Custom Range</option></select></label>{range === "custom" && <><label>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></>}{(section === "Sales" || section === "Inventory" || section === "Shows") && <label>Product <select value={productId} onChange={e => setProductId(e.target.value)}><option value="">All Products</option>{options.products.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{section === "Shows" && <label>Recurring Show <select value={showId} onChange={e => setShowId(e.target.value)}><option value="">All Shows</option>{options.shows.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</div>
     {(section === "Overview" || section === "Inventory") && <p className="report-note">Inventory and Funds are current balances. The date range applies to recorded sales and Show visits.</p>}
-    {loading && <div className="panel report-state" role="status">Loading reports…</div>}{error && <div className="panel report-state" role="alert">{error} <button type="button" className="secondary-button" onClick={() => setRefresh(n => n + 1)}>Retry</button></div>}
-    {!loading && !error && performance && totals && <>
+    {(loading || referenceLoading) && <div className="panel report-state" role="status">Loading reports…</div>}{(error || referenceError) && <div className="panel report-state" role="alert">{error || referenceError} <button type="button" className="secondary-button" onClick={() => setRefresh(n => n + 1)}>Retry</button></div>}
+    {!loading && !referenceLoading && !error && !referenceError && performance && totals && <>
       {section === "Overview" && <>{funds && <BusinessHealth funds={funds} sealedCost={cost} sealedOnHandCost={onHandCost} sealedInboundCost={inboundCost} sealedRetail={retail} singlesValuation={singlesValuation} />}<div className="report-metrics"><Metric label="Sealed Revenue" value={currency(totals.revenue)} detail="Recorded sealed sales" /><Metric label="Gross Profit" value={currency(totals.grossProfit)} /><Metric label="Gross Margin" value={percent(totals.grossMargin)} /><Metric label="Owned Inventory Cost" value={currency(cost)} detail={`${currency(onHandCost)} on hand · ${currency(inboundCost)} in transit`} /><Metric label="On-Hand Retail Value" value={currency(retail)} /><Metric label="Potential On-Hand Profit" value={currency(potential)} /><Metric label="Units On Hand" value={integer(units)} /><Metric label="Total Business Funds" value={currency(funds?.totalBusinessFunds ?? 0)} detail={`Sealed ${currency(funds?.sealedBalance ?? 0)} · Singles ${currency(funds?.singlesBalance ?? 0)}`} /></div><div className="report-two"><Panel title="Revenue and COGS over time" detail="Daily sealed sales in the selected range"><TrendChart rows={performance.trends} /></Panel><Panel title="Current business position" detail="Funds and owned inventory at current values"><div className="report-position"><div><span>Sealed Funds</span><strong>{currency(funds?.sealedBalance ?? 0)}</strong></div><div><span>Singles Funds</span><strong>{currency(funds?.singlesBalance ?? 0)}</strong></div><div><span>On-Hand Inventory Cost</span><strong>{currency(onHandCost)}</strong></div><div><span>In-Transit Inventory Cost</span><strong>{currency(inboundCost)}</strong></div></div></Panel></div></>}
       {section === "Sales" && <><div className="report-metrics"><Metric label="Revenue" value={currency(totals.revenue)} /><Metric label="COGS" value={currency(totals.cogs)} /><Metric label="Gross Profit" value={currency(totals.grossProfit)} /><Metric label="Gross Margin" value={percent(totals.grossMargin)} /><Metric label="Units Sold" value={integer(totals.unitsSold)} /><Metric label="Sales" value={integer(totals.saleCount)} /><Metric label="Average Sale Value" value={currency(totals.saleCount ? totals.revenue / totals.saleCount : 0)} /><Metric label="Average Profit / Sale" value={currency(totals.saleCount ? totals.grossProfit / totals.saleCount : 0)} /></div><div className="report-two"><Panel title="Revenue and COGS over time"><TrendChart rows={performance.trends} /></Panel><Panel title="Top products by Revenue"><Bars title="Product Revenue" value="products" rows={performance.products.map(p => ({ label: p.productName, amount: p.revenue })).sort((a, b) => b.amount - a.amount)} /></Panel><Panel title="Top products by Gross Profit"><Bars title="Product Gross Profit" value="products" rows={performance.products.map(p => ({ label: p.productName, amount: p.grossProfit })).sort((a, b) => b.amount - a.amount)} /></Panel><Panel title="Top products by Units Sold"><Bars title="Product Units Sold" value="products" format={integer} rows={performance.products.map(p => ({ label: p.productName, amount: p.unitsSold })).sort((a, b) => b.amount - a.amount)} /></Panel></div><Panel title="Product performance" detail="Exact sealed sale totals by product"><Table heads={["Product", "Revenue", "COGS", "Gross Profit", "Gross Margin", "Units Sold"]}>{performance.products.map(p => <tr key={p.productId}><td><strong>{p.productName}</strong><small>{p.itemId}</small></td><td>{currency(p.revenue)}</td><td>{currency(p.cogs)}</td><td>{currency(p.grossProfit)}</td><td>{percent(p.grossMargin)}</td><td>{integer(p.unitsSold)}</td></tr>)}</Table>{!performance.products.length && <Empty message="No sealed product sales in this range." />}</Panel></>}
       {section === "Inventory" && <><div className="report-metrics"><Metric label="Owned Inventory Cost" value={currency(cost)} /><Metric label="On-Hand Cost" value={currency(onHandCost)} /><Metric label="In-Transit Cost" value={currency(inboundCost)} /><Metric label="On-Hand Retail Value" value={currency(retail)} /><Metric label="Potential On-Hand Profit" value={currency(potential)} /><Metric label="Units On Hand" value={integer(units)} /></div><div className="report-two"><Panel title="Owned inventory cost by product"><Bars title="Owned inventory cost by product" value="products" rows={owned.map(i => ({ label: i.productName, amount: Number(i.inventoryValue) })).sort((a, b) => b.amount - a.amount)} /></Panel><Panel title="On-hand retail potential by product"><Bars title="Retail value by product" value="products" rows={stock.map(i => ({ label: i.productName, amount: Number(i.retailValue) })).sort((a, b) => b.amount - a.amount)} /></Panel></div><Panel title="Inventory performance" detail="Owned, received, and inbound position with recorded sales in the selected date range"><Table heads={["Product", "Purchased", "Received", "Inbound", "Sold", "On Hand", "Owned Cost", "On-Hand Cost", "Retail Value", "Revenue", "COGS", "Gross Profit", "Margin"]}>{filteredInventory.map(i => { const sold = performance.products.find(p => p.productId === i.productId); return <tr key={i.productId}><td><strong>{i.productName}</strong></td><td>{integer(i.unitsPurchased)}</td><td>{integer(i.unitsReceived)}</td><td>{integer(i.unitsInbound)}</td><td>{integer(i.unitsSold)}</td><td>{integer(i.unitsOnHand)}</td><td>{currency(i.inventoryValue)}</td><td>{currency(i.onHandInventoryValue)}</td><td>{currency(i.retailValue)}</td><td>{currency(sold?.revenue ?? 0)}</td><td>{currency(sold?.cogs ?? 0)}</td><td>{currency(sold?.grossProfit ?? 0)}</td><td>{percent(sold?.grossMargin ?? 0)}</td></tr>; })}</Table>{!filteredInventory.length && <Empty message="No inventory products are available." />}</Panel></>}

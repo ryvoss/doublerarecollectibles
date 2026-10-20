@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import type { PublicInventoryItem } from "../../shared/publicInventory";
 
 type Catalog = { products: PublicInventoryItem[]; loading: boolean; error: string | null; retry: () => void };
@@ -9,27 +9,29 @@ export function PublicCatalogProvider({ children, pathname }: { children: ReactN
   const [products, setProducts] = useState<PublicInventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastSuccess = useRef<number | null>(null);
+  const inFlight = useRef(false);
   const [version, setVersion] = useState(0);
   useEffect(() => {
     if (pathname !== "/" && pathname !== "/inventory") return;
     const controller = new AbortController();
+    inFlight.current = true;
     setLoading(true); setError(null);
     void fetch("/api/public/inventory", { signal: controller.signal, cache: "no-store" })
       .then(async (response) => {
         if (!response.ok) throw new Error("Inventory could not be loaded right now.");
         const body: unknown = await response.json();
         if (!Array.isArray(body)) throw new Error("Inventory could not be loaded right now.");
-        if (!controller.signal.aborted) setProducts(body as PublicInventoryItem[]);
+        if (!controller.signal.aborted) { lastSuccess.current = Date.now(); setProducts(body as PublicInventoryItem[]); }
       }).catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Inventory could not be loaded right now.");
-      }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+      }).finally(() => { if (!controller.signal.aborted) { inFlight.current = false; setLoading(false); } });
+    return () => { controller.abort(); inFlight.current = false; };
   }, [version, pathname]);
   useEffect(() => {
-    let lastRefresh = Date.now();
     const refresh = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastRefresh > 60000) {
-        lastRefresh = Date.now(); setVersion((value) => value + 1);
+      if (document.visibilityState === "visible" && !inFlight.current && (lastSuccess.current === null || Date.now() - lastSuccess.current >= 60000)) {
+        setVersion((value) => value + 1);
       }
     };
     window.addEventListener("focus", refresh);
