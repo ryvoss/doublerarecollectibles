@@ -1,4 +1,5 @@
 import { adminFetch } from "../adminFetch";
+import ShowSaleActions from "./ShowSaleActions";
 import { inputStyle } from "./uiStyles";
 import {
   useCallback,
@@ -456,6 +457,15 @@ export default function ActiveShowPanel() {
   useEffect(() => {
     void loadActiveVisit();
   }, [loadActiveVisit]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadActiveVisit();
+      if (activeVisit && showVisitModal) void loadVisitWorkspace(activeVisit.id);
+    };
+    window.addEventListener("business-data-changed", refresh);
+    return () => window.removeEventListener("business-data-changed", refresh);
+  }, [activeVisit, showVisitModal, loadActiveVisit]);
 
   // -------------------------------------------------------
   // LOAD SHOW LIST
@@ -2916,7 +2926,7 @@ function ActiveVisitOverview({
                     display:
                       "grid",
                     gridTemplateColumns:
-                      "1fr auto auto auto",
+                      "minmax(0, 1fr) auto auto auto auto",
                     gap: "18px",
                     alignItems:
                       "center",
@@ -2990,6 +3000,7 @@ function ActiveVisitOverview({
                       revenue
                     )}
                   </strong>
+                  <ShowSaleActions saleId={sale.id} locked={visit.status !== "ACTIVE" || Boolean(visit.finalizedAt)} />
                 </div>
               );
             }

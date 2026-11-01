@@ -1099,6 +1099,8 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
 }
 .modal-surface--product { max-width: 560px; }
+.show-sale-correction::backdrop { background: rgba(0, 0, 0, 0.72); }
+.show-sale-correction label { display: grid; gap: 6px; margin: 12px 0; }
 
 @media (max-width: 900px) {
   .sidebar { width: 196px; }

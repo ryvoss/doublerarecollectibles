@@ -1,9 +1,10 @@
 import { adminFetch } from "../adminFetch";
+import ShowSaleActions from "../components/ShowSaleActions";
 import { controlStyle } from "../components/uiStyles";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 
-type Visit = {id: number; visitDate: string; finalizedAt: string | null; notes: string | null};
+type Visit = {id: number; visitDate: string; status: string; finalizedAt: string | null; notes: string | null};
 type Show = {id: number; name: string; active: boolean; notes: string | null; visits: Visit[]};
 type VisitDetail = Visit & {
   show: {name: string};
@@ -246,6 +247,11 @@ function VisitSales({visitId}: {visitId: number}) {
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
+    const refresh = () => setRetry(value => value + 1);
+    window.addEventListener("business-data-changed", refresh);
+    return () => window.removeEventListener("business-data-changed", refresh);
+  }, []);
+  useEffect(() => {
     const controller = new AbortController();
     async function load() {
       setData(null); setError(null);
@@ -277,6 +283,7 @@ function VisitSales({visitId}: {visitId: number}) {
     <p style={{color: "#898a91", fontSize: "12px"}}>Record sales on the Sales page and select this show visit. Values below come from recorded sales.</p>
     {data.detail.sales.length === 0 ? <p>No linked sales yet.</p> : data.detail.sales.map((sale) => <article key={sale.id} style={{padding: "14px 0", borderTop: "1px solid #303137"}}>
       <strong>{sale.saleNumber} · {sale.saleDate.slice(0, 10)} · {sale.paymentMethod}</strong>
+      <ShowSaleActions saleId={sale.id} locked={data.detail.status !== "ACTIVE" || Boolean(data.detail.finalizedAt)} />
       {sale.lines.filter((line) => line.product.type === "SEALED").map((line) => <p key={line.id} style={{fontSize: "13px", color: "#a7a7ad"}}>
         {line.quantity}{" \u00d7 "}{line.product.name} · Revenue {money(line.revenue)} · COGS {money(line.cogs)} · Profit {money(line.grossProfit)}
       </p>)}

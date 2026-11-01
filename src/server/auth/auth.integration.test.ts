@@ -1,4 +1,7 @@
 import { createStorefrontContentRouter } from "../routes/storefrontContent";
+import { createShowSaleCorrectionsRouter } from "../routes/showSaleCorrections";
+import { SaleCorrectionError } from "../services/showSaleCorrections";
+import type { PrismaClient } from "../../generated/prisma/client";
 import assert from "node:assert/strict";
 import { before, test } from "node:test";
 import type { Request, Response } from "express";
@@ -93,6 +96,14 @@ reportsRouter.get("/explode", () => {
   throw new Error("postgresql://secret-user:secret-password@private-host/private-db");
 });
 const productsRouter = readableRouter();
+let saleCorrectionAttempts = 0;
+const salesRouter = readableRouter();
+salesRouter.use(createShowSaleCorrectionsRouter({
+  $transaction: async () => {
+    saleCorrectionAttempts += 1;
+    throw new SaleCorrectionError("This sale cannot be edited because the Show has been finalized.");
+  },
+} as unknown as Pick<PrismaClient, "$transaction" | "sale">));
 productsRouter.post("/", (_req, res) => {
   productMutationCount += 1;
   res.status(201).json({ id: productMutationCount });
@@ -113,7 +124,7 @@ mountApiRoutes(app, {
   products: productsRouter,
   public: publicRouter,
   reports: reportsRouter,
-  sales: readableRouter(),
+  sales: salesRouter,
   shows: readableRouter(),
   site: siteContentRouter,
   whatIfScenarios: readableRouter(),
@@ -190,6 +201,32 @@ test("unauthenticated admin pages redirect to login and are not cached", async (
   const response = await request(app).get("/admin").expect(302);
   assert.equal(response.headers.location, "/admin/login");
   assert.match(response.headers["cache-control"], /no-store/);
+});
+
+test("Show sale PATCH/DELETE inherit ADMIN, CSRF, Origin and no-store protection", async () => {
+  const body = { revision: "a".repeat(64), paymentMethod: "CASH", notes: null, lines: [{ productId: 1, quantity: 1, unitSalePrice: "10.00" }] };
+  const beforeCount = saleCorrectionAttempts;
+  const agent = request.agent(app);
+  for (const method of ["patch", "delete"] as const) {
+    const response = await request(app)[method]("/api/sales/1/correction").send(body).expect(401);
+    assert.match(response.headers["cache-control"], /no-store/);
+  }
+  await login(agent);
+  const token = await csrf(agent);
+  for (const method of ["patch", "delete"] as const) {
+    const data = method === "delete" ? { revision: body.revision } : body;
+    await agent[method]("/api/sales/1/correction").set("Origin", testOrigin).send(data).expect(403);
+    await agent[method]("/api/sales/1/correction").set("Origin", testOrigin).set("X-CSRF-Token", "invalid").send(data).expect(403);
+    await agent[method]("/api/sales/1/correction").set("Origin", "https://attacker.invalid").set("X-CSRF-Token", token).send(data).expect(403);
+  }
+  assert.equal(saleCorrectionAttempts, beforeCount);
+  for (const method of ["patch", "delete"] as const) {
+    const response = await agent[method]("/api/sales/1/correction").set("Origin", testOrigin).set("X-CSRF-Token", token)
+      .send(method === "delete" ? { revision: body.revision } : body).expect(409);
+    assert.match(response.body.error, /Show has been finalized/);
+    assert.match(response.headers["cache-control"], /no-store/);
+  }
+  assert.equal(saleCorrectionAttempts, beforeCount + 2);
 });
 
 test("ADMIN can read every protected router and responses are not cached", async () => {

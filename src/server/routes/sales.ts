@@ -3,8 +3,10 @@ import { Router } from "express";
 import { prisma } from "../prisma";
 import { simulateFifoConsumption } from "../../shared/fifoSimulation";
 import { allocatedBatchCost } from "../services/inventoryCost";
+import { createShowSaleCorrectionsRouter } from "./showSaleCorrections";
 
 const router = Router();
+router.use(createShowSaleCorrectionsRouter(prisma));
 class FinalizedVisitError extends Error {}
 class InventoryChangedError extends Error {}
 
@@ -55,6 +57,16 @@ async function getNextSaleNumber(tx: any): Promise<string> {
   const sales = await tx.sale.findMany({
     select: { saleNumber: true },
   });
+
+  // Deleted Show sales retain their original ledger entry. Never reuse their
+  // public sale numbers when the most recently numbered sale was deleted.
+  const historicalEntries = await tx.fundEntry.findMany({
+    where: { type: "SEALED_SALE" }, select: { note: true },
+  });
+  for (const entry of historicalEntries) {
+    const match = /^Sealed sale (SALE-\d+)$/.exec(entry.note ?? "");
+    if (match) sales.push({ saleNumber: match[1] });
+  }
 
   let highestNumber = 0;
 
