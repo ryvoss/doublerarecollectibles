@@ -1,3 +1,5 @@
+import { amendOrder } from "../services/orderAmendments";
+import { applySupplierCredits, PurchasingError, supplierIdentity } from "../services/supplierCredits";
 import { developmentErrorDetails, logServerError } from "../security/logging";
 import { Router } from "express";
 import type { RequestHandler } from "express";
@@ -23,6 +25,10 @@ class DraftOrderError extends Error {}
 
 class ReceivingError extends Error {}
 
+function transactionConflict(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
+}
+
 class CorrectionError extends Error {
   readonly status: number;
 
@@ -33,6 +39,9 @@ class CorrectionError extends Error {
 }
 
 const orderInclude = {
+  fundEntry: true,
+  creditApplications: { include: { supplierCredit: true } },
+  amendments: { include: { changes: true }, orderBy: { createdAt: "asc" as const } },
   lines: {
     include: {
       purchasedProduct: true,
@@ -217,6 +226,44 @@ router.get("/", async (_req, res) => {
     });
   }
 });
+
+// These endpoints inherit the ADMIN, CSRF, origin and no-store middleware for /api/orders.
+router.get("/supplier-credits", async (_req, res) => {
+  try {
+    res.json(await prisma.supplierCredit.findMany({ include: {
+      sourceOrder: { select: { orderNumber: true } },
+      applications: { include: { order: { select: { orderNumber: true } } }, orderBy: { createdAt: "asc" } },
+    }, orderBy: { createdAt: "desc" } }));
+  } catch (error) { logServerError("Supplier credits", error); res.status(500).json({ error: "Could not load supplier credits." }); }
+});
+
+router.post("/:orderId/supplier", async (req, res) => {
+  try {
+    const orderId = Number(req.params.orderId);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) throw new PurchasingError("Invalid order.");
+    const supplierName = supplierIdentity(req.body?.supplierName);
+    await prisma.$transaction(async tx => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9157, ${orderId})`;
+      const updated = await tx.order.updateMany({ where: { id: orderId, supplierName: null }, data: { supplierName } });
+      if (updated.count !== 1) throw new PurchasingError("Supplier already assigned or order not found. Supplier identity is locked once assigned.");
+    });
+    res.json({ supplierName });
+  } catch (error) { res.status(error instanceof PurchasingError ? 409 : 500).json({ error: error instanceof PurchasingError ? error.message : "Could not assign supplier." }); }
+});
+
+for (const preview of [true, false]) {
+  router.post(`/:orderId/${preview ? "amendment-preview" : "amendments"}`, async (req, res) => {
+    try {
+      const orderId = Number(req.params.orderId);
+      if (!Number.isSafeInteger(orderId) || orderId <= 0) throw new PurchasingError("Invalid order.");
+      res.json(await prisma.$transaction(tx => amendOrder(tx, orderId, req.body, preview), { isolationLevel: "Serializable" }));
+    } catch (error) {
+      logServerError("Order amendment", error);
+      const conflict = typeof error === "object" && error !== null && "code" in error && error.code === "P2034";
+      res.status(error instanceof PurchasingError || conflict ? 409 : 500).json({ error: error instanceof PurchasingError ? error.message : conflict ? "Inventory changed concurrently. Preview again." : "Could not amend order." });
+    }
+  });
+}
 
 // ---------------------------------------------------------
 // CREATE ORDER
@@ -410,7 +457,7 @@ const saveOrderLine: RequestHandler = async (req, res) => {
   } catch (error) {
     logServerError("Error adding order line:", error);
 
-    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+    res.status(error instanceof DraftOrderError || error instanceof PurchasingError ? 409 : 500).json({
       error: error instanceof DraftOrderError ? error.message : "Failed to save order line",
       ...developmentErrorDetails(error),
     });
@@ -434,7 +481,7 @@ router.delete("/:orderId/lines/:lineId", async (req, res) => {
     });
     res.status(204).send();
   } catch (error) {
-    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+    res.status(error instanceof DraftOrderError || error instanceof PurchasingError ? 409 : 500).json({
       error: error instanceof DraftOrderError ? error.message : "Failed to remove order line",
     });
   }
@@ -509,7 +556,7 @@ router.patch("/:orderId", async (req, res) => {
 
     res.json(order);
   } catch (error) {
-    res.status(error instanceof DraftOrderError ? 409 : 500).json({
+    res.status(error instanceof DraftOrderError || error instanceof PurchasingError ? 409 : 500).json({
       error:
         error instanceof DraftOrderError
           ? error.message
@@ -551,6 +598,10 @@ router.post("/:orderId/finalize", async (req, res) => {
       return res.status(404).json({
         error: "Order not found",
       });
+    }
+
+    if (req.body?.expectedUpdatedAt !== undefined && req.body.expectedUpdatedAt !== order.updatedAt.toISOString()) {
+      throw new PurchasingError("The order changed after review. Refresh and review before finalizing.");
     }
 
     // A finalized order should never be finalized again.
@@ -605,6 +656,8 @@ router.post("/:orderId/finalize", async (req, res) => {
       })),
     }, "VALUE");
 
+    if (officialAnalysis.expectedTotal <= 0 || !officialAnalysis.reconciled) throw new PurchasingError("Order landed cost must be positive and reconcile.");
+
     const calculatedLines = order.lines.map((line, index) => ({
       line,
       landedCost: officialAnalysis.lines[index].landedCost.toFixed(2),
@@ -621,6 +674,8 @@ router.post("/:orderId/finalize", async (req, res) => {
         data: {updatedAt: new Date()},
       });
       if (locked.count !== 1) throw new DraftOrderError("The order changed. Refresh and review it before finalizing.");
+      const totalOrderCostCents = totalProductCostCents + totalAdditionalCostCents;
+      const cashRequiredCents = await applySupplierCredits(tx, order.id, order.supplierName, totalOrderCostCents, req.body?.creditApplications);
       for (const calculated of calculatedLines) {
         // Save the finalized landed costs onto the order line.
         await tx.orderLine.update({
@@ -652,7 +707,9 @@ router.post("/:orderId/finalize", async (req, res) => {
         // A finalized order represents money spent by the Sealed
         // side of the business.
         //
-        // We subtract the complete order cost:
+        // Full order cost remains the inventory basis; applied supplier credit
+        // satisfies part of the funding. Only the cash remainder is posted.
+        // The full inventory cost is:
         // product cost + shipping + tariffs + other + adjustment.
         //
         // This happens inside the same database transaction as the
@@ -660,15 +717,11 @@ router.post("/:orderId/finalize", async (req, res) => {
         // the entire operation is rolled back.
         // ---------------------------------------------------------
 
-        const totalOrderCostCents =
-          totalProductCostCents +
-          totalAdditionalCostCents;
-
         await tx.fundEntry.create({
           data: {
             source: "SEALED",
             type: "ORDER_PURCHASE",
-            amount: centsToMoney(-totalOrderCostCents),
+            amount: centsToMoney(-cashRequiredCents),
             transactionDate: order.orderDate,
             orderId: order.id,
             note: `Inventory order ${order.orderNumber}`,
@@ -692,8 +745,8 @@ router.post("/:orderId/finalize", async (req, res) => {
   } catch (error) {
     logServerError("Error finalizing order:", error);
 
-    res.status(error instanceof DraftOrderError ? 409 : 500).json({
-      error: error instanceof DraftOrderError ? error.message : "Failed to finalize order",
+    res.status(error instanceof DraftOrderError || error instanceof PurchasingError ? 409 : 500).json({
+      error: error instanceof DraftOrderError || error instanceof PurchasingError ? error.message : "Failed to finalize order",
       ...developmentErrorDetails(error),
     });
   }
@@ -753,8 +806,8 @@ router.post("/:orderId/mark-in-transit", async (req, res) => {
     res.json(withReceivingState(updated));
   } catch (error) {
     logServerError("Error marking order in transit:", error);
-    res.status(error instanceof ReceivingError ? 409 : 500).json({
-      error: error instanceof ReceivingError ? error.message : "Order could not be marked On the Way.",
+    res.status(error instanceof ReceivingError || transactionConflict(error) ? 409 : 500).json({
+      error: error instanceof ReceivingError ? error.message : transactionConflict(error) ? "Inventory changed concurrently. Refresh and try again." : "Order could not be marked On the Way.",
     });
   }
 });
@@ -819,8 +872,8 @@ router.post("/:orderId/receive", async (req, res) => {
     res.json(withReceivingState(updated));
   } catch (error) {
     logServerError("Error receiving order inventory:", error);
-    res.status(error instanceof ReceivingError ? 409 : 500).json({
-      error: error instanceof ReceivingError ? error.message : "Inventory receipt could not be saved.",
+    res.status(error instanceof ReceivingError || transactionConflict(error) ? 409 : 500).json({
+      error: error instanceof ReceivingError ? error.message : transactionConflict(error) ? "Inventory changed concurrently. Refresh and try again." : "Inventory receipt could not be saved.",
     });
   }
 });
@@ -865,6 +918,7 @@ router.post("/:orderId/correction-preview", async (req, res) => {
   try {
     const order = await prisma.order.findUnique({ where: { id: orderId }, include: orderInclude });
     if (!order) throw new CorrectionError("Order not found.", 404);
+    if (order.amendments.length || order.creditApplications.length) throw new CorrectionError("Orders with amendments or credit funding require an advanced financial correction.", 409);
     assertOrderCanBeCorrected(order);
     const input = parseCorrectionInput(req.body, order.lines.map(line => line.id));
     res.json({ ...correctionPreviewForOrder(order, input.correction), reason: input.reason, notes: input.notes });
@@ -884,7 +938,7 @@ router.post("/:orderId/corrections", async (req, res) => {
   }
   try {
     const corrected = await prisma.$transaction(async tx => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9158, ${orderId})`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(9157, ${orderId})`;
       let order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
       if (!order) throw new CorrectionError("Order not found.", 404);
       for (const productId of [...new Set(order.lines.map(line => line.sellableProductId))].sort((a, b) => a - b)) {
@@ -892,7 +946,8 @@ router.post("/:orderId/corrections", async (req, res) => {
       }
       order = await tx.order.findUnique({ where: { id: orderId }, include: orderInclude });
       if (!order) throw new CorrectionError("Order not found.", 404);
-      assertOrderCanBeCorrected(order);
+      if (order.amendments.length || order.creditApplications.length) throw new CorrectionError("Orders with amendments or credit funding require an advanced financial correction.", 409);
+    assertOrderCanBeCorrected(order);
       const input = parseCorrectionInput(req.body, order.lines.map(line => line.id));
       const preview = correctionPreviewForOrder(order, input.correction);
       const proposedByLine = new Map(input.correction.lines.map(line => [line.orderLineId, line.productCost]));

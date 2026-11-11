@@ -1,4 +1,5 @@
 export type OrderReceivingStatus =
+  | "CANCELED"
   | "DRAFT"
   | "ORDERED"
   | "ON_THE_WAY"
@@ -28,6 +29,7 @@ export function orderReceivingStatus(input: {
 }): OrderReceivingStatus {
   if (!input.finalized) return "DRAFT";
   const totals = receivingTotals(input.lines);
+  if (totals.purchased === 0) return "CANCELED";
   if (totals.inbound === 0) return "DELIVERED";
   if (totals.received > 0) return "PARTIALLY_DELIVERED";
   return input.inTransitAt ? "ON_THE_WAY" : "ORDERED";

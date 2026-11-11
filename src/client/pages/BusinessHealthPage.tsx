@@ -3,6 +3,7 @@ import { fetchReportData } from "../reportApi";
 
 type Interval = "weekly" | "monthly";
 type Position = {
+  supplierCreditBalance: number;
   totalBusinessFunds: number;
   sealedFunds: number;
   singlesFunds: number;
@@ -66,9 +67,10 @@ export default function BusinessHealthPage() {
   const changePercent = change !== null && first.totalBusinessValue ? change / first.totalBusinessValue : null;
 
   return <div className="business-health-page">
-    <section className="business-health-current"><div className="business-health-heading"><div><span>Current Position</span><h3>Business Health</h3><p>Actual business value uses funds, sealed inventory at cost, and the latest Singles valuation.</p></div></div>
+    <section className="business-health-current"><div className="business-health-heading"><div><span>Current Position</span><h3>Business Health</h3><p>Actual business value uses funds, supplier credits, sealed inventory at cost, and the latest Singles valuation.</p></div></div>
       <div className="business-health-current-metrics">
-        <HealthMetric label="Current Business Value" value={complete ? money(position.totalBusinessValue!) : "Incomplete"} detail="Actual funds + inventory at cost/valuation" primary />
+        <HealthMetric label="Current Business Value" value={complete ? money(position.totalBusinessValue!) : "Incomplete"} detail="Funds + inventory + supplier credits" primary />
+        <HealthMetric label="Supplier Credits" value={money(position.supplierCreditBalance)} detail="Available credit held by suppliers" />
         <HealthMetric label="Total Funds" value={money(position.totalBusinessFunds)} detail={`Sealed ${money(position.sealedFunds)} · Singles ${money(position.singlesFunds)}`} />
         <HealthMetric label="Inventory Value" value={money(inventoryValue)} detail={singlesInventory === null ? "Sealed cost; Singles unavailable" : `Sealed cost + Singles ${money(singlesInventory)}`} />
         <HealthMetric label="Sealed On Hand at Cost" value={money(position.sealedInventoryOnHandCost)} detail="Physically received sealed inventory and packs" />

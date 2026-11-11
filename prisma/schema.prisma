@@ -220,6 +220,11 @@ model Order {
   finalizedAt  DateTime?
   inTransitAt  DateTime?
 
+  supplierName String? @db.VarChar(160)
+  amendments OrderAmendment[]
+  supplierCredits SupplierCredit[]
+  creditApplications SupplierCreditApplication[]
+
   lines OrderLine[]
 
   fundEntry FundEntry?
@@ -250,6 +255,7 @@ model OrderLine {
 
   inventoryBatches InventoryBatch[]
   correctionChanges OrderCorrectionChange[]
+  amendmentChanges OrderAmendmentChange[]
 }
 
 // Finalized orders remain locked. Each correction is an immutable record of
@@ -560,6 +566,8 @@ model FundEntry {
   transactionDate    DateTime
   saleId             Int?          @unique
   orderId            Int?          @unique
+  orderAmendmentId Int? @unique
+  orderAmendment OrderAmendment? @relation(fields: [orderAmendmentId], references: [id])
   orderCorrectionId  Int?          @unique
   showVisitId        Int?
   showPackSnapshotId Int?
@@ -593,6 +601,7 @@ enum FundEntryType {
   SEALED_SALE
   ORDER_PURCHASE
   ORDER_CORRECTION
+  ORDER_REFUND
   SINGLES_SHOW_GAIN
   PACK_SHOW_REVENUE
   PERSONAL_CONTRIBUTION
@@ -634,6 +643,7 @@ model WhatIfScenarioLine {
 // Read-only historical reporting records derived from authoritative business
 // tables. One row is maintained per calendar day.
 model BusinessPositionSnapshot {
+  supplierCreditBalance Decimal @default(0) @db.Decimal(14, 2)
   id                           Int      @id @default(autoincrement())
   snapshotDate                 DateTime @unique @db.Date
   snapshotAt                   DateTime @default(now())
@@ -651,4 +661,69 @@ model BusinessPositionSnapshot {
   missingExpectedPriceUnits    Int?
 
   @@index([snapshotDate])
+}
+
+// Immutable business-event history; current quantities live on OrderLine/InventoryBatch.
+model OrderAmendment {
+  id Int @id @default(autoincrement())
+  orderId Int
+  reason String @db.VarChar(200)
+  notes String? @db.VarChar(2000)
+  settlementType String @db.VarChar(20)
+  settlementAmount Decimal @db.Decimal(14, 2)
+  oldOrderTotal Decimal @db.Decimal(14, 2)
+  newOrderTotal Decimal @db.Decimal(14, 2)
+  oldAdditionalCosts Json
+  newAdditionalCosts Json
+  createdAt DateTime @default(now())
+  order Order @relation(fields: [orderId], references: [id])
+  changes OrderAmendmentChange[]
+  supplierCredit SupplierCredit?
+  fundEntry FundEntry?
+  @@index([orderId, createdAt])
+}
+
+model OrderAmendmentChange {
+  id Int @id @default(autoincrement())
+  amendmentId Int
+  orderLineId Int
+  oldQuantity Int
+  newQuantity Int
+  oldSellableQuantity Int
+  newSellableQuantity Int
+  oldProductCost Decimal @db.Decimal(14, 2)
+  newProductCost Decimal @db.Decimal(14, 2)
+  oldCost Decimal @db.Decimal(14, 2)
+  newCost Decimal @db.Decimal(14, 2)
+  amendment OrderAmendment @relation(fields: [amendmentId], references: [id])
+  orderLine OrderLine @relation(fields: [orderLineId], references: [id])
+  @@index([amendmentId])
+}
+
+model SupplierCredit {
+  id Int @id @default(autoincrement())
+  supplierName String @db.VarChar(160)
+  sourceOrderId Int
+  amendmentId Int @unique
+  originalAmount Decimal @db.Decimal(14, 2)
+  remainingAmount Decimal @db.Decimal(14, 2)
+  reason String @db.VarChar(200)
+  notes String? @db.VarChar(2000)
+  createdAt DateTime @default(now())
+  sourceOrder Order @relation(fields: [sourceOrderId], references: [id])
+  amendment OrderAmendment @relation(fields: [amendmentId], references: [id])
+  applications SupplierCreditApplication[]
+  @@index([supplierName])
+}
+
+model SupplierCreditApplication {
+  id Int @id @default(autoincrement())
+  supplierCreditId Int
+  orderId Int
+  amountApplied Decimal @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  supplierCredit SupplierCredit @relation(fields: [supplierCreditId], references: [id])
+  order Order @relation(fields: [orderId], references: [id])
+  @@unique([supplierCreditId, orderId])
+  @@index([orderId])
 }

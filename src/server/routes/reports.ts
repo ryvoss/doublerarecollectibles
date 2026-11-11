@@ -33,6 +33,7 @@ router.get("/business-position-snapshots", async (req, res) => {
     res.json([...grouped.entries()].map(([period, snapshot]) => ({
       period, snapshotDate: snapshot.snapshotDate, snapshotAt: snapshot.snapshotAt,
       totalBusinessFunds: Number(snapshot.totalBusinessFunds), sealedFunds: Number(snapshot.sealedFunds), singlesFunds: Number(snapshot.singlesFunds),
+      supplierCreditBalance: Number(snapshot.supplierCreditBalance),
       sealedInventoryCost: Number(snapshot.sealedInventoryCost),
       sealedInventoryOnHandCost: Number(snapshot.sealedInventoryOnHandCost),
       sealedInventoryInboundCost: Number(snapshot.sealedInventoryInboundCost),

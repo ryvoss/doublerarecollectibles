@@ -1956,3 +1956,12 @@ tbody > tr + tr { border-top: 1px solid var(--border); }
   .public-listing-filters { margin-right: -12px; border-right: 0; border-radius: 8px 0 0 8px; }
   .public-listing-footer > div:last-child { grid-template-columns: minmax(0, 1fr); }
 }
+
+.purchasing-panel { padding: 1rem; margin-block: 1rem; }
+.purchasing-panel summary { cursor: pointer; font-weight: 600; }
+.purchasing-panel label { display: block; margin-block: .65rem; }
+.purchasing-panel input { margin-inline: .6rem; max-width: 20rem; }
+.purchasing-panel small { display: block; color: var(--text-muted); }
+.orders-review-body fieldset { border: 0; padding: 0; min-width: 0; }
+.orders-review-body fieldset > label { display: grid; gap: .4rem; margin-block: 1rem; }
+.orders-review-body fieldset input[type="number"] { max-width: 7rem; }

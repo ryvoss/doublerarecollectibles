@@ -18,11 +18,13 @@
     "build": "prisma generate --config prisma7.config.ts && tsc -b && vite build && npm run build:server",
     "build:server": "esbuild src/server/server.ts scripts/bootstrap-admin.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outdir=dist-server --entry-names=[name]",
     "start": "node dist-server/server.js",
-    "db:migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
+    "db:migrate:deploy": "node scripts/verify-database-identity.mjs && prisma migrate deploy --config prisma7.config.ts",
     "auth:bootstrap-admin": "node --import tsx scripts/bootstrap-admin.ts",
     "auth:bootstrap-admin:if-configured": "node dist-server/bootstrap-admin.js --if-configured",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:purchasing": "node --env-file=.env.test --import tsx --test --test-isolation=none src/server/services/purchasing.integration.test.ts",
+    "db:verify": "node scripts/verify-database-identity.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",

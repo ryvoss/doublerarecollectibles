@@ -380,6 +380,18 @@ test("Storefront content routes inherit ADMIN, CSRF, Origin, and no-store bounda
   assert.equal(contentMutationCount, beforeWrites + 3);
 });
 
+test("purchasing amendments and credit funding inherit ADMIN, CSRF, Origin and no-store", async () => {
+  const paths = ["/api/orders/1/amendment-preview", "/api/orders/1/amendments", "/api/orders/1/finalize", "/api/orders/1/supplier"];
+  for (const path of paths) await request(app).post(path).send({}).expect(401);
+  await request(app).get("/api/orders/supplier-credits").expect(401);
+  const agent = request.agent(app); await login(agent); const token = await csrf(agent);
+  for (const path of paths) {
+    const response = await agent.post(path).set("Origin", testOrigin).send({}).expect(403);
+    assert.match(response.headers["cache-control"], /no-store/);
+    await agent.post(path).set("Origin", "https://attacker.invalid").set("X-CSRF-Token", token).send({}).expect(403);
+  }
+});
+
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {
   let limitedResponse: request.Response | null = null;
   for (let attempt = 0; attempt < 12; attempt += 1) {

@@ -1,3 +1,5 @@
+import { SupplierCreditsPanel, OrderSupplier, CreditFunding, AmendOrderModal, OrderAmendmentHistory } from "../components/OrderPurchasing";
+import type { CreditApplication, Amendment } from "../components/OrderPurchasing";
 import { adminFetch } from "../adminFetch";
 import { inputStyle, secondaryButtonStyle } from "../components/uiStyles";
 import ProductModal from "../components/ProductModal";
@@ -45,7 +47,7 @@ type OrderStatus =
   | "DRAFT"
   | "FINALIZED";
 
-type OrderReceivingStatus = "DRAFT" | "ORDERED" | "ON_THE_WAY" | "PARTIALLY_DELIVERED" | "DELIVERED";
+type OrderReceivingStatus = "CANCELED" | "DRAFT" | "ORDERED" | "ON_THE_WAY" | "PARTIALLY_DELIVERED" | "DELIVERED";
 
 type OrderInventoryBatch = {
   id: number;
@@ -116,6 +118,10 @@ type OrderLine = {
 };
 
 type Order = {
+  supplierName: string | null;
+  amendments: Amendment[];
+  fundEntry: { amount: string } | null;
+  creditApplications: Array<{ amountApplied: string }>;
   id: number;
   orderNumber: string;
   orderDate: string;
@@ -502,6 +508,7 @@ export default function OrdersPage({
         </button>
       </div>
 
+      <SupplierCreditsPanel />
       <div className="orders-metrics">
         <OrderMetric
           label="Total Orders"
@@ -719,7 +726,7 @@ export default function OrdersPage({
                         </TableCell>
 
                         <TableCell>
-                          <div className="orders-status-stack"><OrderStatusBadge
+                          <div className="orders-status-stack">{order.amendments?.length > 0 && <span className="orders-corrected-badge">Canceled Items</span>}<OrderStatusBadge
                             status={order.status}
                             receivingStatus={order.receivingStatus}
                           />{order.corrections?.length > 0 && <span className="orders-corrected-badge">Corrected{order.corrections.length > 1 ? ` ×${order.corrections.length}` : ""}</span>}</div>
@@ -1056,6 +1063,8 @@ function OrderDetailModal({
   const [showFinalizeReview, setShowFinalizeReview] = useState(false);
   const [showReceiveItems, setShowReceiveItems] = useState(false);
   const [showCorrection, setShowCorrection] = useState(false);
+  const [showAmendment, setShowAmendment] = useState(false);
+  const [creditApplications, setCreditApplications] = useState<CreditApplication[]>([]);
   const [showCorrectionHistory, setShowCorrectionHistory] = useState(false);
 
   const [working, setWorking] =
@@ -1079,7 +1088,7 @@ function OrderDetailModal({
   const isDraft =
     order.status === "DRAFT";
 
-  const simpleCorrectionBlocked = order.lines.some(line =>
+  const simpleCorrectionBlocked = !!order.amendments?.length || !!order.creditApplications?.length || order.lines.some(line =>
     line.inventoryBatches.some(batch => batch.quantitySold > 0 || batch.quantityConverted > 0),
   );
 
@@ -1131,6 +1140,8 @@ function OrderDetailModal({
         `/api/orders/${order.id}/finalize`,
         {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ creditApplications, expectedUpdatedAt: order.updatedAt }),
         }
       );
 
@@ -1204,10 +1215,15 @@ function OrderDetailModal({
       wide
     >
       {isDraft && <button type="button" style={smallButtonStyle} disabled={working} onClick={() => setEditingOrder(true)}>Edit Order Information & Costs</button>}
+      <OrderSupplier order={order} onChanged={() => onChanged(order.id)} />
+      <OrderAmendmentHistory order={order} />
+      {!isDraft && <p>Original funding ? Supplier Credit: {money(order.creditApplications?.reduce((sum, item) => sum + Number(item.amountApplied), 0) ?? 0)} ? Cash: {money(-Number(order.fundEntry?.amount ?? 0))}</p>}
+      {showAmendment && <AmendOrderModal order={order} onClose={() => setShowAmendment(false)} onSaved={() => onChanged(order.id)} />}
       {!isDraft && <div className="orders-finalized-actions">
+        <button type="button" className="secondary-button" disabled={working} onClick={() => setShowAmendment(true)}>Amend Order</button>
         <button type="button" className="secondary-button" disabled={working || simpleCorrectionBlocked} title={simpleCorrectionBlocked ? "Inventory from this order has already been consumed." : undefined} onClick={() => setShowCorrection(true)}>Correct Order</button>
         {order.corrections?.length > 0 && <button type="button" className="orders-corrected-badge is-button" onClick={() => setShowCorrectionHistory(true)}>Corrected{order.corrections.length > 1 ? ` ×${order.corrections.length}` : ""}</button>}
-        {simpleCorrectionBlocked && <span className="orders-correction-blocked">Simple correction unavailable because inventory from this order has already been consumed.</span>}
+        {simpleCorrectionBlocked && <span className="orders-correction-blocked">Simple correction unavailable after consumption, amendment, or supplier-credit funding.</span>}
       </div>}
       <div className="orders-summary-grid">
         <SummaryBox
@@ -1675,6 +1691,7 @@ function OrderDetailModal({
           working={working}
           error={error}
           onBack={() => setShowFinalizeReview(false)}
+          funding={<CreditFunding supplier={order.supplierName} total={total} applications={creditApplications} onChange={setCreditApplications} disabled={working} />}
           onFinalize={() => void finalizeOrder()}
         />
       )}
@@ -1914,6 +1931,7 @@ function OrderFinalizationReview({
   error,
   onBack,
   onFinalize,
+  funding,
 }: {
   order: Order;
   products: Product[];
@@ -1921,6 +1939,7 @@ function OrderFinalizationReview({
   error: string | null;
   onBack: () => void;
   onFinalize: () => void;
+  funding: ReactNode;
 }) {
   const [method, setMethod] = useState<LandedCostMethod>("VALUE");
   const analyses = {
@@ -1967,6 +1986,7 @@ function OrderFinalizationReview({
         <button type="button" onClick={onBack} disabled={working} style={closeButtonStyle}>×</button>
       </header>
       <div className="orders-review-body">
+        {funding}
         <section className="orders-landed-analysis orders-review-analysis">
           <div className="orders-landed-header">
             <div><h3>Landed Cost Allocation</h3><p>{method === "VALUE" ? "Official finalization method. These values will be recalculated by the server." : "Analytical view only. Finalization still uses Value Allocation."}</p></div>
@@ -2406,6 +2426,7 @@ function OrderStatusBadge({
 }
 
 function receivingStatusLabel(status: OrderReceivingStatus) {
+  if (status === "CANCELED") return "Canceled";
   if (status === "ON_THE_WAY") return "On the Way";
   if (status === "PARTIALLY_DELIVERED") return "Partially Delivered";
   if (status === "DELIVERED") return "Delivered";

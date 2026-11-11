@@ -64,9 +64,10 @@ export function calculateSealedInventoryPosition(products: BusinessPositionProdu
 }
 
 export async function calculateBusinessPosition() {
-  const [fundGroups, products, visits] = await Promise.all([
-    prisma.fundEntry.groupBy({ by: ["source"], _sum: { amount: true } }),
-    prisma.product.findMany({
+  return prisma.$transaction(async tx => {
+  const [fundGroups, products, visits, credits] = await Promise.all([
+    tx.fundEntry.groupBy({ by: ["source"], _sum: { amount: true } }),
+    tx.product.findMany({
       where: { active: true, sellable: true },
       select: {
         expectedSalePrice: true,
@@ -75,10 +76,11 @@ export async function calculateBusinessPosition() {
         defaultPackPrice: true,
       },
     }),
-    prisma.showVisit.findMany({
+    tx.showVisit.findMany({
       where: { OR: [{ status: "ACTIVE" }, { status: "FINALIZED", endingSinglesValue: { not: null } }] },
       select: { status: true, startedAt: true, finalizedAt: true, visitDate: true, startingSinglesValue: true, endingSinglesValue: true },
     }),
+    tx.supplierCredit.aggregate({ _sum: { remainingAmount: true } }),
   ]);
   const sealedFunds = Number(fundGroups.find(group => group.source === "SEALED")?._sum.amount ?? 0);
   const singlesFunds = Number(fundGroups.find(group => group.source === "SINGLES")?._sum.amount ?? 0);
@@ -89,9 +91,11 @@ export async function calculateBusinessPosition() {
     recordedAt: visit.status === "ACTIVE" ? visit.startedAt ?? visit.visitDate : visit.finalizedAt ?? visit.visitDate,
     source: visit.status === "ACTIVE" ? "ACTIVE_SHOW_START" as const : "FINALIZED_SHOW_END" as const,
   })).filter(item => Number.isFinite(item.value)).sort((a, b) => b.recordedAt.getTime() - a.recordedAt.getTime())[0] ?? null;
+  const supplierCreditBalance = Number(credits._sum.remainingAmount ?? 0);
   const totalBusinessFunds = sealedFunds + singlesFunds;
-  const totalBusinessValue = valuation ? totalBusinessFunds + sealedInventoryCost + valuation.value : null;
+  const totalBusinessValue = valuation ? totalBusinessFunds + sealedInventoryCost + supplierCreditBalance + valuation.value : null;
   return {
+    supplierCreditBalance,
     sealedFunds: Number(money(sealedFunds)), singlesFunds: Number(money(singlesFunds)), totalBusinessFunds: Number(money(totalBusinessFunds)),
     sealedInventoryCost: Number(money(sealedInventoryCost)),
     sealedInventoryOnHandCost: Number(money(sealedInventoryOnHandCost)),
@@ -104,6 +108,7 @@ export async function calculateBusinessPosition() {
     singlesValuationRecordedAt: valuation?.recordedAt ?? null, singlesValuationSource: valuation?.source ?? null,
     totalBusinessValue: totalBusinessValue === null ? null : Number(money(totalBusinessValue)),
   };
+  }, { isolationLevel: "RepeatableRead" });
 }
 
 export async function captureBusinessPositionSnapshot(now = new Date()) {
@@ -111,6 +116,7 @@ export async function captureBusinessPositionSnapshot(now = new Date()) {
   const snapshotDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const data = {
     snapshotAt: now,
+    supplierCreditBalance: money(position.supplierCreditBalance),
     totalBusinessFunds: money(position.totalBusinessFunds), sealedFunds: money(position.sealedFunds), singlesFunds: money(position.singlesFunds),
     sealedInventoryCost: money(position.sealedInventoryCost),
     sealedInventoryOnHandCost: money(position.sealedInventoryOnHandCost),
