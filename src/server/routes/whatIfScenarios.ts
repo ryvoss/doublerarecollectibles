@@ -1,9 +1,11 @@
+import { createOrderWhatIfRouter } from "./orderWhatIfScenarios";
 import { logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import { splitRemainingBatchCost } from "../services/inventoryCost";
 
 const router = Router();
+router.use("/orders", createOrderWhatIfRouter(prisma));
 
 type ScenarioLineInput = {
   productId: number;

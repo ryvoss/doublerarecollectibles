@@ -727,3 +727,30 @@ model SupplierCreditApplication {
   @@unique([supplierCreditId, orderId])
   @@index([orderId])
 }
+
+// Purchase planning only: no relations to products, orders, inventory or ledgers.
+model OrderWhatIfScenario {
+  id Int @id @default(autoincrement())
+  name String @db.VarChar(100)
+  supplier String? @db.VarChar(160)
+  notes String? @db.VarChar(2000)
+  shippingCost Decimal @default(0) @db.Decimal(10, 2)
+  tariffCost Decimal @default(0) @db.Decimal(10, 2)
+  targetMargin Decimal @db.Decimal(5, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lines OrderWhatIfLine[]
+  @@index([updatedAt])
+}
+
+model OrderWhatIfLine {
+  id Int @id @default(autoincrement())
+  scenarioId Int
+  description String @db.VarChar(200)
+  quantity Int
+  totalProductCost Decimal @db.Decimal(10, 2)
+  sellingPriceOverride Decimal? @db.Decimal(10, 2)
+  sortOrder Int
+  scenario OrderWhatIfScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  @@unique([scenarioId, sortOrder])
+}

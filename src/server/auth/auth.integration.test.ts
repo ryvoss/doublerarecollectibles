@@ -1,3 +1,5 @@
+import { createOrderWhatIfRouter } from "../routes/orderWhatIfScenarios";
+import { orderWhatIfTestDatabase } from "../routes/orderWhatIfTestDatabase";
 import { createStorefrontContentRouter } from "../routes/storefrontContent";
 import { createShowSaleCorrectionsRouter } from "../routes/showSaleCorrections";
 import { SaleCorrectionError } from "../services/showSaleCorrections";
@@ -109,6 +111,10 @@ productsRouter.post("/", (_req, res) => {
   res.status(201).json({ id: productMutationCount });
 });
 
+const orderPlanningStore = orderWhatIfTestDatabase();
+const whatIfRouter = readableRouter();
+whatIfRouter.use("/orders", createOrderWhatIfRouter(orderPlanningStore.database));
+
 mountApiRoutes(app, {
   auth: createAuthRouter({
     adminPassport: testPassport,
@@ -127,7 +133,7 @@ mountApiRoutes(app, {
   sales: salesRouter,
   shows: readableRouter(),
   site: siteContentRouter,
-  whatIfScenarios: readableRouter(),
+  whatIfScenarios: whatIfRouter,
 }, requireAdmin, {
   authenticatedApiLimiter,
   contactSubmissionLimiter,
@@ -390,6 +396,21 @@ test("purchasing amendments and credit funding inherit ADMIN, CSRF, Origin and n
     assert.match(response.headers["cache-control"], /no-store/);
     await agent.post(path).set("Origin", "https://attacker.invalid").set("X-CSRF-Token", token).send({}).expect(403);
   }
+});
+
+test("Order What-If requires ADMIN, CSRF and Origin and exposes no public endpoint", async () => {
+  const path = "/api/what-if-scenarios/orders";
+  const body = { name: "Plan", shippingCost: "80", tariffCost: "40", targetMargin: "15", lines: [{ description: "Gem 6", quantity: 20, totalProductCost: "600" }] };
+  await request(app).get(path).expect(401); await request(app).post(path).send(body).expect(401);
+  await request(app).patch(`${path}/1`).send(body).expect(401); await request(app).delete(`${path}/1`).send({}).expect(401);
+  const agent = request.agent(app); await login(agent); const token = await csrf(agent);
+  await agent.post(path).set("Origin", testOrigin).send(body).expect(403);
+  await agent.post(path).set("Origin", "https://attacker.invalid").set("X-CSRF-Token", token).send(body).expect(403);
+  const created = await agent.post(path).set("Origin", testOrigin).set("X-CSRF-Token", token).send(body).expect(201);
+  assert.match(created.headers["cache-control"], /no-store/); assert.equal(created.body.results.expectedProfit, "120.00");
+  for (const method of ["patch", "delete"] as const) await agent[method](`${path}/${created.body.id}`).set("Origin", testOrigin).send({}).expect(403);
+  await agent.get("/api/public/what-if-scenarios/orders").expect(404);
+  assert.equal(orderPlanningStore.writeCount(), 1);
 });
 
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {

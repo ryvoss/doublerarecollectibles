@@ -1,3 +1,4 @@
+import OrderWhatIfPage from "./OrderWhatIfPage";
 import { adminFetch } from "../adminFetch";
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
@@ -14,7 +15,11 @@ const pct=(n:number)=>`${(n*100).toFixed(1)}%`;
 const date=(s:string)=>new Date(s).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 async function apiError(r:Response,f:string){const b=await r.json().catch(()=>null);return b?.error??f}
 
-export default function WhatIfPage(){
+export default function WhatIfPage() {
+ const [section, setSection] = useState<"Sales" | "Orders">("Sales");
+ return <><nav className="what-if-tabs" aria-label="What-If scenario type">{(["Sales", "Orders"] as const).map(value => <button key={value} type="button" className="secondary-button" aria-pressed={section === value} onClick={() => setSection(value)}>{value}</button>)}</nav>{section === "Orders" ? <OrderWhatIfPage /> : <SalesWhatIfPage />}</>;
+}
+function SalesWhatIfPage(){
  const[scenarios,setScenarios]=useState<Scenario[]>([]),[workspace,setWorkspace]=useState<Workspace|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState<string|null>(null);
  async function load(){try{setLoading(true);setError(null);const r=await adminFetch("/api/what-if-scenarios");if(!r.ok)throw new Error(await apiError(r,"Scenarios could not be loaded."));setScenarios(await r.json())}catch(e){setError(e instanceof Error?e.message:"Scenarios could not be loaded.")}finally{setLoading(false)}}
  useEffect(()=>{const t=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(t)},[]);
