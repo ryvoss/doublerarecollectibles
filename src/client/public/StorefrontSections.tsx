@@ -29,7 +29,7 @@ export function AnnouncementCard({ item, onNavigate, preview = false }: { item: 
 export function AnnouncementRail({ items, onNavigate }: { items: PublicActivityItem[]; onNavigate: (path: string) => void }) {
   if (!items.length) return null;
   return <section className="public-updates public-container" aria-labelledby="public-updates-heading">
-    <div className="public-section-heading"><h2 id="public-updates-heading">What’s New at Double Rare</h2><PublicLink className="public-text-link" href="/news" onNavigate={onNavigate}>News & updates &rarr;</PublicLink></div>
+    <div className="public-section-heading"><h2 id="public-updates-heading">What’s New</h2><PublicLink className="public-text-link" href="/news" onNavigate={onNavigate}>News & updates &rarr;</PublicLink></div>
     <HorizontalRail label="Announcements and updates"><>{items.map((item, index) => <AnnouncementCard key={`${item.href}-${index}`} item={item} onNavigate={onNavigate} />)}</></HorizontalRail>
   </section>;
 }

@@ -3,13 +3,6 @@ import { PublicProductStatus } from "./PublicProductStatus";
 import { PriceDisplay } from "./PriceDisplay";
 import ProductImage from "../components/ProductImage";
 
-function ArrowIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20">
-      <path d="M4 10h11M11 5l5 5-5 5" />
-    </svg>
-  );
-}
 
 export function PublicInventoryCard({
   headingLevel = "h2",
@@ -45,16 +38,16 @@ export function PublicInventoryCard({
       <div className="public-catalog-card__body">
         <Heading>{product.name}</Heading>
         <PriceDisplay className="public-catalog-card__prices" price={product.displayPrice} compareAtPrice={product.compareAtPrice} recentPriceDrop={product.recentPriceDrop} />
-        <div className="public-catalog-card__meta"><PublicProductStatus product={product} className="public-catalog-card__status" /></div>
-        {comingSoon && <span className="public-arrival-note">Arriving soon</span>}
-        {!comingSoon && product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
+        <div className="public-catalog-card__meta">
+          <PublicProductStatus product={product} className="public-catalog-card__status" />
+          {!comingSoon && product.moreArrivingSoon && <span className="public-arrival-note">More arriving soon</span>}
+        </div>
         <button
           className="public-catalog-card__action"
           type="button"
           onClick={(event) => onInterested(event.currentTarget)}
         >
-          {comingSoon ? "Ask About Arrival" : "I’m Interested"}
-          <ArrowIcon />
+          {comingSoon ? "Ask about arrival" : "Ask about item"}
         </button>
       </div>
     </article>

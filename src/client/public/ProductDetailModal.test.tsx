@@ -86,7 +86,7 @@ test("product detail content shows only customer-facing product fields", () => {
   assert.match(markup, /example\.png/);
   assert.match(markup, /product-image-frame--modal/);
   assert.match(markup, /alt="CN Pris Box"/);
-  assert.match(markup, /I’m interested/);
+  assert.match(markup, /Ask about this item/);
   assert.doesNotMatch(markup, /cost|cogs|margin|quantity|batch/i);
 });
 
@@ -126,7 +126,8 @@ test("Coming Soon stays primary and uses an arrival inquiry CTA", () => {
   }));
   assert.match(markup, /Coming Soon/);
   assert.doesNotMatch(markup, /Recent Price Drop/);
-  assert.match(markup, /Arriving soon/);
+  assert.equal((markup.match(/Coming Soon/g) ?? []).length, 1);
+  assert.doesNotMatch(markup, /Arriving soon/);
   assert.match(markup, /Ask about arrival/);
 });
 
@@ -169,7 +170,7 @@ test("logo and product modal styles retain content at phone and desktop sizes", 
   assert.match(siteCss, /\.public-brand__mark img[\s\S]*max-width: 100%/);
   assert.match(siteCss, /\.public-brand__mark img[\s\S]*max-height: 100%/);
   assert.match(siteCss, /\.public-brand__mark img[\s\S]*object-fit: contain/);
-  assert.match(siteCss, /@media \(max-width: 430px\)/);
+  // Actual phone-width overflow is checked by scripts/review-storefront.mjs.
   assert.doesNotMatch(siteCss, /\.public-brand__copy\s*\{\s*display: none/);
   assert.match(detailCss, /height: calc\(100dvh - 8px\)/);
   assert.match(detailCss, /overflow-x: hidden/);

@@ -187,12 +187,11 @@ export function ProductDetailContent({
       <ProductGallery images={galleryImages} productName={product.name} />
 
       <section className="public-product-detail__information">
+        <h2 id="public-product-detail-title">{product.name}</h2>
         <div className="public-product-detail__meta">
           <PublicProductStatus product={product} className="public-product-detail__status" />
           <PriceDisplay className="public-product-detail__prices" price={product.displayPrice} compareAtPrice={product.compareAtPrice} recentPriceDrop={product.recentPriceDrop} />
         </div>
-        <h2 id="public-product-detail-title">{product.name}</h2>
-        {product.availability === "COMING_SOON" && <p className="public-arrival-note">Arriving soon</p>}
         {product.availability !== "COMING_SOON" && product.moreArrivingSoon && <p className="public-arrival-note">More inventory is arriving soon.</p>}
         {product.shortDescription ? (
           <p>{product.shortDescription}</p>
@@ -206,7 +205,7 @@ export function ProductDetailContent({
           type="button"
           onClick={(event) => onInterested(event.currentTarget)}
         >
-          {product.availability === "COMING_SOON" ? "Ask about arrival" : "I’m interested"}
+          {product.availability === "COMING_SOON" ? "Ask about arrival" : "Ask about this item"}
         </button>
       </section>
     </div>
@@ -291,7 +290,6 @@ export function ProductDetailModal({
         <header className="public-product-detail__header">
           <div>
             <p className="public-kicker">Product details</p>
-            <span>View product information and get in touch.</span>
           </div>
           <button
             ref={closeButtonRef}

@@ -125,7 +125,7 @@ export default function PublicInventoryPage({
           <div className="public-catalog-summary" aria-live="polite">
             <p>
               <strong>{filteredProducts.length}</strong>{" "}
-              {filteredProducts.length === 1 ? "product" : "products"}{route.view ? " ? Recent price drops" : ""}
+              {filteredProducts.length === 1 ? "product" : "products"}{route.view ? " - Recent price drops" : ""}
             </p>
             {hasFilters && (
               <button type="button" onClick={clearFilters}>

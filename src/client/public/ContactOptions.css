@@ -4,12 +4,12 @@
   align-items: center;
   justify-content: center;
   padding: 0 13px;
-  border: 1px solid rgba(225, 189, 97, 0.35);
-  border-radius: 10px;
-  background: rgba(225, 189, 97, 0.08);
+  border: 1px solid var(--public-border);
+  border-radius: var(--public-radius-control);
+  background: var(--public-border);
   color: var(--public-gold-light);
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
   transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
@@ -17,7 +17,7 @@
 .public-contact-trigger:hover,
 .public-contact-trigger:active {
   border-color: rgba(241, 210, 127, 0.7);
-  background: rgba(225, 189, 97, 0.14);
+  background: var(--public-border);
   color: #fff0c6;
 }
 
@@ -54,7 +54,6 @@
   background: rgba(3, 4, 6, 0.84);
   color: var(--public-text);
   font-family: "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  backdrop-filter: blur(8px);
   animation: public-contact-modal-fade 160ms ease both;
 }
 
@@ -65,11 +64,9 @@
   padding: 18px;
   overflow-x: hidden;
   overflow-y: auto;
-  border: 1px solid rgba(225, 189, 97, 0.26);
-  border-radius: 22px 22px 14px 14px;
+  border: 1px solid var(--public-border);
+  border-radius: var(--public-radius-media);
   background: var(--public-surface);
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.58);
-  animation: public-contact-modal-rise 190ms ease both;
 }
 
 .public-contact-modal * {
@@ -118,8 +115,8 @@
   flex: 0 0 auto;
   place-items: center;
   border: 1px solid var(--public-border);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.035);
+  border-radius: var(--public-radius-control);
+  background: transparent;
   color: var(--public-muted);
   cursor: pointer;
   font-size: 26px;
@@ -129,18 +126,15 @@
   display: grid;
   gap: 4px;
   margin-bottom: 16px;
-  padding: 14px 16px;
-  border: 1px solid rgba(225, 189, 97, 0.24);
-  border-radius: 13px;
-  background: rgba(225, 189, 97, 0.055);
+  padding: 12px 0;
+  border-block: 1px solid var(--public-border);
 }
 
 .public-contact-product-context span {
   color: var(--public-gold-light);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 780;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+
 }
 
 .public-contact-product-context strong {
@@ -152,7 +146,7 @@
 
 .public-contact-product-context small {
   color: var(--public-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .public-contact-layout--modal {
@@ -160,7 +154,7 @@
 }
 
 .public-contact-layout--modal .public-contact-form {
-  padding: 18px;
+  padding: 0;
 }
 
 .public-contact-layout--modal .public-contact-options {
@@ -171,12 +165,6 @@
   from { opacity: 0; }
 }
 
-@keyframes public-contact-modal-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-}
 
 @media (min-width: 620px) {
   .public-contact-modal-backdrop {
@@ -187,11 +175,11 @@
   .public-contact-modal {
     max-height: calc(100dvh - 48px);
     padding: 26px;
-    border-radius: 22px;
+    border-radius: var(--public-radius-control);
   }
 
   .public-contact-layout--modal .public-contact-form {
-    padding: 24px;
+    padding: 0;
   }
 }
 

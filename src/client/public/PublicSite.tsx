@@ -14,7 +14,6 @@ import {
 import {
   ContactExperience,
   ContactOptionsModal,
-  HeaderContactAction,
   contactProductContext,
   type ContactOpenHandler,
   type ContactProductContext,
@@ -307,8 +306,6 @@ function PublicSiteContent({ pathname, search = "", onNavigate }: PublicSiteProp
           </nav>
 
           <div className="public-header__actions">
-            <HeaderContactAction onOpen={openContact} />
-
             <button
               ref={menuButtonRef}
               className="public-menu-button"
@@ -341,7 +338,6 @@ function PublicSiteContent({ pathname, search = "", onNavigate }: PublicSiteProp
                 onNavigate={onNavigate}
               >
                 <span>{item.label}</span>
-                <ArrowIcon />
               </PublicLink>
             ))}
           </nav>
@@ -428,12 +424,12 @@ function HomePage({
 }) {
   const sections: Record<PublicSiteSettings["homepageSections"][number]["key"], ReactNode> = {
     UPDATES: <AnnouncementRail key="updates" items={editorial.activity ?? editorial.announcements} onNavigate={onNavigate} />,
-    HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h2>{settings.heroTitle}</h2><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div><p className="public-hero__note">Explore at your pace. Contact us to confirm availability before making plans.</p></div><div className="public-hero__visual" aria-hidden="true">{heroImageUrl ? <img src={heroImageUrl} alt="" /> : <span>DR</span>}</div></div><div className="public-container public-hero__promise" aria-label={`${settings.businessName} service highlights`}><span>Sealed inventory</span><span>Local card shows</span><span>Buy, sell, and trade</span></div></section>,
+    HERO: <section className="public-hero" key="hero"><div className="public-container public-hero__layout"><div className="public-hero__content"><p className="public-kicker">{settings.tagline}</p><h2>{settings.heroTitle}</h2><p className="public-hero__lead">{settings.heroSubtitle}</p><div className="public-hero__actions"><PublicLink className="public-button public-button--primary public-hero__cta" href={CTA_TARGET_PATHS[settings.primaryCtaTarget]} onNavigate={onNavigate}>{settings.primaryCtaLabel}<ArrowIcon /></PublicLink>{settings.secondaryCtaEnabled && <PublicLink className="public-button public-button--secondary public-hero__cta" href={CTA_TARGET_PATHS[settings.secondaryCtaTarget]} onNavigate={onNavigate}>{settings.secondaryCtaLabel}</PublicLink>}</div></div>{heroImageUrl && <div className="public-hero__visual" aria-hidden="true"><img src={heroImageUrl} alt="" /></div>}</div></section>,
     MERCHANDISING: <FeaturedInventorySection categories={editorial.categories} key="merchandising" excludeComingSoon={settings.homepageSections.some((section) => section.key === "COMING_SOON" && section.visible)} onContact={onContact} onNavigate={onNavigate} onProductOpen={onProductOpen} settings={settings} />,
     COMING_SOON: <ComingSoonSection key="coming-soon" onContact={onContact} onProductOpen={onProductOpen} settings={settings} />,
     NEXT_SHOW: nextShow ? <NextShowSection key="next-show" nextShow={nextShow} onNavigate={onNavigate} settings={settings} /> : null,
-    BUY_SELL_TRADE: <section className="public-section public-section--muted" key="bst"><div className="public-container"><SectionHeading eyebrow="Collector to collector" title={settings.buySellTradeTitle}><PublicLink className="public-text-link" href="/buy-sell-trade" onNavigate={onNavigate}>{settings.buySellTradeCtaLabel} &rarr;</PublicLink></SectionHeading><p className="public-inner-page__lead">{settings.buySellTradeText}</p><BuySellTradeOptions onNavigate={onNavigate} onContact={onContact} /></div></section>,
-    CONTACT: <section className="public-contact-band" key="contact"><div className="public-container"><div><p className="public-kicker">Questions welcome</p><h2>{settings.contactPageTitle}</h2><p className="public-contact-band__copy">{settings.contactText}</p></div><div className="public-contact-band__actions"><button className="public-button public-button--primary" type="button" onClick={(event) => onContact(event.currentTarget)}>Contact us<ArrowIcon /></button><PublicLink className="public-button public-button--secondary" href="/contact" onNavigate={onNavigate}>Contact options</PublicLink></div></div></section>,
+    BUY_SELL_TRADE: <section className="public-section public-section--muted" key="bst"><div className="public-container"><SectionHeading eyebrow="Collector to collector" title={settings.buySellTradeTitle}><PublicLink className="public-text-link" href="/buy-sell-trade" onNavigate={onNavigate}>{settings.buySellTradeCtaLabel} &rarr;</PublicLink></SectionHeading><p className="public-inner-page__lead">{settings.buySellTradeText}</p><button className="public-text-link" type="button" onClick={(event) => onContact(event.currentTarget)}>Contact us &rarr;</button></div></section>,
+    CONTACT: <section className="public-contact-band" key="contact"><div className="public-container"><div><p className="public-kicker">Questions welcome</p><h2>{settings.contactPageTitle}</h2><p className="public-contact-band__copy">{settings.contactText}</p></div><div className="public-contact-band__actions"><PublicLink className="public-text-link" href="/contact" onNavigate={onNavigate}>Contact options</PublicLink></div></div></section>,
   };
   return <>{<h1 className="public-visually-hidden">{settings.businessName}</h1>}{editorialError && <p className="public-container public-service-notice" role="status">Updates and categories are temporarily unavailable. <PublicLink href="/inventory" onNavigate={onNavigate}>Browse all inventory</PublicLink></p>}{visibleHomepageSectionKeys(settings.homepageSections).map((key) => sections[key])}</>;
 }
@@ -501,23 +497,6 @@ function BuySellTradePage({
 
         <BuySellTradeOptions onNavigate={onNavigate} onContact={onContact} />
 
-        <div className="public-page-actions">
-          <PublicLink
-            className="public-button public-button--primary"
-            href="/contact"
-            onNavigate={onNavigate}
-          >
-            Start a conversation
-            <ArrowIcon />
-          </PublicLink>
-          <PublicLink
-            className="public-button public-button--secondary"
-            href="/inventory"
-            onNavigate={onNavigate}
-          >
-            Browse inventory
-          </PublicLink>
-        </div>
       </div>
     </section>
   );

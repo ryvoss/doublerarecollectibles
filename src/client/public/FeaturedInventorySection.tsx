@@ -42,9 +42,7 @@ export default function FeaturedInventorySection({
       <div className="public-container">
         <div className="public-section-heading">
           <div>
-            <p className="public-kicker">Selected for collectors</p>
             <h2>{settings.featuredSectionTitle}</h2>
-            <p>A closer look at what’s on our table. Browse, compare, and ask us anything.</p>
           </div>
           <PublicLink
             className="public-text-link public-featured-inventory__all"

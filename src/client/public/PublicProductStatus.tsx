@@ -2,7 +2,7 @@ import { primaryMerchandisingBadge, type PublicInventoryItem } from "../../share
 
 const availabilityLabels = {
   IN_STOCK: "In Stock",
-  COMING_SOON: "Coming Soon!",
+  COMING_SOON: "Coming Soon",
   LOW_STOCK: "Low Stock",
   SOLD_OUT: "Sold Out",
 } as const;

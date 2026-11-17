@@ -30,7 +30,7 @@ test("What's New renders both sources and hides when neither source has public c
   const now = new Date("2026-10-19T12:00:00Z");
   const render = (source: StorefrontContent) => renderToStaticMarkup(<AnnouncementRail items={publicEditorial(source, [], now).activity} onNavigate={() => undefined} />);
   const markup = render(content);
-  assert.match(markup, /What’s New at Double Rare/);
+  assert.match(markup, /What’s New/);
   assert.match(markup, /Gem 4 price reduced/);
   assert.match(markup, /Crystal Gathering inventory update/);
   assert.match(markup, /href="\/news\/crystal-gathering"/);
