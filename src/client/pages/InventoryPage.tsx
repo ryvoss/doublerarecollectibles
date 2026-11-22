@@ -1,3 +1,6 @@
+import { DEFAULT_INVENTORY_FILTER, DEFAULT_INVENTORY_SORT, MAX_REORDER_POINT, needsReorder, selectInventory, stockStatus, validReorderPoint } from "../../shared/inventoryOperations";
+import type { InventoryFilter, InventorySort } from "../../shared/inventoryOperations";
+import "./InventoryPage.css";
 import { adminFetch } from "../adminFetch";
 import { controlStyle } from "../components/uiStyles";
 import { Fragment, useEffect, useState } from "react";
@@ -5,6 +8,8 @@ import type { ReactNode } from "react";
 import PublicListingManager from "../components/PublicListingManager";
 
 type InventoryItem = {
+  reorderPoint: number;
+  unitCost: number | null;
   productId: number;
   itemId: string;
   productName: string;
@@ -96,14 +101,15 @@ export default function InventoryPage() {
   const [error, setError] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState("name");
-  const [stockFilter, setStockFilter] = useState("all");
+  const [sort, setSort] = useState<InventorySort>(DEFAULT_INVENTORY_SORT);
+  const [stockFilter, setStockFilter] = useState<InventoryFilter>(DEFAULT_INVENTORY_FILTER);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<InventoryDetail | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [showPublicListings, setShowPublicListings] = useState(false);
   const [packInventory, setPackInventory] = useState<PackInventoryItem[]>([]);
   const [breakdown, setBreakdown] = useState<InventoryItem | null>(null);
+  const [editingReorder, setEditingReorder] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -154,17 +160,12 @@ export default function InventoryPage() {
     return () => controller.abort();
   }, [selectedId, refresh]);
 
-  const query = search.trim().toLowerCase();
-  const visibleItems = items.filter((item) =>
-    `${item.itemId} ${item.productName}`.toLowerCase().includes(query) &&
-    (stockFilter === "all" || (stockFilter === "in" ? item.unitsOnHand > 0 : item.unitsOnHand === 0))
-  ).sort((a, b) => {
-    const difference = sort === "stock" ? b.unitsOnHand - a.unitsOnHand
-      : sort === "cost" ? b.inventoryValue - a.inventoryValue
-      : sort === "profit" ? b.potentialGrossProfit - a.potentialGrossProfit
-      : a.productName.localeCompare(b.productName);
-    return difference || a.productId - b.productId;
-  });
+  const visibleItems = selectInventory(items, stockFilter, sort, search);
+  useEffect(() => {
+    const reload = () => setRefresh(value => value + 1);
+    window.addEventListener("business-data-changed", reload);
+    return () => window.removeEventListener("business-data-changed", reload);
+  }, []);
   // Sum monetary API values in cents; batch accounting remains on the backend.
   const totalValue = (items.reduce((sum, item) => sum + Math.round(item.inventoryValue * 100), 0) +
     packInventory.reduce((sum, item) => sum + Math.round(item.remainingCostBasis * 100), 0)) / 100;
@@ -189,56 +190,61 @@ export default function InventoryPage() {
         <div className="metric-grid inventory-metrics">
           <Metric detail={`${items.filter((item) => item.unitsOnHand > 0).length} products in stock`} label="Units on Hand" value={String(items.reduce((sum, item) => sum + item.unitsOnHand, 0))} />
           <Metric detail="Not yet physically received" label="Inbound Units" value={String(items.reduce((sum, item) => sum + item.unitsInbound, 0))} />
+          <Metric detail="Includes shortages not covered by inbound" label="Needs Reorder" value={String(items.filter(needsReorder).length)} />
+          <Metric detail="At or below reorder point with inbound units" label="Restock On The Way" value={String(items.filter(item => stockStatus(item) === "Restock On The Way").length)} />
+        </div>
+        <details className="inventory-financial-summary"><summary>Inventory value and retail estimates</summary><div className="metric-grid inventory-metrics">
           <Metric detail="Received sealed stock and derived packs" label="On-Hand Inventory at Cost" value={money(totalOnHandValue)} />
           <Metric detail="Owned inventory still on the way" label="Inventory In Transit at Cost" value={money(totalInboundValue)} />
           <Metric detail="On hand + in transit" label="Total Owned Inventory Cost" value={money(totalValue)} />
           <Metric detail="Estimate at current product prices" label="Expected Retail Value" value={money(totalRetail)} />
           <Metric detail={totalRetail > 0 ? `${((totalRetail - totalOnHandValue) / totalRetail * 100).toFixed(1)}% potential margin` : "Margin unavailable without retail value"} label="Potential Gross Profit" value={money(totalRetail - totalOnHandValue)} />
-        </div>
+        </div></details>
         <section className="panel">
           <div className="panel-header inventory-toolbar">
             <input aria-label="Search inventory" placeholder="Search Item ID or product" value={search} onChange={(event) => setSearch(event.target.value)} style={controlStyle} />
-            <select aria-label="Stock filter" value={stockFilter} onChange={(event) => setStockFilter(event.target.value)} style={controlStyle}>
-              <option value="all">All products</option><option value="in">In stock</option><option value="out">Out of stock</option>
+            <select aria-label="Sort inventory" value={sort} onChange={(event) => setSort(event.target.value as InventorySort)} style={controlStyle}>
+              <option value="onHandDesc">On Hand: High to Low</option><option value="onHandAsc">On Hand: Low to High</option>
+              <option value="name">Product Name: A to Z</option><option value="value">Inventory Value: High to Low</option>
+              <option value="priority">Reorder Priority</option>
             </select>
-            <select aria-label="Sort inventory" value={sort} onChange={(event) => setSort(event.target.value)} style={controlStyle}>
-              <option value="name">Product name A-Z</option><option value="stock">Most units on hand</option>
-              <option value="cost">Highest inventory cost</option><option value="profit">Highest potential profit</option>
-            </select>
+            <div className="inventory-quick-filters" role="group" aria-label="Stock filter">
+              {([["all", "All"], ["reorder", "Needs Reorder"], ["inbound", "Inbound"], ["out", "Out of Stock"]] as const).map(([value, label]) =>
+                <button type="button" key={value} aria-pressed={stockFilter === value} onClick={() => setStockFilter(value)}>{label}</button>)}
+            </div>
           </div>
-          <p className="inventory-caption">{visibleItems.length} of {items.length} products. Totals above include all listed inventory. Retail estimates use current expected prices; unset prices count as zero.</p>
-          {visibleItems.length === 0 ? <div className="empty-state"><strong>{items.length === 0 ? "No sealed inventory yet" : "No matching products"}</strong><p>{items.length === 0 ? "Finalize a purchase order to receive inventory." : "Try another search or stock filter."}</p></div> :
-            <Table headings={["Item ID", "Product", "Purchased", "Received", "Inbound", "Sold", "On Hand", "Owned Cost", "Expected Price", "Retail Value", "Potential Profit", "Margin", "Batches", "Actions"]}>
+          <p className="inventory-caption">{visibleItems.length} of {items.length} products. Unit Cost is the average remaining on-hand cost. Inventory Value includes on-hand and inbound cost. Totals above include all products. Needs Reorder includes inbound shortages at or below the reorder point.</p>
+          {visibleItems.length === 0 ? <div className="empty-state"><strong>{items.length === 0 ? "No sealed inventory yet" : "No matching products"}</strong><p>{items.length === 0 ? "Create a sellable sealed product to start tracking stock." : "Try another search or stock filter."}</p></div> :
+            <Table headings={["Product", "On Hand", "Inbound", "Stock Status", "Unit Cost", "Inventory Value", "Actions"]}>
               {visibleItems.map((item) => <Fragment key={item.productId}><tr className="expandable-row" onClick={(event) => {
-                if ((event.target as HTMLElement).closest("button, a, input, select")) return;
+                if ((event.target as HTMLElement).closest("button, a, input, select, summary, details")) return;
                 if (selectedId !== item.productId) { setDetail(null); setDetailError(null); setSelectedId(item.productId); }
                 else setSelectedId(null);
               }} style={{background: selectedId === item.productId ? "#202025" : undefined}}>
-                <Cell>{item.itemId}</Cell><Cell><strong>{item.productName}</strong></Cell>
-                <Cell>{item.unitsPurchased}</Cell><Cell>{item.unitsReceived}</Cell><Cell>{item.unitsInbound}</Cell><Cell>{item.unitsSold}</Cell><Cell><span className={item.unitsOnHand > 0 ? "inventory-stock" : "inventory-stock is-empty"}>{item.unitsOnHand > 0 ? item.unitsOnHand : "Out of stock"}</span></Cell>
-                <Cell>{money(item.inventoryValue)}</Cell><Cell>{money(item.expectedSalePrice)}</Cell><Cell>{money(item.retailValue)}</Cell>
-                <Cell><span className={item.potentialGrossProfit < 0 ? "inventory-negative" : "inventory-profit"}>{money(item.potentialGrossProfit)}</span></Cell>
-                <Cell>{item.retailValue > 0 ? `${(item.potentialGrossProfit / item.retailValue * 100).toFixed(1)}%` : "N/A"}</Cell>
-                <Cell><button type="button" className="inventory-batch-toggle"
-                  aria-label={`${selectedId === item.productId ? "Hide" : "View"} batches for ${item.productName}`}
-                  aria-expanded={selectedId === item.productId}
-                  aria-controls={`inventory-batches-${item.productId}`}
-                  onClick={() => {
-                  if (selectedId !== item.productId) {
-                    setDetail(null);
-                    setDetailError(null);
-                    setSelectedId(item.productId);
-                  } else {
-                    setSelectedId(null);
-                  }
-                }}>{selectedId === item.productId ? "Batches \u25b4" : `Batches (${item.batchCount}) \u25be`}</button></Cell>
-                <Cell>{item.unitType === "BOX" && <button type="button" className="inventory-breakdown-button" disabled={item.unitsOnHand <= 0} onClick={() => {
-                  setMessage(null);
-                  setBreakdown(item);
-                }}>Break Down</button>}</Cell>
+                <Cell label="Product"><strong>{item.productName}</strong><small className="inventory-item-id">{item.itemId}</small></Cell>
+                <Cell label="On Hand"><strong className="inventory-on-hand">{item.unitsOnHand}</strong></Cell>
+                <Cell label="Inbound">{item.unitsInbound}</Cell>
+                <Cell label="Stock Status"><span className={`inventory-operational-status${needsReorder(item) ? " needs-reorder" : ""}`}>{stockStatus(item)}</span>
+                  <small className="inventory-item-id">Reorder point: {item.reorderPoint}{item.unitsInbound > 0 && needsReorder(item) ? " - more stock needed" : ""}</small></Cell>
+                <Cell label="Unit Cost">{item.unitCost === null ? <span title="No received units on hand">&mdash;</span> : money(item.unitCost)}</Cell>
+                <Cell label="Inventory Value">{money(item.inventoryValue)}</Cell>
+                <Cell label="Actions"><details className="inventory-row-actions"><summary aria-label={`Actions for ${item.productName}`}>&hellip;</summary><div>
+                  <button type="button" aria-expanded={selectedId === item.productId} aria-controls={`inventory-batches-${item.productId}`} onClick={() => {
+                    setDetail(null); setDetailError(null); setSelectedId(selectedId === item.productId ? null : item.productId);
+                  }}>{selectedId === item.productId ? "Hide batches" : `View batches (${item.batchCount})`}</button>
+                  <button type="button" onClick={() => setEditingReorder(item.productId)}>Edit reorder point</button>
+                  {item.unitType === "BOX" && <button type="button" disabled={item.unitsOnHand <= 0} onClick={() => { setMessage(null); setBreakdown(item); }}>Break Down</button>}
+                </div></details></Cell>
               </tr>
-              {selectedId === item.productId && <tr>
-                <td colSpan={14} className="inventory-expanded">
+              {editingReorder === item.productId && <tr className="inventory-detail-row"><td colSpan={7}>
+                <ReorderPointEditor key={item.productId} item={item} onClose={() => setEditingReorder(null)} onSaved={(reorderPoint) => {
+                  setItems(current => current.map(product => product.productId === item.productId ? { ...product, reorderPoint } : product));
+                  setEditingReorder(null); setMessage(`Reorder point saved for ${item.productName}.`);
+                  window.dispatchEvent(new Event("business-data-changed"));
+                }} />
+              </td></tr>}
+              {selectedId === item.productId && <tr className="inventory-detail-row">
+                <td colSpan={7} className="inventory-expanded">
                   <section id={`inventory-batches-${item.productId}`} aria-label={`Batches for ${item.productName}`}
                     className="inventory-batch-section">
                     <h4 style={{margin: "0 0 6px", color: "#e5e5e7"}}>{item.productName} — Purchase Batches</h4>
@@ -310,8 +316,8 @@ function Table({headings, children}: {headings: string[]; children: ReactNode}) 
   </table></div>;
 }
 
-function Cell({children}: {children: ReactNode}) {
-  return <td >{children}</td>;
+function Cell({children, label}: {children: ReactNode; label?: string}) {
+  return <td data-label={label}>{children}</td>;
 }
 
 function inventoryCorrectionLabel(field: string) {
@@ -463,4 +469,31 @@ function PackBreakdownModal({item, onClose, onComplete}: {
 
 function BreakdownValue({label, value}: {label: string; value: string}) {
   return <div><dt>{label}</dt><dd>{value}</dd></div>;
+}
+
+function ReorderPointEditor({ item, onClose, onSaved }: { item: InventoryItem; onClose: () => void; onSaved: (value: number) => void }) {
+  const [value, setValue] = useState(String(item.reorderPoint));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return <form className="inventory-reorder-editor" onSubmit={async event => {
+    event.preventDefault();
+    const point = Number(value);
+    if (!value.trim() || !validReorderPoint(point)) { setError(`Enter a whole number from 0 to ${MAX_REORDER_POINT}.`); return; }
+    setSaving(true); setError(null);
+    try {
+      const response = await adminFetch(`/api/inventory/${item.productId}/reorder-point`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reorderPoint: point }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "Reorder point could not be saved.");
+      onSaved(result.reorderPoint);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Reorder point could not be saved."); setSaving(false); }
+  }}>
+    <label htmlFor={`reorder-${item.productId}`}>Reorder point for {item.productName}</label>
+    <p>Flag stock at or below this quantity. Incoming units that bring stock above this point clear Needs Reorder.</p>
+    <input id={`reorder-${item.productId}`} aria-invalid={!!error} aria-describedby={error ? `reorder-error-${item.productId}` : undefined} autoFocus type="number" min={0} max={MAX_REORDER_POINT} step={1} required value={value} disabled={saving} onChange={event => setValue(event.target.value)} />
+    <button className="primary-button" disabled={saving} type="submit">{saving ? "Saving..." : "Save reorder point"}</button>
+    <button className="secondary-button" disabled={saving} type="button" onClick={onClose}>Cancel</button>
+    {error && <p id={`reorder-error-${item.productId}`} role="alert">{error}</p>}
+  </form>;
 }

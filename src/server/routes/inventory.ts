@@ -1,4 +1,5 @@
 import { developmentErrorDetails, logServerError } from "../security/logging";
+import { createReorderPointRouter } from "./reorderPoint";
 import { Router } from "express";
 import { prisma } from "../prisma";
 import {
@@ -10,6 +11,13 @@ import {
 } from "../services/inventoryCost";
 
 const router = Router();
+router.use(createReorderPointRouter(async (productId, reorderPoint) => {
+  const result = await prisma.product.updateMany({
+    where: { id: productId, active: true, sellable: true, type: "SEALED" },
+    data: { reorderPoint },
+  });
+  return result.count > 0;
+}));
 
 // ---------------------------------------------------------
 // GET INVENTORY SUMMARY
@@ -87,6 +95,9 @@ router.get("/", async (_req, res) => {
         itemId: product.itemId,
         productName: product.name,
         productType: product.type,
+        reorderPoint: product.reorderPoint,
+        // Display average of remaining received stock, not a replacement for FIFO batch costs.
+        unitCost: unitsOnHand > 0 ? Number((onHandInventoryValue / unitsOnHand).toFixed(2)) : null,
 
         unitsPurchased,
         unitsReceived,

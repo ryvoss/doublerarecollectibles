@@ -15,6 +15,7 @@ test("public inventory mapping returns only the customer contract", () => {
     priceUpdatedAt: null,
     expectedSalePrice: 49.99,
     featured: true,
+    reorderPoint: 100,
     landedCost: 21.25,
     cogs: 18.5,
     margin: 0.6,
@@ -30,8 +31,10 @@ test("public inventory mapping returns only the customer contract", () => {
   assert.equal(result.displayPrice, 49.99);
   assert.equal(result.availability, "LOW_STOCK");
   assert.equal(result.moreArrivingSoon, true);
+  const differentThreshold = { ...source, reorderPoint: 0 };
+  assert.deepEqual(toPublicInventoryItem(differentThreshold, "/api/public/product-images/7/image.png"), result);
   const serialized = JSON.stringify(result);
-  assert.doesNotMatch(serialized, /canonical|landedCost|cogs|margin|orderId|inventoryBatches|unitCost|imageKey/);
+  assert.doesNotMatch(serialized, /reorderPoint|canonical|landedCost|cogs|margin|orderId|inventoryBatches|unitCost|imageKey/);
 });
 
 test("public availability reports inbound-only inventory as Coming Soon without quantities", () => {

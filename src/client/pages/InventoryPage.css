@@ -1,0 +1,40 @@
+.inventory-financial-summary { margin-bottom: 20px; }
+.inventory-financial-summary > summary { min-height: 44px; padding: 12px 0; color: var(--text-muted); cursor: pointer; }
+.inventory-page .inventory-table { width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+.inventory-table th { white-space: nowrap; }
+.inventory-table td { border-top: 1px solid var(--border); }
+.inventory-table :is(th, td):is(:nth-child(2), :nth-child(3), :nth-child(5), :nth-child(6)) { text-align: right; }
+.inventory-table td:first-child { min-width: 140px; }
+.inventory-table td strong { color: var(--text); }
+.inventory-on-hand { font-size: 18px; font-weight: 700; }
+.inventory-item-id { display: block; margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+.inventory-operational-status { font-size: 13px; color: var(--text-muted); }
+.inventory-operational-status.needs-reorder { color: #dfc28c; }
+.inventory-quick-filters { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.inventory-quick-filters button { min-height: 40px; padding: 8px 12px; background: transparent; color: var(--text-muted); border: 1px solid var(--border); border-radius: 5px; cursor: pointer; }
+.inventory-quick-filters button[aria-pressed="true"] { background: var(--surface-raised); color: var(--text); border-color: var(--positive); }
+.inventory-row-actions summary { display: grid; place-items: center; min-width: 44px; min-height: 44px; cursor: pointer; list-style: none; font-size: 22px; }
+.inventory-row-actions summary::-webkit-details-marker { display: none; }
+.inventory-row-actions > div { display: grid; gap: 4px; }
+.inventory-row-actions button { min-height: 40px; padding: 8px; border: 0; background: var(--surface-raised); color: var(--text); text-align: left; cursor: pointer; border-radius: 4px; }
+.inventory-row-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.inventory-reorder-editor { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 16px; text-align: left; }
+.inventory-reorder-editor label, .inventory-reorder-editor p { flex-basis: 100%; margin: 0; }
+.inventory-reorder-editor p { color: var(--text-muted); font-size: 13px; }
+.inventory-reorder-editor input { max-width: 140px; min-height: 44px; padding: 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+@media (max-width: 900px) {
+  .inventory-page > .inventory-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .inventory-page > .inventory-metrics .metric-card { padding: 14px; }
+  .inventory-page > .inventory-metrics .metric-detail { font-size: 11px; line-height: 1.4; }
+  .inventory-page .inventory-table, .inventory-table tbody { display: block; }
+  .inventory-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .inventory-table tr.expandable-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 16px; gap: 12px; border-bottom: 1px solid var(--border); }
+  /* Override the legacy global table-cell !important padding for stacked rows. */
+  .inventory-page .inventory-table tr.expandable-row td { display: block; min-width: 0; padding: 0 !important; border: 0; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+  .inventory-table td[data-label="Product"], .inventory-table td[data-label="Stock Status"], .inventory-table td[data-label="Actions"] { grid-column: 1 / -1; }
+  .inventory-table td[data-label]::before { content: attr(data-label); display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+  .inventory-table td[data-label="Product"]::before, .inventory-table td[data-label="Actions"]::before { display: none; }
+  .inventory-table .inventory-detail-row, .inventory-table .inventory-detail-row > td { display: block; width: 100%; }
+  .inventory-row-actions summary { justify-content: start; }
+  .inventory-toolbar input, .inventory-toolbar select { width: 100%; max-width: 100%; }
+}

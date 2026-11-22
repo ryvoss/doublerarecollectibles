@@ -56,6 +56,7 @@ model Product {
   quantityPerParent Int?
   sellable          Boolean         @default(true)
   active            Boolean         @default(true)
+  reorderPoint      Int             @default(10)
   expectedSalePrice Decimal?        @db.Decimal(10, 2)
   publicVisible     Boolean         @default(false)
   publicPrice       Decimal?        @db.Decimal(10, 2)

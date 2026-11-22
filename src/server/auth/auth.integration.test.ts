@@ -1,3 +1,4 @@
+import { createReorderPointRouter } from "../routes/reorderPoint";
 import { createOrderWhatIfRouter } from "../routes/orderWhatIfScenarios";
 import { orderWhatIfTestDatabase } from "../routes/orderWhatIfTestDatabase";
 import { createStorefrontContentRouter } from "../routes/storefrontContent";
@@ -93,6 +94,10 @@ siteContentRouter.use("/content", createStorefrontContentRouter({
   remove: async () => { contentMutationCount += 1; },
 }));
 
+let reorderUpdates = 0;
+const inventoryRouter = readableRouter();
+inventoryRouter.use(createReorderPointRouter(async (id) => { reorderUpdates += 1; return id === 1; }));
+
 const reportsRouter = readableRouter("/business-position");
 reportsRouter.get("/explode", () => {
   throw new Error("postgresql://secret-user:secret-password@private-host/private-db");
@@ -124,7 +129,7 @@ mountApiRoutes(app, {
   }),
   contact: Router(),
   funds: readableRouter("/summary"),
-  inventory: readableRouter(),
+  inventory: inventoryRouter,
   orders: readableRouter(),
   packPools: readableRouter(),
   products: productsRouter,
@@ -411,6 +416,25 @@ test("Order What-If requires ADMIN, CSRF and Origin and exposes no public endpoi
   for (const method of ["patch", "delete"] as const) await agent[method](`${path}/${created.body.id}`).set("Origin", testOrigin).send({}).expect(403);
   await agent.get("/api/public/what-if-scenarios/orders").expect(404);
   assert.equal(orderPlanningStore.writeCount(), 1);
+});
+
+test("reorder point writes inherit admin, origin, CSRF and no-store protection", async () => {
+  const path = "/api/inventory/1/reorder-point";
+  const before = reorderUpdates;
+  const unauthorized = await request(app).patch(path).send({ reorderPoint: 4 }).expect(401);
+  assert.match(unauthorized.headers["cache-control"], /no-store/);
+  const agent = request.agent(app); await login(agent); const token = await csrf(agent);
+  await agent.patch(path).set("Origin", testOrigin).send({ reorderPoint: 4 }).expect(403);
+  await agent.patch(path).set("Origin", "https://attacker.invalid").set("X-CSRF-Token", token).send({ reorderPoint: 4 }).expect(403);
+  assert.equal(reorderUpdates, before);
+  for (const reorderPoint of [-1, 1.5, null, "10", 1000001]) {
+    await agent.patch(path).set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint }).expect(400);
+  }
+  await agent.patch(path).set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint: 4, inventoryValue: 0 }).expect(400);
+  assert.equal(reorderUpdates, before);
+  const saved = await agent.patch(path).set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint: 0 }).expect(200);
+  assert.deepEqual(saved.body, { productId: 1, reorderPoint: 0 }); assert.match(saved.headers["cache-control"], /no-store/);
+  await agent.patch("/api/inventory/999/reorder-point").set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint: 4 }).expect(404);
 });
 
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {
