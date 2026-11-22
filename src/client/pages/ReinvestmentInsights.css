@@ -1,0 +1,48 @@
+.reinvestment-insights { min-width: 0; }
+.investment-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.investment-heading > div { flex: 1 1 320px; }
+.investment-heading h3, .investment-winners h3 { margin: 0 0 8px; }
+.investment-heading p, .investment-explanation p, .investment-method { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+.investment-heading label { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.investment-heading select { min-height: 44px; padding: 8px; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+.investment-winners { margin-block: 24px 32px; }
+.investment-winners ol { padding-left: 24px; }
+.investment-winners li { padding-left: 8px; border-bottom: 1px solid var(--border); }
+.investment-winners button { display: grid; grid-template-columns: 44px minmax(0, 1fr) minmax(120px, auto); gap: 16px; align-items: center; width: 100%; padding: 16px 0; border: 0; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+.investment-winners button > span > span, .investment-winners small { display: block; margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+.investment-grade { font-size: 26px; font-weight: 700; color: var(--text); }
+.investment-buy { font-size: 13px; line-height: 1.5; }
+.investment-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.investment-filters button { min-height: 44px; padding: 8px 12px; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: var(--text-muted); cursor: pointer; }
+.investment-filters button[aria-pressed="true"] { border-color: var(--positive); color: var(--text); background: var(--surface-raised); }
+.investment-columns, .investment-row { display: grid; grid-template-columns: 48px minmax(140px, 1.5fr) minmax(110px, 1fr) minmax(130px, 1fr) 60px 60px; gap: 16px; align-items: center; padding: 16px; }
+.investment-columns { font-size: 11px; color: var(--text-muted); }
+.investment-list article { border-top: 1px solid var(--border); }
+.investment-product { min-height: 44px; padding: 0; text-align: left; border: 0; background: transparent; color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
+.investment-product strong { font-size: 14px; }
+.investment-product small { display: block; margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+.investment-action { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.investment-action.is-buy { color: var(--positive); }
+.investment-quantity { font-size: 14px; font-variant-numeric: tabular-nums; }
+.investment-quantity small { display: none; }
+.investment-explanation { padding: 20px; background: var(--surface); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.investment-explanation h4 { margin: 0 0 12px; font-size: 14px; }
+.investment-explanation ul { padding-left: 18px; color: var(--text-muted); font-size: 13px; line-height: 1.7; }
+.investment-explanation dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 16px; margin: 0; font-size: 13px; }
+.investment-explanation dt { color: var(--text-muted); }
+.investment-explanation dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+.investment-method { margin-top: 24px; }
+.investment-method summary { padding-block: 12px; min-height: 44px; cursor: pointer; }
+@media (max-width: 1100px) {
+  .investment-columns { display: none; }
+  .investment-row { grid-template-columns: 44px minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .investment-product { grid-column: 2 / -1; }
+  .investment-action, .investment-quantity:nth-last-child(2) { grid-column: 2; }
+  .investment-quantity small { display: block; color: var(--text-muted); font-size: 11px; margin-bottom: 4px; }
+}
+@media (max-width: 600px) {
+  .investment-winners button { grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
+  .investment-winners .investment-buy { grid-column: 2; }
+  .investment-row { padding-inline: 0; }
+  .investment-explanation { grid-template-columns: minmax(0, 1fr); padding: 16px; }
+}

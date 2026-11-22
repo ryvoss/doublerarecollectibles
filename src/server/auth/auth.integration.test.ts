@@ -1,3 +1,4 @@
+import { createReinvestmentHandler } from "../reporting/reinvestmentHandler";
 import { createReorderPointRouter } from "../routes/reorderPoint";
 import { createOrderWhatIfRouter } from "../routes/orderWhatIfScenarios";
 import { orderWhatIfTestDatabase } from "../routes/orderWhatIfTestDatabase";
@@ -99,6 +100,8 @@ const inventoryRouter = readableRouter();
 inventoryRouter.use(createReorderPointRouter(async (id) => { reorderUpdates += 1; return id === 1; }));
 
 const reportsRouter = readableRouter("/business-position");
+let investmentReads = 0;
+reportsRouter.get("/reinvestment", createReinvestmentHandler(async horizon => { investmentReads += 1; return { asOf: "2026-11-22", currentFrom: "2026-10-24", previousFrom: "2026-08-25", horizon, items: [], topOpportunities: [] }; }));
 reportsRouter.get("/explode", () => {
   throw new Error("postgresql://secret-user:secret-password@private-host/private-db");
 });
@@ -435,6 +438,21 @@ test("reorder point writes inherit admin, origin, CSRF and no-store protection",
   const saved = await agent.patch(path).set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint: 0 }).expect(200);
   assert.deepEqual(saved.body, { productId: 1, reorderPoint: 0 }); assert.match(saved.headers["cache-control"], /no-store/);
   await agent.patch("/api/inventory/999/reorder-point").set("Origin", testOrigin).set("X-CSRF-Token", token).send({ reorderPoint: 4 }).expect(404);
+});
+
+test("reinvestment report is read-only, admin-only, no-store, and validates horizon", async () => {
+  const before = investmentReads;
+  const rejected = await request(app).get("/api/reports/reinvestment").expect(401);
+  assert.match(rejected.headers["cache-control"], /no-store/); assert.equal(investmentReads, before);
+  const agent = request.agent(app); await login(agent);
+  for (const horizon of [30, 45, 60]) {
+    const result = await agent.get(`/api/reports/reinvestment?horizon=${horizon}`).expect(200);
+    assert.equal(result.body.horizon, horizon); assert.match(result.headers["cache-control"], /no-store/);
+  }
+  await agent.get("/api/reports/reinvestment?horizon=31").expect(400);
+  await agent.get("/api/reports/reinvestment?from=2020-01-01").expect(400);
+  const token = await csrf(agent);
+  await agent.post("/api/reports/reinvestment").set("Origin", testOrigin).set("X-CSRF-Token", token).send({}).expect(404);
 });
 
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {

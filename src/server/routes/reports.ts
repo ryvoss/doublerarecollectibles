@@ -1,3 +1,5 @@
+import { loadReinvestment } from "../reporting/loadReinvestment";
+import { createReinvestmentHandler } from "../reporting/reinvestmentHandler";
 import { logServerError } from "../security/logging";
 import { Router } from "express";
 import { prisma } from "../prisma";
@@ -5,6 +7,9 @@ import { calculateBusinessPosition, captureBusinessPositionSnapshot } from "../s
 import { aggregatePackPerformance, emptyPackPerformanceSummary, loadPackPerformance } from "../reporting/packPerformance";
 
 const router = Router();
+router.get("/reinvestment", createReinvestmentHandler(horizon =>
+  prisma.$transaction(tx => loadReinvestment(tx, horizon), { isolationLevel: "RepeatableRead" })));
+
 const cents = (value: number) => Math.round(value * 100) / 100;
 
 router.get("/business-position", async (_req, res) => {

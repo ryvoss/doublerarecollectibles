@@ -1,3 +1,4 @@
+import ReinvestmentInsights from "./ReinvestmentInsights";
 import { useEffect, useState } from "react";
 import { fetchReportData } from "../reportApi";
 import "./ReportsPage.css";
@@ -17,7 +18,7 @@ type Inventory = { productId: number; productName: string; unitsPurchased: numbe
 type Funds = { sealedBalance: string; singlesBalance: string; totalBusinessFunds: string };
 type SinglesValuation = { value: number; recordedAt: string; source: "Active Show start" | "Finalized Show end" };
 type ShowResponse = { id: number; name: string; visits: Array<{ status: string; visitDate: string; startedAt: string | null; finalizedAt: string | null; startingSinglesValue: string | number; endingSinglesValue: string | number | null }> };
-type Section = "Overview" | "Business Health" | "Sales" | "Inventory" | "Shows" | "What-If";
+type Section = "Reinvestment Insights" | "Overview" | "Business Health" | "Sales" | "Inventory" | "Shows" | "What-If";
 type Range = "all" | "month" | "lastMonth" | "30" | "year" | "custom";
 const currency = (n: number | string) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(n));
 const integer = (n: number) => new Intl.NumberFormat("en-US").format(n);
@@ -150,7 +151,7 @@ export default function ReportsPage() {
   const [refresh, setRefresh] = useState(0);
   useEffect(() => { const listener = () => setRefresh(n => n + 1); window.addEventListener("business-data-changed", listener); return () => window.removeEventListener("business-data-changed", listener); }, []);
   // Filters affect performance only; current balances/options refresh on business changes.
-  const reportActive = section !== "What-If" && section !== "Business Health";
+  const reportActive = section !== "What-If" && section !== "Business Health" && section !== "Reinvestment Insights";
   useEffect(() => {
     if (!reportActive) return;
     const controller = new AbortController();
@@ -203,8 +204,8 @@ export default function ReportsPage() {
   const totals = performance?.totals;
   const selectedVisits = performance?.visits.filter(visit => !showId || String(visit.showId) === showId) ?? [];
   return <div className="reports-page"><div className="page-heading"><div><h2>Business Reports</h2><p>Performance, current position, and Show results from recorded business activity.</p></div></div>
-    <div className="report-tabs" role="tablist" aria-label="Reports sections">{(["Overview", "Business Health", "Sales", "Inventory", "Shows", "What-If"] as Section[]).map(tab => <button key={tab} type="button" role="tab" aria-selected={section === tab} className={section === tab ? "is-active" : ""} onClick={() => setSection(tab)}>{tab}</button>)}</div>
-    {section === "What-If" ? <WhatIfPage /> : section === "Business Health" ? <BusinessHealthPage /> : <>
+    <div className="report-tabs" role="tablist" aria-label="Reports sections">{(["Overview", "Business Health", "Reinvestment Insights", "Sales", "Inventory", "Shows", "What-If"] as Section[]).map(tab => <button key={tab} type="button" role="tab" aria-selected={section === tab} className={section === tab ? "is-active" : ""} onClick={() => setSection(tab)}>{tab}</button>)}</div>
+    {section === "Reinvestment Insights" ? <ReinvestmentInsights /> : section === "What-If" ? <WhatIfPage /> : section === "Business Health" ? <BusinessHealthPage /> : <>
     <div className="panel report-filters"><label>Sale / visit date <select value={range} onChange={e => setRange(e.target.value as Range)}><option value="all">All Time</option><option value="month">This Month</option><option value="lastMonth">Last Month</option><option value="30">Last 30 Days</option><option value="year">This Year</option><option value="custom">Custom Range</option></select></label>{range === "custom" && <><label>From <input type="date" value={from} onChange={e => setFrom(e.target.value)} /></label><label>To <input type="date" value={to} onChange={e => setTo(e.target.value)} /></label></>}{(section === "Sales" || section === "Inventory" || section === "Shows") && <label>Product <select value={productId} onChange={e => setProductId(e.target.value)}><option value="">All Products</option>{options.products.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}{section === "Shows" && <label>Recurring Show <select value={showId} onChange={e => setShowId(e.target.value)}><option value="">All Shows</option>{options.shows.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}</div>
     {(section === "Overview" || section === "Inventory") && <p className="report-note">Inventory and Funds are current balances. The date range applies to recorded sales and Show visits.</p>}
     {(loading || referenceLoading) && <div className="panel report-state" role="status">Loading reports…</div>}{(error || referenceError) && <div className="panel report-state" role="alert">{error || referenceError} <button type="button" className="secondary-button" onClick={() => setRefresh(n => n + 1)}>Retry</button></div>}
