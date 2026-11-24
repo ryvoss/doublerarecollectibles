@@ -1,3 +1,4 @@
+import AccountingPage from "./client/pages/AccountingPage";
 import { adminFetch } from "./client/adminFetch";
 import {
   useEffect,
@@ -28,6 +29,7 @@ type Page =
   | "inventory"
   | "sales"
   | "shows"
+  | "accounting"
   | "reports"
   | "publicSite";
 
@@ -122,6 +124,7 @@ const navigation: {
     label: "Shows",
     icon: "★",
   },
+  { id: "accounting", label: "Accounting", icon: "$" },
   { id: "reports", label: "Reports", icon: "▥" },
   { id: "publicSite", label: "Storefront", icon: "◎" },
 ];
@@ -146,6 +149,7 @@ function money(
 function App() {
   const [activePage, setActivePage] =
     useState<Page>("dashboard");
+  const [accountingReference,setAccountingReference] = useState<{source:string;id:number}|null>(null);
 
   const [apiStatus, setApiStatus] =
     useState<ApiStatus>("loading");
@@ -434,11 +438,12 @@ function App() {
             <ProductsPage />
           )}
           {activePage === "orders" && (
-          <OrdersPage />
+          <OrdersPage initialSelectedOrderId={accountingReference?.source === "ORDER" ? accountingReference.id : null} />
           )}
           {activePage === "inventory" && <InventoryPage />}
-          {activePage === "sales" && <SalesPage />}
+          {activePage === "sales" && <SalesPage initialSelectedSaleId={accountingReference?.source === "SALE" ? accountingReference.id : null} />}
           {activePage === "shows" && <ShowsPage />}
+          {activePage === "accounting" && <AccountingPage onView={(source,id)=>{setAccountingReference({source,id});setActivePage(source === "ORDER" ? "orders" : source === "SALE" ? "sales" : "dashboard");}} />}
           {activePage === "reports" && <ReportsPage />}
           {activePage === "publicSite" && <PublicSiteManagerPage />}
 
@@ -448,6 +453,7 @@ function App() {
             activePage !== "shows" &&
             activePage !== "products" &&
             activePage !== "orders" &&
+            activePage !== "accounting" &&
             activePage !== "reports" &&
             activePage !== "publicSite" && (
               <PagePlaceholder

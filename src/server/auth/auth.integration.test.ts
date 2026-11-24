@@ -1,3 +1,5 @@
+import { createAccountingRouter } from "../routes/accounting";
+import { expenseTestDatabase } from "../services/businessExpenseTestDatabase";
 import { createReinvestmentHandler } from "../reporting/reinvestmentHandler";
 import { createReorderPointRouter } from "../routes/reorderPoint";
 import { createOrderWhatIfRouter } from "../routes/orderWhatIfScenarios";
@@ -123,7 +125,9 @@ const orderPlanningStore = orderWhatIfTestDatabase();
 const whatIfRouter = readableRouter();
 whatIfRouter.use("/orders", createOrderWhatIfRouter(orderPlanningStore.database));
 
+const accountingStore = expenseTestDatabase();
 mountApiRoutes(app, {
+  accounting: createAccountingRouter(accountingStore.db),
   auth: createAuthRouter({
     adminPassport: testPassport,
     production: false,
@@ -453,6 +457,22 @@ test("reinvestment report is read-only, admin-only, no-store, and validates hori
   await agent.get("/api/reports/reinvestment?from=2020-01-01").expect(400);
   const token = await csrf(agent);
   await agent.post("/api/reports/reinvestment").set("Origin", testOrigin).set("X-CSRF-Token", token).send({}).expect(404);
+});
+
+test("Accounting enforces authentication, origin and CSRF on expense writes",async()=>{
+  await request(app).get("/api/accounting/ledger").expect(401);
+  await request(app).post("/api/accounting/expenses").send({}).expect(401);
+  const agent=request.agent(app);await login(agent);
+  const body={date:"2026-11-23",description:"Hosting",category:"Software",amount:"20.00",paidFrom:"SINGLES_DIGITAL"};
+  await agent.post("/api/accounting/expenses").set("Origin",testOrigin).send(body).expect(403);
+  const token=await csrf(agent);
+  await agent.post("/api/accounting/expenses").set("Origin","https://evil.example").set("X-CSRF-Token",token).send(body).expect(403);
+  const created=await agent.post("/api/accounting/expenses").set("Origin",testOrigin).set("X-CSRF-Token",token).send(body).expect(201);
+  assert.match(created.headers["cache-control"],/no-store/);assert.equal(accountingStore.postings.length,1);
+  await agent.patch("/api/accounting/expenses/1").set("Origin",testOrigin).set("X-CSRF-Token",token).send({...body,amount:"25.00",version:1}).expect(200);
+  await agent.delete("/api/accounting/expenses/1").set("Origin",testOrigin).set("X-CSRF-Token",token).send({version:2}).expect(200);
+  assert.equal(accountingStore.postings.reduce((n,p)=>n+Number(p.amount),0),0);
+  await agent.get("/api/accounting/ledger?range=Custom&from=wrong&to=2026-11-23").expect(400);
 });
 
 test("login rate limiting returns a controlled 429 without account disclosure", async () => {

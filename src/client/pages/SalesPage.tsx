@@ -100,6 +100,7 @@ type DraftLine = {
 // ---------------------------------------------------------
 
 type SalesPageProps = {
+  initialSelectedSaleId?: number | null;
   // When supplied, Sales opens directly into Record Sale
   // and automatically attaches the sale to this Show Visit.
   initialShowVisitId?: number | null;
@@ -167,6 +168,7 @@ function total(
 // ---------------------------------------------------------
 
 export default function SalesPage({
+  initialSelectedSaleId = null,
   initialShowVisitId = null,
   initialOpenRecordSale = false,
   quickActionOnly = false,
@@ -209,7 +211,7 @@ export default function SalesPage({
     );
 
   const [expandedId, setExpandedId] =
-    useState<number | null>(null);
+    useState<number | null>(initialSelectedSaleId);
 
   const [search, setSearch] =
     useState("");

@@ -1,3 +1,4 @@
+import { createAccountingRouter } from "./routes/accounting";
 import "dotenv/config";
 
 import { access } from "node:fs/promises";
@@ -87,7 +88,7 @@ app.use((req, res, next) => {
     req.path === "/api/products/public-listings" ||
     /^\/api\/products\/\d+\/image$/.test(req.path);
   const capturesPosition = !isPublicMerchandisingUpdate && req.method !== "GET" &&
-    ["/api/orders", "/api/sales", "/api/shows", "/api/funds", "/api/products", "/api/pack-pools"]
+    ["/api/accounting", "/api/orders", "/api/sales", "/api/shows", "/api/funds", "/api/products", "/api/pack-pools"]
       .some(prefix => req.path.startsWith(prefix));
   if (capturesPosition) res.on("finish", () => {
     if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -114,6 +115,7 @@ const contactRouter = createPublicContactRouter(createResendContactEmailService(
 mountApiRoutes(app, {
   auth: authRouter,
   contact: contactRouter,
+  accounting: createAccountingRouter(prisma),
   funds: fundsRouter,
   inventory: inventoryRouter,
   orders: ordersRouter,

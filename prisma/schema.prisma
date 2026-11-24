@@ -559,6 +559,9 @@ enum ShowVisitStatus {
 // ---------------------------------------------------------
 
 model FundEntry {
+  @@index([businessExpenseId])
+  businessExpenseId Int?
+  businessExpense BusinessExpense? @relation(fields: [businessExpenseId], references: [id])
   id                 Int           @id @default(autoincrement())
   source             FundSource
   location           FundLocation?
@@ -598,6 +601,7 @@ enum FundLocation {
 }
 
 enum FundEntryType {
+  BUSINESS_EXPENSE
   OPENING_BALANCE
   SEALED_SALE
   ORDER_PURCHASE
@@ -754,4 +758,32 @@ model OrderWhatIfLine {
   sortOrder Int
   scenario OrderWhatIfScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
   @@unique([scenarioId, sortOrder])
+}
+
+
+// Current expense facts; immutable revisions and linked fund postings retain the audit trail.
+model BusinessExpense {
+  id Int @id @default(autoincrement())
+  date DateTime @db.Date
+  description String @db.VarChar(200)
+  category String @db.VarChar(40)
+  amount Decimal @db.Decimal(14, 2)
+  paidFrom String @db.VarChar(30)
+  version Int @default(1)
+  voidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  fundEntries FundEntry[]
+  revisions BusinessExpenseRevision[]
+  @@index([date])
+}
+
+model BusinessExpenseRevision {
+  id Int @id @default(autoincrement())
+  expenseId Int
+  expense BusinessExpense @relation(fields: [expenseId], references: [id])
+  action String @db.VarChar(10)
+  facts Json
+  createdAt DateTime @default(now())
+  @@index([expenseId, createdAt])
 }

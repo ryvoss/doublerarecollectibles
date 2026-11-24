@@ -31,6 +31,7 @@ type FundEntryType =
   | "SEALED_SALE"
   | "ORDER_PURCHASE"
   | "ORDER_CORRECTION"
+  | "BUSINESS_EXPENSE"
   | "ORDER_REFUND"
   | "SINGLES_SHOW_GAIN"
   | "PACK_SHOW_REVENUE"
@@ -186,6 +187,8 @@ function getEntryLabel(
         ? `Inventory Order ${entry.order.orderNumber}`
         : "Inventory Order";
 
+    case "BUSINESS_EXPENSE":
+      return "Business Expense / Correction";
     case "ORDER_REFUND":
       return "Order Refund";
 

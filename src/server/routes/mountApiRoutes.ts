@@ -1,6 +1,7 @@
 import type { Application, RequestHandler, Router } from "express";
 
 export type ApiRouters = {
+  accounting?: Router;
   auth: Router;
   contact: Router;
   funds: Router;
@@ -61,6 +62,7 @@ export function mountApiRoutes(
   app.use("/api/inventory", routers.inventory);
   app.use("/api/sales", routers.sales);
   app.use("/api/shows", routers.shows);
+  if (routers.accounting) app.use("/api/accounting", routers.accounting);
   app.use("/api/funds", routers.funds);
   app.use("/api/reports", routers.reports);
   app.use("/api/what-if-scenarios", routers.whatIfScenarios);

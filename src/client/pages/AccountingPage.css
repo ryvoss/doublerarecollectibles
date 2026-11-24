@@ -1,0 +1,21 @@
+.accounting-page {min-width:0;}
+.accounting-page header {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
+.accounting-page h2 {font-size:22px;margin:0;}
+.accounting-filters {display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px;}
+.accounting-filters label,.expense-dialog label {display:grid;gap:5px;font-size:12px;color:var(--text-muted);}
+.accounting-filters select,.accounting-filters input,.expense-dialog input,.expense-dialog select {background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px;min-height:36px;padding:6px 9px;font:inherit;}
+.accounting-summary {display:flex;flex-wrap:wrap;border-block:1px solid var(--border);padding:10px 0;gap:12px 22px;font-size:11px;color:var(--text-muted);}
+.accounting-summary span {display:flex;gap:7px;align-items:baseline;}.accounting-summary strong {font-size:13px;color:var(--text);font-variant-numeric:tabular-nums;}
+.accounting-note {font-size:11px;color:var(--text-muted);line-height:1.5;margin:10px 0;}
+.accounting-scroll {overflow:auto;max-height:65vh;}
+.accounting-page table {width:100%;border-collapse:collapse;font-size:12px;}
+.accounting-page th {position:sticky;top:0;background:var(--surface);z-index:1;text-align:left;font-size:11px;}
+.accounting-page td,.accounting-page th {padding:8px;border-bottom:1px solid var(--border);vertical-align:top;}
+.accounting-page td:first-child {white-space:nowrap;}.accounting-page .accounting-amount {text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.accounting-page tbody tr:hover {background:var(--surface-raised);}
+.accounting-page table button {background:none;color:var(--text);border:0;padding:0;cursor:pointer;min-height:24px;font:inherit;}
+.accounting-page details summary {cursor:pointer;}.accounting-page details p {color:var(--text-muted);max-width:420px;font-size:11px;line-height:1.5;}
+.accounting-type {font-size:10px;color:var(--text-muted);}.accounting-type.order {color:#d1b582;}.accounting-type.business_expense {color:#d5a5a5;}
+.expense-dialog {color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:22px;width:min(440px,calc(100vw - 32px));max-height:85vh;overflow:auto;}
+.expense-dialog::backdrop {background:#000a;}.expense-dialog form {display:grid;gap:12px;}.expense-dialog h3 {margin:0 0 4px;}.expense-dialog footer {display:flex;flex-wrap:wrap;gap:8px;justify-content:end;margin-top:8px;}
+@media(max-width:700px){.accounting-secondary {display:none;}.accounting-page td,.accounting-page th {padding:7px 4px;}.accounting-page table {font-size:11px;}.accounting-page table button {min-height:36px;}.accounting-summary {gap:8px 14px;}.accounting-page header h2 {font-size:20px;}.accounting-page td:nth-child(3) {min-width:85px;overflow-wrap:anywhere;}}

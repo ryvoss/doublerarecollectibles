@@ -199,6 +199,7 @@ function formatDate(value: string) {
 // ---------------------------------------------------------
 
 type OrdersPageProps = {
+  initialSelectedOrderId?: number | null;
   // Opens the existing New Order workflow immediately.
   // The Command Center uses this instead of duplicating the order form.
   initialOpenNewOrder?: boolean;
@@ -216,6 +217,7 @@ type OrdersPageProps = {
 // ---------------------------------------------------------
 
 export default function OrdersPage({
+  initialSelectedOrderId = null,
   initialOpenNewOrder = false,
   quickActionOnly = false,
   onQuickActionClose,
@@ -243,7 +245,7 @@ export default function OrdersPage({
   const [
     selectedOrderId,
     setSelectedOrderId,
-  ] = useState<number | null>(null);
+  ] = useState<number | null>(initialSelectedOrderId);
 
   async function loadPageData() {
     try {
